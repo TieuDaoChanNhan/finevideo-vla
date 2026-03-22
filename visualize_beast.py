@@ -108,5 +108,5 @@ def visualize_real_trajectory(video_id):
     print(f"✅ Đã lưu ảnh visualize vào '{output_img}'")
 
 if __name__ == "__main__":
-    video_id = "05xCYOyY1bg"
+    video_id = "0wx5srU_HoM"
     visualize_real_trajectory(video_id)
