@@ -1,0 +1,28 @@
+name: motion_yolo_jupiter
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.9
+  - numpy=1.23.5
+  - scipy
+  - scikit-learn
+  - matplotlib>=3.5.0
+  - pip
+  - pip:
+      - torch==2.5.1
+      - torchvision==0.20.1
+      - torchaudio==2.5.1
+      - ultralytics
+      - tensorboardX
+      - tqdm
+      - easydict
+      - prettytable
+      - chumpy
+      - opencv-python-headless
+      - imageio-ffmpeg
+      - roma
+      - ipdb
+      - pytorch-metric-learning
+      - smplx[all]
