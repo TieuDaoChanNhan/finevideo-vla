@@ -5,7 +5,7 @@ import torch
 import os
 import glob
 
-# ĐÚNG CHUẨN IMPORT CỦA 1.X VÀ 3.X
+# IMPORT FOR 1.X VÀ 3.X
 from mmpose.apis import init_model as init_pose_model, inference_topdown
 from mmdet.apis import init_detector, inference_detector
 from mmengine.registry import init_default_scope
@@ -54,7 +54,7 @@ def process_video_to_json(video_path, output_json_path, max_frames=None):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     all_frames_data = []
     frame_idx = 0
-    detected_count = 0 # Biến đếm số frame trích xuất thành công
+    detected_count = 0
     
     while True:
         if max_frames and frame_idx >= max_frames: break
@@ -83,7 +83,7 @@ def process_video_to_json(video_path, output_json_path, max_frames=None):
                 
                 h36m_keypoints = coco_to_h36m(coco_final)
                 frame_data["keypoints"] = h36m_keypoints.tolist()
-                detected_count += 1 # Tăng biến đếm khi tìm thấy pose
+                detected_count += 1
         
         if not frame_data["keypoints"]:
             frame_data["keypoints"] = [[0.0, 0.0, 0.0]] * 17
@@ -97,7 +97,6 @@ def process_video_to_json(video_path, output_json_path, max_frames=None):
     cap.release()
     print() 
     
-    # Tính toán phần trăm thành công
     success_rate = (detected_count / frame_idx) * 100 if frame_idx > 0 else 0
     print(f"📊 Extraction Success Rate: {success_rate:.2f}% ({detected_count}/{frame_idx} frames)")
     
@@ -119,7 +118,7 @@ if __name__ == "__main__":
     
     total_videos = len(video_files)
     print(f"\n🚀 [Worker {task_id}/{num_tasks}] Assigned {total_videos} videos.")
-    print(f"🚀 [TieuDaoChanNhan] Resume System Activated.") #
+    print(f"🚀 [TieuDaoChanNhan] Resume System Activated.") 
     print("=" * 60)
     
     for idx, video_path in enumerate(video_files, start=1):

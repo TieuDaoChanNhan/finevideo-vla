@@ -1,7 +1,6 @@
 #!/bin/bash
 module --force purge
 module load Stages/2025 GCC/13.3.0
-# Lưu ý: Phase 1 chạy CPU nên không cần load CUDA để tránh xung đột
 source /e/project1/reformo/nguyen38/3d-human-pose/miniforge3/bin/activate
 conda activate /e/project1/reformo/nguyen38/3d-human-pose/env_hrnet
 echo "------------------------------------------------"

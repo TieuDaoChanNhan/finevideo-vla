@@ -144,7 +144,7 @@ class BeastTokenizer:
 # ================= TEST =================
 if __name__ == "__main__":
 
-    # Fake input (like MotionBERT output)
+    # Fake input (similar to MotionBERT output)
     x = np.random.uniform(-1, 1, (8, 17, 3))
 
     tokenizer = BeastTokenizer()
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     # ========================
     print("\n--- CONTROL POINT ERROR ---")
 
-    # recompute original cp (before quantization)
+    # recompute original control points (before quantization)
     anchor = x[0].copy()
     rel = x - anchor
     scale = np.max(np.abs(rel)) + 1e-6
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     t_eval = tokenizer.compute_arc_length_param(norm)
     cp_original = tokenizer.fit_chunk_to_spline(norm, t_eval)
 
-    # recovered cp (normalized space)
+    # recovered control points (normalized space)
     tokens = np.array(encoded["tokens"])
     cp_recovered = tokenizer.dequantize(tokens).reshape(4, 17, 3)
 

@@ -9,7 +9,7 @@ if __name__ == "__main__":
     
     os.makedirs(output_dir, exist_ok=True)
     
-    # 1. ĐỌC VÀ CHIA BÀI (LOGIC TỪ PHASE 1)
+    # 1. LOAD AND DISTRIBUTE TASKS (LOGIC FROM PHASE 1)
     all_json_files = sorted(glob.glob(os.path.join(json_dir, '*.json')))
     
     task_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     json_files = [f for i, f in enumerate(all_json_files) if i % num_tasks == task_id]
     total_files = len(json_files)
     
-    # 2. TẠO PHÒNG CÁCH LY (ISOLATED WORKSPACE) ĐỂ CHỐNG RACE CONDITION
+    # 2. CREATE ISOLATED WORKSPACE TO AVOID RACE CONDITIONS
     worker_tmp_dir = os.path.join(output_dir, f"worker_{task_id}_tmp")
     os.makedirs(worker_tmp_dir, exist_ok=True)
     
@@ -35,7 +35,7 @@ if __name__ == "__main__":
         final_npy = os.path.join(output_dir, f'{video_id}.npy')
         final_mp4 = os.path.join(output_dir, f'{video_id}.mp4')
         
-        # 3. CƠ CHẾ RESUME
+        # 3. RESUME MECHANISM
         if os.path.exists(final_npy) and os.path.exists(final_mp4):
             skipped += 1
             if skipped % 5 == 0 or idx == total_files:
@@ -44,22 +44,22 @@ if __name__ == "__main__":
             
         print(f"\n⏳ [{idx}/{total_files}] Lifting 2D to 3D for: {video_id}")
         
-        # SỬ DỤNG PHÒNG CÁCH LY CHO OUT_PATH
+        # USE ISOLATED WORKSPACE FOR OUT_PATH
         cmd = [
             "python", "MotionBERT/infer_wild.py",
             "--config", "MotionBERT/configs/pose3d/MB_ft_h36m.yaml",
             "--evaluate", "MotionBERT/checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin",
             "--json_path", json_path,
             "--vid_path", video_path,
-            "--out_path", worker_tmp_dir, # <-- Trỏ về thư mục tạm của riêng worker này
+            "--out_path", worker_tmp_dir, # <-- Point to this worker's private temp directory
             "--pixel"
         ]
         
         try:
-            # Chạy MotionBERT
+            # Run MotionBERT
             subprocess.run(cmd, check=True)
             
-            # 4. ATOMIC MOVE TỪ PHÒNG CÁCH LY RA THƯ MỤC CHÍNH
+            # 4. ATOMIC MOVE FROM ISOLATED WORKSPACE TO MAIN OUTPUT DIRECTORY
             x3d_npy = os.path.join(worker_tmp_dir, 'X3D.npy')
             x3d_mp4 = os.path.join(worker_tmp_dir, 'X3D.mp4')
             
@@ -73,7 +73,7 @@ if __name__ == "__main__":
             print(f"❌ Error processing {video_id}: {e}")
             continue
 
-    # Dọn dẹp phòng cách ly sau khi xong việc
+    # Clean up isolated workspace after completion
     if not os.listdir(worker_tmp_dir):
         os.rmdir(worker_tmp_dir)
 
