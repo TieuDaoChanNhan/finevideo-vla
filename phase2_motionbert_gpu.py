@@ -1,81 +1,134 @@
 import os
-import glob
+import json
 import subprocess
+import argparse
+import glob
+from datasets import load_from_disk
+
+# ================= CONFIGURATION =================
+OUT_2D = "outputs/2d_json"
+OUT_3D = "outputs/3d_npy"
+WORKSPACE = "workspace_temp"
+DATASET_PATH = "/e/scratch/reformo/nguyen38/finevideo_disk"
+
+CONFIG = "MotionBERT/configs/pose3d/MB_ft_h36m.yaml"
+CHECKPOINT = "MotionBERT/checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin"
 
 if __name__ == "__main__":
-    json_dir = "outputs/2d_keypoints/"
-    video_dir = "videos_staging/"
-    output_dir = "outputs/3d_npy/"
+    os.makedirs(OUT_3D, exist_ok=True)
+    os.makedirs(WORKSPACE, exist_ok=True)
     
-    os.makedirs(output_dir, exist_ok=True)
+    # 1. LOGIC PHÂN CHIA NODE/GPU
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--offset', type=int, default=0)
+    parser.add_argument('--total_workers', type=int, default=160)
+    args = parser.parse_known_args()[0]
+
+    local_proc_id = int(os.environ.get('SLURM_PROCID', 0))
+    global_task_id = local_proc_id + args.offset
+    total_global_tasks = args.total_workers 
     
-    # 1. LOAD AND DISTRIBUTE TASKS (LOGIC FROM PHASE 1)
-    all_json_files = sorted(glob.glob(os.path.join(json_dir, '*.json')))
-    
-    task_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
-    num_tasks = int(os.environ.get('SLURM_ARRAY_TASK_COUNT', 1))
-    
-    json_files = [f for i, f in enumerate(all_json_files) if i % num_tasks == task_id]
-    total_files = len(json_files)
-    
-    # 2. CREATE ISOLATED WORKSPACE TO AVOID RACE CONDITIONS
-    worker_tmp_dir = os.path.join(output_dir, f"worker_{task_id}_tmp")
-    os.makedirs(worker_tmp_dir, exist_ok=True)
-    
-    print(f"\n🚀 [Worker {task_id}/{num_tasks}] Assigned {total_files} JSON files.")
+    task_id = global_task_id
+
+    try:
+        with open("cached_video_ids.json", "r") as f:
+            all_ids = json.load(f)
+    except FileNotFoundError:
+        print("❌ Lỗi: Không tìm thấy cached_video_ids.json!")
+        exit(1)
+
+    my_ids = set([vid for i, vid in enumerate(all_ids) if i % total_global_tasks == task_id])
+
+    print(f"\n🚀 [Global Worker {task_id}/{total_global_tasks}] Bắt đầu nâng 3D cho {len(my_ids)} videos...")
     print("=" * 60)
     
-    skipped = 0
-    processed = 0
-    
-    for idx, json_path in enumerate(json_files, start=1):
-        video_id = os.path.basename(json_path).split('.')[0]
-        video_path = os.path.join(video_dir, f'{video_id}.mp4')
-        
-        final_npy = os.path.join(output_dir, f'{video_id}.npy')
-        final_mp4 = os.path.join(output_dir, f'{video_id}.mp4')
-        
-        # 3. RESUME MECHANISM
-        if os.path.exists(final_npy) and os.path.exists(final_mp4):
-            skipped += 1
-            if skipped % 5 == 0 or idx == total_files:
-                print(f"⏩ [Worker {task_id}] Resumed: {skipped}/{total_files}", end='\r')
-            continue
-            
-        print(f"\n⏳ [{idx}/{total_files}] Lifting 2D to 3D for: {video_id}")
-        
-        # USE ISOLATED WORKSPACE FOR OUT_PATH
-        cmd = [
-            "python", "MotionBERT/infer_wild.py",
-            "--config", "MotionBERT/configs/pose3d/MB_ft_h36m.yaml",
-            "--evaluate", "MotionBERT/checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin",
-            "--json_path", json_path,
-            "--vid_path", video_path,
-            "--out_path", worker_tmp_dir, # <-- Point to this worker's private temp directory
-            "--pixel"
-        ]
-        
-        try:
-            # Run MotionBERT
-            subprocess.run(cmd, check=True)
-            
-            # 4. ATOMIC MOVE FROM ISOLATED WORKSPACE TO MAIN OUTPUT DIRECTORY
-            x3d_npy = os.path.join(worker_tmp_dir, 'X3D.npy')
-            x3d_mp4 = os.path.join(worker_tmp_dir, 'X3D.mp4')
-            
-            if os.path.exists(x3d_npy): os.rename(x3d_npy, final_npy)
-            if os.path.exists(x3d_mp4): os.rename(x3d_mp4, final_mp4)
-                
-            processed += 1
-            print(f"✅ Saved 3D data for -> {video_id}")
-            
-        except Exception as e:
-            print(f"❌ Error processing {video_id}: {e}")
-            continue
+    worker_tmp_dir = os.path.join(WORKSPACE, f"worker_{task_id}_mb_tmp")
+    os.makedirs(worker_tmp_dir, exist_ok=True)
 
-    # Clean up isolated workspace after completion
+    dataset = load_from_disk(DATASET_PATH)
+    processed = 0
+    skipped = 0
+
+    for item in dataset:
+        raw = item.get('json', {})
+        vid_id = raw.get("original_video_filename", "unknown").replace(".mp4", "")
+        if vid_id == "unknown": 
+            vid_id = raw.get("youtube_title", "video").replace(" ", "_").lower()
+
+        if vid_id in my_ids:
+            json_2d = os.path.join(OUT_2D, f"{vid_id}_2d.json")
+            final_npy = os.path.join(OUT_3D, f"{vid_id}.npy")
+            final_mp4 = os.path.join(OUT_3D, f"{vid_id}.mp4") # Thêm đường dẫn file MP4 3D
+            
+            # CƠ CHẾ RESUME: Chỉ skip khi đã có ĐỦ cả file npy và file mp4
+            if (os.path.exists(final_npy) and os.path.exists(final_mp4)) or os.path.exists(f"outputs/final_states/{vid_id}_states.jsonl"):
+                print(f"⏩ [Worker {task_id}] Skip (Already finished): {vid_id}") # In ID video đã xong
+                skipped += 1
+                continue
+                
+            if not os.path.exists(json_2d):
+                print(f"⏳ [Worker {task_id}] Wait (2D not ready): {vid_id}")
+                continue
+
+            video_bytes = item.get('mp4')
+            if not video_bytes: continue
+            
+            tmp_mp4 = os.path.join(WORKSPACE, f"{vid_id}_worker{task_id}.mp4")
+            
+            try:
+                with open(tmp_mp4, "wb") as f: 
+                    f.write(video_bytes)
+                
+                # --- THÊM ĐOẠN NÀY ĐỂ ÉP MOTIONBERT VÀO ĐÚNG GPU ---
+                local_id = int(os.environ.get('SLURM_LOCALID', 0))
+                my_env = os.environ.copy()
+                my_env["CUDA_VISIBLE_DEVICES"] = str(local_id)
+                # ----------------------------------------------------
+
+                cmd = [
+                    "python", "MotionBERT/infer_wild.py",
+                    "--config", CONFIG,
+                    "--evaluate", CHECKPOINT,
+                    "--json_path", json_2d,
+                    "--vid_path", tmp_mp4,
+                    "--out_path", worker_tmp_dir,
+                    "--pixel"
+                ]
+                
+                # CHÚ Ý THÊM env=my_env VÀO ĐÂY
+                subprocess.run(cmd, env=my_env, check=True, stdout=subprocess.DEVNULL)
+                
+                # 3. ATOMIC RENAME (Cả NPY và MP4)
+                x3d_npy = os.path.join(worker_tmp_dir, 'X3D.npy')
+                x3d_mp4 = os.path.join(worker_tmp_dir, 'X3D.mp4')
+                
+                success_npy = False
+                
+                # Xử lý NPY
+                if os.path.exists(x3d_npy): 
+                    os.rename(x3d_npy, final_npy)
+                    success_npy = True
+                
+                # Xử lý MP4 (nếu có)
+                if os.path.exists(x3d_mp4):
+                    os.rename(x3d_mp4, final_mp4)
+                    
+                if success_npy:
+                    processed += 1
+                    print(f"✅ [Worker {task_id}] Xong 3D: {vid_id}")
+                else:
+                    print(f"⚠️ [Worker {task_id}] Không thấy file X3D.npy cho {vid_id}")
+                    
+            except Exception as e:
+                print(f"❌ [Worker {task_id}] Lỗi {vid_id}: {e}")
+            finally:
+                if os.path.exists(tmp_mp4): 
+                    os.remove(tmp_mp4)
+                for f in glob.glob(os.path.join(worker_tmp_dir, "*")):
+                    os.remove(f)
+
     if not os.listdir(worker_tmp_dir):
         os.rmdir(worker_tmp_dir)
 
     print("\n" + "=" * 60)
-    print(f"🎉 WORKER {task_id} COMPLETED! (Processed: {processed}, Resumed: {skipped})")
+    print(f"🎉 WORKER {task_id} COMPLETED! (Processed: {processed}, Skipped: {skipped})")

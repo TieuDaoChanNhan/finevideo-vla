@@ -109,25 +109,19 @@ class KinematicPreprocessor:
     # 6. MAIN PIPELINE
     # -------------------------
     def process(self, raw_pose3d, global_mean=None, global_std=None):
-        """Full preprocessing pipeline."""
+        """Full preprocessing pipeline (Positions Only)."""
 
         pose = self.smooth(raw_pose3d)
         centered, root = self.split_root_motion(pose)
         norm_pose = self.normalize_bone_lengths(centered)
-
-        vel, acc = self.compute_derivatives(norm_pose)
-        vel = np.clip(vel, -20.0, 20.0) 
-        acc = np.clip(acc, -10.0, 10.0)
         
-        pos = norm_pose.reshape(len(norm_pose), -1)
-        vel = vel.reshape(len(vel), -1)
-        acc = acc.reshape(len(acc), -1)
-
-        state = np.concatenate([pos, vel, acc], axis=1)
+        # Chỉ lấy vị trí, làm phẳng (flatten) thành mảng 51 chiều (17 khớp * 3)
+        state = norm_pose.reshape(len(norm_pose), -1)
 
         # 🚀 IMPORTANT CHANGE: Use global stats if provided,
         # otherwise skip normalization (used during global stats computation)
         if global_mean is not None and global_std is not None:
+            # Lưu ý: global_mean và global_std bây giờ cũng phải là mảng 51 chiều!
             state = (state - global_mean) / global_std
 
         return state, norm_pose

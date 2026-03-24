@@ -13,10 +13,10 @@ from datasets import load_from_disk
 import argparse
 
 # ================= MODEL CONFIGURATION (FIXED PATHS) =================
-pose_config = 'hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'
-pose_checkpoint = 'hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
-det_config = 'hrnet_storage/faster-rcnn_r50_fpn_1x_coco.py'
-det_checkpoint = 'hrnet_storage/faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth'
+pose_config = '../hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'
+pose_checkpoint = '../hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
+det_config = '../hrnet_storage/faster-rcnn_r50_fpn_1x_coco.py'
+det_checkpoint = '../hrnet_storage/faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth'
 
 local_id = int(os.environ.get('SLURM_LOCALID', 0)) 
 device = f'cuda:{local_id}' 
@@ -98,87 +98,5 @@ def process_video_to_json(video_path, output_json_path):
         json.dump(all_frames_data, f)
 
 if __name__ == "__main__":
-    OUT_2D = "outputs/2d_json"
-    WORKSPACE = "workspace_temp"
-    DATASET_PATH = "/e/scratch/reformo/nguyen38/finevideo_disk"
-    
-    os.makedirs(OUT_2D, exist_ok=True)
-    os.makedirs(WORKSPACE, exist_ok=True)
-    
-    # Thêm parser để nhận offset từ lệnh srun
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--offset', type=int, default=0)
-    parser.add_argument('--total_workers', type=int, default=160)
-    args = parser.parse_known_args()[0]
-
-    # Tính toán ID toàn cầu dựa trên Offset của từng Job
-    local_proc_id = int(os.environ.get('SLURM_PROCID', 0))
-    global_task_id = local_proc_id + args.offset
-    total_global_tasks = args.total_workers # Tổng số 160 GPU
-    
-    task_id = global_task_id # Dùng cái này cho các lệnh print và đặt tên file
-
-    # Dùng File IO an toàn
-    try:
-        with open("cached_video_ids.json", "r") as f:
-            all_ids = json.load(f)
-    except FileNotFoundError:
-        print("❌ Lỗi: Không tìm thấy file cached_video_ids.json!")
-        exit(1)
-
-    # Chia bài: Phân đoạn video dựa trên Global Rank (0-159)
-    my_ids = set([vid for i, vid in enumerate(all_ids) if i % total_global_tasks == global_task_id])
-
-    print(f"🚀 [Global Worker {task_id}/{total_global_tasks}] Gánh {len(my_ids)} videos...")
-    dataset = load_from_disk(DATASET_PATH)
-
-    for item in dataset:
-        raw = item.get('json', {})
-        vid_id = raw.get("original_video_filename", "unknown").replace(".mp4", "")
-        if vid_id == "unknown": 
-            vid_id = raw.get("youtube_title", "video").replace(" ", "_").lower()
-
-        if vid_id in my_ids:
-            final_json_2d = os.path.join(OUT_2D, f"{vid_id}_2d.json")
-            tmp_json_2d = os.path.join(OUT_2D, f"{vid_id}_2d.json.tmp") # File tạm
-            
-            # CƠ CHẾ RESUME CHI TIẾT
-            if os.path.exists(final_json_2d):
-                print(f"⏩ [Worker {task_id}] Skip (2D exists): {vid_id}")
-                continue
-            
-            if os.path.exists(f"outputs/3d_npy/{vid_id}.npy"):
-                print(f"⏩ [Worker {task_id}] Skip (3D exists): {vid_id}")
-                continue
-                
-            if os.path.exists(f"outputs/final_states/{vid_id}_states.jsonl"):
-                print(f"⏩ [Worker {task_id}] Skip (States exist): {vid_id}")
-                continue
-
-            video_bytes = item.get('mp4')
-            if not video_bytes: continue
-            
-            # Sử dụng thư mục tạm CÓ CHỨA TASK_ID để 40 GPU không đụng nhau
-            tmp_mp4 = os.path.join(WORKSPACE, f"{vid_id}_worker{task_id}.mp4")
-            
-            try:
-                # 1. Giải nén bytes ra mp4
-                with open(tmp_mp4, "wb") as f: 
-                    f.write(video_bytes)
-                
-                # 2. Xử lý và ghi vào file JSON TẠM
-                process_video_to_json(tmp_mp4, tmp_json_2d)
-                
-                # 3. ATOMIC RENAME (Đảm bảo an toàn tuyệt đối)
-                if os.path.exists(tmp_json_2d):
-                    os.rename(tmp_json_2d, final_json_2d)
-                    
-                print(f"✅ [Worker {task_id}] Khớp xương 2D thành công: {vid_id}")
-                
-            except Exception as e:
-                print(f"❌ [Worker {task_id}] Lỗi {vid_id}: {e}")
-                if os.path.exists(tmp_json_2d): 
-                    os.remove(tmp_json_2d) # Xóa file json rác
-            finally:
-                if os.path.exists(tmp_mp4): 
-                    os.remove(tmp_mp4) # Dọn dẹp MP4
+    # 2. Xử lý và ghi vào file JSON TẠM
+    process_video_to_json('../videos/tmp4bo9xir3.mp4', '../outputs/keypoints.json')

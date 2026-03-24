@@ -1,6 +1,7 @@
 env_hrnet/
 env_hrnet_gpu/
 env_motion_final/
+env_hrnet_datasets_v1/
 hrnet_storage/
 logs/
 miniforge3/
@@ -21,3 +22,4 @@ outputs/
 *.mp4
 *.json
 Miniforge3-Linux-aarch64.sh
+workspace_temp/

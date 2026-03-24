@@ -1,14 +1,27 @@
 #!/bin/bash
-#SBATCH --job-name=motionbert_3d_lift
+for i in {0..3}
+do
+    OFFSET=$((i * 40))
+    JOB_NAME="mb_lift_chunk_$i"
+    
+    echo "Submitting $JOB_NAME with offset $OFFSET..."
+    
+    sbatch <<EOT
+#!/bin/bash
+#SBATCH --job-name=$JOB_NAME
 #SBATCH --partition=booster
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=12
-#SBATCH --time=01:00:00
-#SBATCH --array=0-39
-#SBATCH --output=logs/mb_array_%A_%a.log
+#SBATCH --account=reformo
+#SBATCH --nodes=10
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4
+#SBATCH --cpus-per-task=18
+#SBATCH --time=01:30:00        # Giữ 4 tiếng để được ưu tiên chạy ngay
+#SBATCH --output=logs/mb_chunk_${i}_%j.log
 
 source setup_motionbert.sh
+export HF_DATASETS_OFFLINE=1
 
-echo "🔥 3D Lifting - Task ID $SLURM_ARRAY_TASK_ID out of $SLURM_ARRAY_TASK_COUNT"
-
-python -u phase2_motionbert_gpu.py
+# 160 GPU cùng quét, thằng nào thấy 2D xong thì nhấc lên 3D luôn
+srun python -u phase2_motionbert_gpu.py --offset $OFFSET --total_workers 160
+EOT
+done

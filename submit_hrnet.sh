@@ -1,21 +1,32 @@
 #!/bin/bash
-#SBATCH --job-name=hrnet_2d_extraction
-#SBATCH --partition=booster              
-#SBATCH --nodes=1
-#SBATCH --gres=gpu:1                    
-#SBATCH --cpus-per-task=12              
-#SBATCH --time=1:00:00            
-#SBATCH --array=0-39     
-#SBATCH --output=logs/array_%A_%a.log
+# Chạy vòng lặp để submit 4 job, mỗi job 10 nodes (40 GPUs)
+for i in {0..3}
+do
+    OFFSET=$((i * 40))
+    JOB_NAME="hrnet_chunk_$i"
+    
+    echo "Submitting $JOB_NAME with offset $OFFSET..."
+    
+    sbatch <<EOT
+#!/bin/bash
+#SBATCH --job-name=$JOB_NAME
+#SBATCH --partition=booster
+#SBATCH --account=reformo
+#SBATCH --nodes=10
+#SBATCH --ntasks-per-node=4
+#SBATCH --gres=gpu:4
+#SBATCH --cpus-per-task=18
+#SBATCH --time=4:00:00
+#SBATCH --output=logs/chunk_${i}_%j.log
 
 source setup_hrnet_gpu.sh
-echo "🔥 I am Task ID $SLURM_ARRAY_TASK_ID out of $SLURM_ARRAY_TASK_COUNT"
 
-mkdir -p logs
-mkdir -p outputs/2d_keypoints
+mkdir -p logs outputs/2d_json workspace_temp
 
 export TORCH_CUDA_ARCH_LIST="9.0"
-export FORCE_CUDA=1
+export HF_DATASETS_OFFLINE=1
 
-echo "🚀 Starting Batch Processing for 100 videos..."
-python -u phase1_hrnet_gpu.py
+# Truyền offset vào để các job chia việc chuẩn 0-159
+srun python -u phase1_hrnet_gpu.py --offset $OFFSET --total_workers 160
+EOT
+done
