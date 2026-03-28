@@ -21,7 +21,7 @@ if __name__ == "__main__":
         "--config", CONFIG,
         "--evaluate", CHECKPOINT,
         "--json_path", '../outputs/keypoints.json',
-        "--vid_path", '../videos/tmp4bo9xir3.mp4',
+        "--vid_path", '../videos/martial_art.mp4',
         "--out_path", '../outputs',
         "--pixel"
     ]

@@ -1,0 +1,9 @@
+source ../setup_hrnet_gpu.sh
+python phase1_hrnet_gpu.py
+conda deactivate
+conda deactivate
+source ../setup_motionbert.sh
+python phase2_motionbert_gpu.py
+python phase3_kinematics_processor.py
+python phase4_interpolation_tokenizer.py
+python visualize_demo.py

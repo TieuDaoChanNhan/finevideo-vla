@@ -103,7 +103,6 @@ if __name__ == "__main__":
     DATASET_PATH = "/e/scratch/reformo/nguyen38/finevideo_disk"
     
     os.makedirs(OUT_2D, exist_ok=True)
-    os.makedirs(WORKSPACE, exist_ok=True)
     
     # Thêm parser để nhận offset từ lệnh srun
     parser = argparse.ArgumentParser()
@@ -114,9 +113,13 @@ if __name__ == "__main__":
     # Tính toán ID toàn cầu dựa trên Offset của từng Job
     local_proc_id = int(os.environ.get('SLURM_PROCID', 0))
     global_task_id = local_proc_id + args.offset
-    total_global_tasks = args.total_workers # Tổng số 160 GPU
+    total_global_tasks = args.total_workers 
     
-    task_id = global_task_id # Dùng cái này cho các lệnh print và đặt tên file
+    task_id = global_task_id # Dùng cái này cho các lệnh print
+
+    # 1. TẠO THƯ MỤC TẠM RIÊNG BIỆT CHO TỪNG WORKER
+    worker_tmp_dir = os.path.join(WORKSPACE, f"worker_{task_id}_hrnet_tmp")
+    os.makedirs(worker_tmp_dir, exist_ok=True)
 
     # Dùng File IO an toàn
     try:
@@ -126,7 +129,7 @@ if __name__ == "__main__":
         print("❌ Lỗi: Không tìm thấy file cached_video_ids.json!")
         exit(1)
 
-    # Chia bài: Phân đoạn video dựa trên Global Rank (0-159)
+    # Chia bài: Phân đoạn video dựa trên Global Rank
     my_ids = set([vid for i, vid in enumerate(all_ids) if i % total_global_tasks == global_task_id])
 
     print(f"🚀 [Global Worker {task_id}/{total_global_tasks}] Gánh {len(my_ids)} videos...")
@@ -140,7 +143,10 @@ if __name__ == "__main__":
 
         if vid_id in my_ids:
             final_json_2d = os.path.join(OUT_2D, f"{vid_id}_2d.json")
-            tmp_json_2d = os.path.join(OUT_2D, f"{vid_id}_2d.json.tmp") # File tạm
+            
+            # 2. ĐẶT FILE TẠM VÀO THƯ MỤC RIÊNG CỦA WORKER
+            tmp_json_2d = os.path.join(worker_tmp_dir, f"{vid_id}_2d.json.tmp") 
+            tmp_mp4 = os.path.join(worker_tmp_dir, f"{vid_id}.mp4")
             
             # CƠ CHẾ RESUME CHI TIẾT
             if os.path.exists(final_json_2d):
@@ -158,18 +164,15 @@ if __name__ == "__main__":
             video_bytes = item.get('mp4')
             if not video_bytes: continue
             
-            # Sử dụng thư mục tạm CÓ CHỨA TASK_ID để 40 GPU không đụng nhau
-            tmp_mp4 = os.path.join(WORKSPACE, f"{vid_id}_worker{task_id}.mp4")
-            
             try:
-                # 1. Giải nén bytes ra mp4
+                # 1. Giải nén bytes ra mp4 vào thư mục riêng
                 with open(tmp_mp4, "wb") as f: 
                     f.write(video_bytes)
                 
-                # 2. Xử lý và ghi vào file JSON TẠM
+                # 2. Xử lý và ghi vào file JSON TẠM trong thư mục riêng
                 process_video_to_json(tmp_mp4, tmp_json_2d)
                 
-                # 3. ATOMIC RENAME (Đảm bảo an toàn tuyệt đối)
+                # 3. ATOMIC RENAME: Bắn file JSON đã hoàn thiện ra ngoài OUT_2D chung
                 if os.path.exists(tmp_json_2d):
                     os.rename(tmp_json_2d, final_json_2d)
                     
@@ -182,3 +185,7 @@ if __name__ == "__main__":
             finally:
                 if os.path.exists(tmp_mp4): 
                     os.remove(tmp_mp4) # Dọn dẹp MP4
+
+    # 3. DỌN DẸP THƯ MỤC TẠM SAU KHI XONG VIỆC
+    if not os.listdir(worker_tmp_dir):
+        os.rmdir(worker_tmp_dir)

@@ -99,4 +99,4 @@ def process_video_to_json(video_path, output_json_path):
 
 if __name__ == "__main__":
     # 2. Xử lý và ghi vào file JSON TẠM
-    process_video_to_json('../videos/tmp4bo9xir3.mp4', '../outputs/keypoints.json')
+    process_video_to_json('../videos/martial_art.mp4', '../outputs/keypoints.json')

@@ -1,7 +1,6 @@
 import numpy as np
 import json
 import os
-import glob
 
 class KinematicPreprocessor:
     """
@@ -294,59 +293,29 @@ def process_file(input_path, output_path, processor, video_id):
             
     return True
 
-# -------------------------
-# ENTRY POINT (SLURM ARRAY)
-# -------------------------
 if __name__ == "__main__":
-    processor = KinematicPreprocessor()
+    processor = KinematicPreprocessor(
+        fps=30.0, 
+        strict_robotics_filter=True, 
+        vertical_axis=1, 
+        y_points_down=True
+    )
 
-    input_dir = "outputs/3d_npy/"
-    output_dir = "outputs/states_jsonl/"
-    os.makedirs(output_dir, exist_ok=True)
-
-    all_npy_files = sorted(glob.glob(os.path.join(input_dir, '*.npy')))
+    final_jsonl = "../outputs/state.jsonl"
+    temp_jsonl = f"{final_jsonl}.tmp" 
+    npy_path = "../outputs/X3D.npy"
+    video_id = 'martial_art'
     
-    task_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
-    num_tasks = int(os.environ.get('SLURM_ARRAY_TASK_COUNT', 1))
-    
-    npy_files = [f for i, f in enumerate(all_npy_files) if i % num_tasks == task_id]
-    total_files = len(npy_files)
-
-    print(f"\n🚀 [Worker {task_id}/{num_tasks}] Processing {total_files} files.")
-    print("=" * 60)
-
-    processed = 0
-    skipped = 0
-
-    for idx, npy_path in enumerate(npy_files, start=1):
-        video_id = os.path.basename(npy_path).split('.')[0]
-        final_jsonl = os.path.join(output_dir, f"{video_id}_states.jsonl")
-        temp_jsonl = f"{final_jsonl}.tmp"
-
-        if os.path.exists(final_jsonl):
-            skipped += 1
-            print(f"⏩ [Worker {task_id}] Checked: {idx}/{total_files} (Resumed: {skipped})", end='\r')
-            continue
-        
-        try:
-            success = process_file(npy_path, temp_jsonl, processor, video_id)
-            
-            if success:
-                # Dùng os.replace thay cho os.rename để đảm bảo atomic cross-platform
-                os.replace(temp_jsonl, final_jsonl)
-                processed += 1
-                progress = (processed + skipped) / total_files * 100
-                print(f"✅ [Worker {task_id}] {progress:.2f}% | Processed: {processed} | Skipped: {skipped}")
-            else:
-                # Dọn dẹp file temp nếu bị skip
-                if os.path.exists(temp_jsonl):
-                    os.remove(temp_jsonl)
-            
-        except Exception as e:
-            print(f"❌ Error processing {video_id}: {e}")
+    try:
+        success = process_file(npy_path, temp_jsonl, processor, video_id)
+        if success:
+            os.replace(temp_jsonl, final_jsonl)
+            print(f"✅ THÀNH CÔNG! Đã lưu JSONL: {final_jsonl}")
+        else:
             if os.path.exists(temp_jsonl):
-                os.remove(temp_jsonl) 
-            continue
-
-    print("\n" + "=" * 60)
-    print(f"🎉 WORKER {task_id} FINISHED! (Processed: {processed}, Skipped: {skipped})")
+                os.remove(temp_jsonl)
+            print(f"⚠️ Video bị skip.")
+    except Exception as e:
+        print(f"❌ Lỗi khi xử lý {video_id}: {e}")
+        if os.path.exists(temp_jsonl):
+            os.remove(temp_jsonl)

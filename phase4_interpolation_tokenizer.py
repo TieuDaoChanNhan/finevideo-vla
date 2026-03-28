@@ -1,4 +1,8 @@
 import numpy as np
+import json
+import os
+import glob
+import math
 from scipy.interpolate import PchipInterpolator
 
 class AdaptiveInterpolationTokenizer:
@@ -120,3 +124,124 @@ class AdaptiveInterpolationTokenizer:
                 recon[:, j, d] = spline(t)
 
         return recon
+
+# ==========================================
+# MULTI-PROCESSING & SLURM EXECUTION BLOCK
+# ==========================================
+
+def process_state_file(input_path, output_path, tokenizer, stride=16):
+    """
+    Đọc file states.jsonl, lọc trùng lặp bằng stride, và nén thành token.
+    """
+    valid_chunks = 0
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    temp_path = f"{output_path}.tmp"
+    
+    try:
+        with open(input_path, 'r') as f_in, open(temp_path, 'w') as f_out:
+            for line in f_in:
+                if not line.strip(): 
+                    continue
+                    
+                data = json.loads(line)
+                
+                # BỘ LỌC CHỐNG TRÙNG LẶP (Redundancy Filter)
+                # Chỉ mã hóa các chunk có window_id chia hết cho 16
+                if data["window_id"] % stride != 0:
+                    continue
+                    
+                states = np.array(data["states"], dtype=float)
+                
+                # Bỏ qua các chunk rỗng/hỏng (đã bị gán NaN ở Phase 3)
+                if np.isnan(states).any():
+                    continue
+                    
+                # Encode thành token
+                package = tokenizer.encode_chunk(states)
+                
+                # Ghi ra file
+                record = {
+                    "video_id": data["video_id"],
+                    "window_id": data["window_id"],
+                    "package": package
+                }
+                f_out.write(json.dumps(record) + "\n")
+                valid_chunks += 1
+                
+        # Hoàn thành an toàn thì đổi tên file (Atomic replace)
+        if valid_chunks > 0:
+            os.replace(temp_path, output_path)
+        else:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise e
+        
+    return valid_chunks
+
+if __name__ == "__main__":
+    # Cấu hình thư mục (Tùy chỉnh theo cấu trúc của cậu)
+    INPUT_DIR = "outputs/states_jsonl"   # Chứa các file *_states.jsonl từ Phase 3
+    OUTPUT_DIR = "outputs/agent_tokens"  # Nơi lưu các file *_tokens.jsonl
+    
+    tokenizer = AdaptiveInterpolationTokenizer(frames_per_chunk=8)
+
+    # 1. NHẬN DIỆN SLURM (Phân bổ tài nguyên CPU)
+    task_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', '1'))
+    num_tasks = int(os.environ.get('SLURM_ARRAY_TASK_COUNT', '1'))
+
+    # 2. LẤY TOÀN BỘ FILE ĐẦU VÀO TỪ PHASE 3
+    state_files = sorted(glob.glob(os.path.join(INPUT_DIR, "*_states.jsonl")))
+    # Hoặc nếu Phase 3 cậu lưu là state.jsonl chung thì có thể đổi pattern
+    if not state_files:
+        # Hỗ trợ tìm file state.jsonl nếu test cục bộ 1 video
+        single_file = os.path.join(INPUT_DIR, "state.jsonl")
+        if os.path.exists(single_file):
+            state_files = [single_file]
+            
+    total_files = len(state_files)
+
+    if total_files == 0:
+        print(f"❌ [Worker {task_id}] Không tìm thấy file input nào trong {INPUT_DIR}")
+        exit(0)
+
+    # 3. THUẬT TOÁN CHIA ĐỂ TRỊ (Data Slicing)
+    chunk_size = math.ceil(total_files / num_tasks)
+    start_idx = (task_id - 1) * chunk_size
+    end_idx = min(start_idx + chunk_size, total_files)
+    my_files = state_files[start_idx:end_idx]
+
+    print(f"🚀 [Worker {task_id}/{num_tasks}] Phân công xử lý {len(my_files)}/{total_files} files.")
+    print("=" * 60)
+
+    processed = 0
+    skipped = 0
+    total_tokens_generated = 0
+
+    # 4. THỰC THI (Có cơ chế Resume)
+    for idx, input_path in enumerate(my_files, start=1):
+        # Tạo tên file output (ví dụ: videoA_states.jsonl -> videoA_tokens.jsonl)
+        base_name = os.path.basename(input_path).replace("_states.jsonl", "").replace("state.jsonl", "tokens")
+        output_path = os.path.join(OUTPUT_DIR, f"{base_name}_tokens.jsonl")
+        
+        # Bỏ qua nếu đã xử lý rồi (Resume function)
+        if os.path.exists(output_path):
+            skipped += 1
+            print(f"⏩ [Worker {task_id}] Checked: {idx}/{len(my_files)} (Resumed: {skipped})", end='\r')
+            continue
+            
+        try:
+            tokens_count = process_state_file(input_path, output_path, tokenizer, stride=16)
+            processed += 1
+            total_tokens_generated += tokens_count
+            
+            progress = (processed + skipped) / len(my_files) * 100
+            print(f"✅ [Worker {task_id}] {progress:.1f}% | Processed: {processed} | Tokens: {total_tokens_generated}", end='\r')
+            
+        except Exception as e:
+            print(f"\n❌ Error processing {input_path}: {e}")
+
+    print(f"\n🎉 [Worker {task_id}] HOÀN THÀNH! Đã nén thành công {total_tokens_generated} tokens từ {processed} files (Skipped {skipped}).")

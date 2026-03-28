@@ -20,6 +20,6 @@ data/
 results/
 outputs/
 *.mp4
-*.json
+*.jsonx 
 Miniforge3-Linux-aarch64.sh
 workspace_temp/
