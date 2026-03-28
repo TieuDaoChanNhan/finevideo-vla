@@ -76,7 +76,7 @@ def load_and_reconstruct_tokens(total_video_frames):
 
 def draw_3d_pose(ax, pose):
     ax.clear()
-    ax.view_init(elev=15, azim=-110)
+    ax.view_init(elev=15, azim=-90)
 
     x = pose[:, 0]
     y = pose[:, 2]
