@@ -9,8 +9,8 @@ from phase4_interpolation_tokenizer import AdaptiveInterpolationTokenizer
 
 # ================= CONFIGURATION =================
 VIDEO_IN = "../videos/--5iwqOe8G8.mp4"
-TOKENS_IN = "../outputs/--5iwqOe8G8_tokens.jsonl"
-VIDEO_OUT = "../outputs/demo.mp4"
+TOKENS_IN = "../outputs/agent_tokens_test/--5iwqOe8G8_tokens.jsonl"
+VIDEO_OUT = "../outputs/filtered_skeleton.mp4"
 
 skeleton_tree = [
     (0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6),

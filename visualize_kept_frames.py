@@ -74,7 +74,7 @@ def parse_all_clips(data: Dict[str, Any]) -> List[ClipScore]:
                 clip_index=int(item["clip_index"]),
                 start_frame=int(item["start_frame"]),
                 end_frame_inclusive=int(item["end_frame_inclusive"]),
-                similarity=float(item["similarity"]),
+                similarity=float(item.get("similarity", 1.0)),
                 is_anomaly=bool(item["is_anomaly"]),
             )
         except Exception as e:

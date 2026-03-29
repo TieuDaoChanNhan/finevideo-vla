@@ -18,6 +18,7 @@ Key features
 - Mixed precision on CUDA
 - Batch inference
 - Suitable as a starting point for large-scale filtering jobs
+- Saves pooled clip embeddings for both real and skeleton videos to a .pt file
 
 Notes
 -----
@@ -32,6 +33,9 @@ Notes
    not part of the pretrained checkpoint. By default, the script uses frozen attention
    weights as initialized. For a stronger system, train/calibrate this pooler on your own
    matched real-vs-skeleton dataset, or keep `pooling="gap"` for a simple no-training path.
+4) The saved `.pt` file stores pooled clip embeddings before L2 normalization, which is
+   generally more useful as downstream features. Cosine similarity is still computed using
+   L2-normalized embeddings, preserving the original filtering behavior.
 
 Install
 -------
@@ -46,27 +50,17 @@ python vjepa_filter.py \
     --threshold 0.70 \
     --batch-size 8 \
     --pooling gap \
-    --output-json result.json
-
-Large-scale usage example
--------------------------
-python vjepa_filter.py \
-    --video-real /path/to/video_real.mp4 \
-    --video-skeleton /path/to/video_skeleton.mp4 \
-    --batch-size 32 \
-    --amp \
-    --device cuda \
-    --output-json /tmp/filter_result.json
+    --output-json result.json \
+    --output-embeddings outputs/vjepa_embeddings.pt
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import av
 import numpy as np
@@ -219,6 +213,7 @@ class AttentivePooler(nn.Module):
 MY_HF_TOKEN = "..."
 MY_CACHE_DIR = "/e/project1/reformo/nguyen38/hf_cache"
 
+
 class VJEPAFilter(nn.Module):
     """
     Semantic video filtering using a frozen V-JEPA 2 encoder.
@@ -249,10 +244,9 @@ class VJEPAFilter(nn.Module):
         self.amp = amp and self.device.type == "cuda"
         self.autocast_dtype = infer_autocast_dtype(self.device)
 
-        # Load processor and model
         self.processor = AutoVideoProcessor.from_pretrained(
             model_name,
-            token=MY_HF_TOKEN,    
+            token=MY_HF_TOKEN,
             cache_dir=MY_CACHE_DIR,
         )
 
@@ -261,8 +255,8 @@ class VJEPAFilter(nn.Module):
             model_name,
             torch_dtype=model_dtype,
             attn_implementation=attn_implementation,
-            token=MY_HF_TOKEN,     
-            cache_dir=MY_CACHE_DIR 
+            token=MY_HF_TOKEN,
+            cache_dir=MY_CACHE_DIR,
         )
         self.encoder.eval()
         self.encoder.requires_grad_(False)
@@ -283,16 +277,10 @@ class VJEPAFilter(nn.Module):
         else:
             self.pooler = None
 
-        # Optional manual override for final spatial size.
-        # Recommended: keep None to match official processor behavior.
         self.force_size = force_size
 
         if use_torch_compile and hasattr(torch, "compile"):
             self.encoder = torch.compile(self.encoder)  # type: ignore[assignment]
-
-    # -------------------------
-    # Sampling / windowing
-    # -------------------------
 
     @staticmethod
     def build_sample_indices(
@@ -338,23 +326,10 @@ class VJEPAFilter(nn.Module):
             windows.append((start, end_frame, idx))
         return windows
 
-    # -------------------------
-    # Preprocessing / encoding
-    # -------------------------
-
     def _preprocess_numpy_batch(self, clips_uint8: List[np.ndarray]) -> Dict[str, torch.Tensor]:
-        """
-        clips_uint8:
-            list of arrays shaped [T, H, W, C], dtype=uint8
-
-        Returns processor output moved to device.
-        """
-        # AutoVideoProcessor can process a list of videos, each as T x H x W x C numpy.
         processor_kwargs: Dict[str, Any] = {"return_tensors": "pt"}
 
         if self.force_size is not None:
-            # This overrides model-native processor size. Useful only if the pipeline
-            # must force 224x224, but not strictly faithful to the model card.
             processor_kwargs.update(
                 {
                     "do_resize": True,
@@ -365,8 +340,6 @@ class VJEPAFilter(nn.Module):
 
         batch = self.processor(clips_uint8, **processor_kwargs)
 
-        # Newer processors typically return pixel_values_videos for video models.
-        # Keep this generic to avoid tight coupling to exact HF internals.
         device_batch: Dict[str, torch.Tensor] = {}
         for k, v in batch.items():
             if isinstance(v, torch.Tensor):
@@ -374,9 +347,12 @@ class VJEPAFilter(nn.Module):
         return device_batch
 
     @torch.inference_mode()
-    def encode_clips(self, clips_uint8: List[np.ndarray]) -> torch.Tensor:
+    def encode_clips(self, clips_uint8: List[np.ndarray], normalize: bool = True) -> torch.Tensor:
         """
-        Returns L2-normalized embeddings of shape [B, D].
+        Returns pooled clip embeddings of shape [B, D].
+
+        - normalize=True: returns L2-normalized embeddings for cosine similarity.
+        - normalize=False: returns pooled raw embeddings for downstream feature export.
         """
         batch = self._preprocess_numpy_batch(clips_uint8)
 
@@ -394,8 +370,34 @@ class VJEPAFilter(nn.Module):
                 assert self.pooler is not None
                 emb = self.pooler(tokens)
 
-            emb = F.normalize(emb.float(), dim=-1)
+        emb = emb.float()
+        if normalize:
+            emb = F.normalize(emb, dim=-1)
         return emb
+
+    @torch.inference_mode()
+    def encode_clip_pairs(
+        self,
+        real_clips_uint8: List[np.ndarray],
+        skeleton_clips_uint8: List[np.ndarray],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns:
+            real_emb_raw: [B, D] pooled embeddings before normalization
+            skel_emb_raw: [B, D] pooled embeddings before normalization
+            sim:          [B] cosine similarity computed on normalized embeddings
+        """
+        if len(real_clips_uint8) != len(skeleton_clips_uint8):
+            raise ValueError("real and skeleton clip batches must have the same length")
+
+        real_emb_raw = self.encode_clips(real_clips_uint8, normalize=False)
+        skel_emb_raw = self.encode_clips(skeleton_clips_uint8, normalize=False)
+
+        real_emb_norm = F.normalize(real_emb_raw, dim=-1)
+        skel_emb_norm = F.normalize(skel_emb_raw, dim=-1)
+        sim = F.cosine_similarity(real_emb_norm, skel_emb_norm, dim=-1)
+
+        return real_emb_raw, skel_emb_raw, sim.float()
 
     @torch.inference_mode()
     def similarity_scores(
@@ -403,17 +405,8 @@ class VJEPAFilter(nn.Module):
         real_clips_uint8: List[np.ndarray],
         skeleton_clips_uint8: List[np.ndarray],
     ) -> torch.Tensor:
-        if len(real_clips_uint8) != len(skeleton_clips_uint8):
-            raise ValueError("real and skeleton clip batches must have the same length")
-
-        real_emb = self.encode_clips(real_clips_uint8)
-        skel_emb = self.encode_clips(skeleton_clips_uint8)
-        sim = F.cosine_similarity(real_emb, skel_emb, dim=-1)
-        return sim.float()
-
-    # -------------------------
-    # Main API
-    # -------------------------
+        _, _, sim = self.encode_clip_pairs(real_clips_uint8, skeleton_clips_uint8)
+        return sim
 
     @torch.inference_mode()
     def filter_pair(
@@ -425,6 +418,7 @@ class VJEPAFilter(nn.Module):
         temporal_stride: int = 4,
         window_step: int = 16,
         batch_size: int = 8,
+        output_embeddings_path: Optional[str] = None,
     ) -> FilterResult:
         reader_real = VideoReaderPyAV(video_real)
         reader_skel = VideoReaderPyAV(video_skeleton)
@@ -445,6 +439,7 @@ class VJEPAFilter(nn.Module):
             )
 
         clip_scores: List[ClipScore] = []
+        embedding_dict: Dict[str, Dict[str, torch.Tensor]] = {}
 
         for batch_start in range(0, len(windows), batch_size):
             batch_windows = windows[batch_start: batch_start + batch_size]
@@ -452,13 +447,18 @@ class VJEPAFilter(nn.Module):
             real_batch = [reader_real.get_frames(idx) for _, _, idx in batch_windows]
             skel_batch = [reader_skel.get_frames(idx) for _, _, idx in batch_windows]
 
-            sims = self.similarity_scores(real_batch, skel_batch).cpu().tolist()
+            real_emb_raw, skel_emb_raw, sims = self.encode_clip_pairs(real_batch, skel_batch)
+            real_emb_raw = real_emb_raw.detach().cpu()
+            skel_emb_raw = skel_emb_raw.detach().cpu()
+            sims_list = sims.detach().cpu().tolist()
 
-            for local_i, ((start_frame, end_frame, idx), sim) in enumerate(zip(batch_windows, sims)):
+            for local_i, ((start_frame, end_frame, idx), sim) in enumerate(zip(batch_windows, sims_list)):
+                clip_index = batch_start + local_i
                 is_anomaly = bool(sim < threshold)
+
                 clip_scores.append(
                     ClipScore(
-                        clip_index=batch_start + local_i,
+                        clip_index=clip_index,
                         start_frame=int(start_frame),
                         end_frame_inclusive=int(end_frame),
                         sampled_indices=[int(x) for x in idx],
@@ -467,10 +467,21 @@ class VJEPAFilter(nn.Module):
                     )
                 )
 
-        anomaly_ratio = (
-            sum(1 for x in clip_scores if x.is_anomaly) / max(1, len(clip_scores))
-        )
+                embedding_dict[str(clip_index)] = {
+                    "clip_index": torch.tensor(clip_index, dtype=torch.int64),
+                    "start_frame": torch.tensor(start_frame, dtype=torch.int64),
+                    "end_frame_inclusive": torch.tensor(end_frame, dtype=torch.int64),
+                    "sampled_indices": torch.tensor(idx, dtype=torch.int64),
+                    "real_embedding": real_emb_raw[local_i].clone(),
+                    "skeleton_embedding": skel_emb_raw[local_i].clone(),
+                }
 
+        if output_embeddings_path is not None:
+            os.makedirs(os.path.dirname(os.path.abspath(output_embeddings_path)), exist_ok=True)
+            torch.save(embedding_dict, output_embeddings_path)
+            print(f"\nSaved V-JEPA embeddings to: {output_embeddings_path}")
+
+        anomaly_ratio = sum(1 for x in clip_scores if x.is_anomaly) / max(1, len(clip_scores))
         sample_span = sampled_frames * temporal_stride
 
         return FilterResult(
@@ -495,7 +506,6 @@ class VJEPAFilter(nn.Module):
 
 def result_to_dict(result: FilterResult) -> Dict[str, Any]:
     data = asdict(result)
-    # Keep floats clean for JSON readability
     data["anomaly_ratio"] = format_float(data["anomaly_ratio"], 6)
     for item in data["clip_scores"]:
         item["similarity"] = format_float(item["similarity"], 6)
@@ -630,6 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to save the result JSON.",
     )
     parser.add_argument(
+        "--output-embeddings",
+        type=str,
+        default="outputs/vjepa_embeddings.pt",
+        help="Path to save pooled V-JEPA embeddings as a .pt dictionary.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -666,6 +682,7 @@ def main() -> None:
         temporal_stride=args.temporal_stride,
         window_step=args.window_step,
         batch_size=args.batch_size,
+        output_embeddings_path=args.output_embeddings,
     )
 
     print_summary(result)

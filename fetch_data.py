@@ -29,21 +29,20 @@ def fetch_single_video():
         
         # --- Tìm kiếm và trích xuất ---
         # Dùng toán tử `in` để bao trọn các trường hợp ID có tiền tố/hậu tố
-        if TARGET_ID in video_id:
-            output_path = os.path.join(OUTPUT_DIR, f"{TARGET_ID}.mp4")
-            
-            # Rút trích dữ liệu byte mp4
-            video_bytes = item.get('mp4')
-            if video_bytes:
-                with open(output_path, "wb") as f:
-                    f.write(video_bytes)
-                print(f"\n🎯 THÀNH CÔNG! Đã lưu video tại: {output_path}")
-            else:
-                print(f"\n⚠️ Lỗi: Không tìm thấy dữ liệu 'mp4' (byte video) cho {video_id}")
-            
-            # Tìm thấy mục tiêu thì thoát vòng lặp ngay lập tức
-            pbar.close()
-            return
+        output_path = os.path.join(OUTPUT_DIR, f"{video_id}.mp4")
+        
+        # Rút trích dữ liệu byte mp4
+        video_bytes = item.get('mp4')
+        if video_bytes:
+            with open(output_path, "wb") as f:
+                f.write(video_bytes)
+            print(f"\n🎯 THÀNH CÔNG! Đã lưu video tại: {output_path}")
+        else:
+            print(f"\n⚠️ Lỗi: Không tìm thấy dữ liệu 'mp4' (byte video) cho {video_id}")
+        
+        # Tìm thấy mục tiêu thì thoát vòng lặp ngay lập tức
+        pbar.close()
+        return
             
     pbar.close()
     print(f"\n❌ Quét xong toàn bộ dữ liệu nhưng không tìm thấy ID '{TARGET_ID}'.")
