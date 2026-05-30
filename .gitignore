@@ -1,26 +1,38 @@
+# Conda environments
 env_hrnet/
 env_hrnet_gpu/
 env_motion_final/
 env_hrnet_datasets_v1/
-hrnet_storage/
-logs/
 miniforge3/
-MotionBERT/
-Pose_Video/
-__pycache__/
-*.pyc
 
+# Model weights / checkpoints
+hrnet_storage/
 *.pt
 *.pth
 *.bin
 
+# Large runtime artifacts
+sample_with_agent.json
+cached_video_ids.json
+
+# Data outputs
+logs/
+outputs/
 videos/
 videos_staging/
 data/
 results/
-outputs/
-*.mp4
-*.jsonx 
-Miniforge3-Linux-aarch64.sh
 workspace_temp/
 test_single_npy/
+
+# External repos (managed separately)
+third_party/
+MotionBERT/
+Pose_Video/
+
+# Build artefacts
+__pycache__/
+*.pyc
+*.mp4
+*.jsonx
+Miniforge3-Linux-aarch64.sh
