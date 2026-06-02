@@ -461,7 +461,7 @@ class VLADatasetBuilder:
             
             # LẤY SỐ LƯỢNG CHÍNH XÁC CỦA SHARD NÀY
             shard_size = len(dataset)
-            print(f"📊 [Rank {RANK}] Nhiệm vụ của GPU này: {shard_size} videos")
+            print(f"📊 [Rank {RANK}] This GPU's workload: {shard_size} videos")
             
             dataset_iter = iter(dataset)
         except Exception as e:
@@ -551,7 +551,7 @@ class VLADatasetBuilder:
                     with open(output_jsonl, 'a', encoding='utf-8') as out_f:
                         out_f.write(json.dumps(design_obj, ensure_ascii=False, separators=(',', ':')) + "\n")
                 else:
-                    print(f"⚠️ [Rank {RANK}] BỎ QUA VIDEO: {video_id} (Duration <= 0 hoặc không có activities)")
+                    print(f"⚠️ [Rank {RANK}] SKIPPING VIDEO: {video_id} (duration <= 0 or no activities)")
                     total_processed += 1
                     pbar.update(1)
                     continue

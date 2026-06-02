@@ -270,7 +270,7 @@ class DataProcessor:
         except Exception: return None
 
     def clean_html_text(self, html_content):
-        """Chuyển HTML thành text sạch cho trường body_cleaned"""
+        """Strip HTML tags and return clean plain text for body_cleaned field."""
         try:
             soup = BeautifulSoup(html_content, "lxml")
             return soup.get_text(separator="\n").strip()
@@ -279,9 +279,9 @@ class DataProcessor:
 
     def process_content_with_images(self, text_html, source_type="unknown"):
         """
-        Trả về 2 giá trị:
-        1. Text đã chèn token (cho trường 'text')
-        2. List metadata của ảnh (cho trường 'images_meta')
+        Returns two values:
+        1. Text with image tokens interleaved (for the 'text' field)
+        2. List of image metadata dicts (for the 'images_meta' field)
         """
         if not text_html: return "", []
 
@@ -293,7 +293,6 @@ class DataProcessor:
         new_text = text_html
         processed_urls = set()
         
-        # Danh sách chứa meta của các ảnh tìm thấy trong bài này
         images_meta_list = []
 
         for match in matches:
@@ -306,14 +305,13 @@ class DataProcessor:
             if full_tag in processed_urls: continue
             processed_urls.add(full_tag)
 
-            # 1. Thêm vào list meta (để debug)
             images_meta_list.append({
                 "filename": filename,
-                "source": source_type, # question_body hoặc answer_body
+                "source": source_type,  # "question_body" or "answer_body"
                 "original_url": img_url
             })
 
-            # 2. Xử lý Tokenize
+            # Tokenize image
             img_bytes = self.get_image_bytes(filename)
             if img_bytes:
                 temp_path = f"temp_{filename}"
@@ -369,16 +367,15 @@ class DataProcessor:
                         post_id = attr.get("Id")
                         body = attr.get("Body", "")
                         
-                        # Nhận cả text lẫn list ảnh
                         proc_body, imgs_meta = self.process_content_with_images(body, source_type="question_body")
-                        
+
                         self.question_cache[post_id] = {
                             "title": attr.get("Title", ""),
-                            "body_interleaved": proc_body,      # Text có token
-                            "body_original": body,              # Text gốc HTML
-                            "images_meta": imgs_meta,           # List ảnh
+                            "body_interleaved": proc_body,
+                            "body_original": body,
+                            "images_meta": imgs_meta,
                             "tags": attr.get("Tags"),
-                            "original_attr": attr               # Lưu toàn bộ attr gốc
+                            "original_attr": attr
                         }
                         
                     # --- ANSWER ---
@@ -388,11 +385,9 @@ class DataProcessor:
                         if parent_id in self.question_cache:
                             q_data = self.question_cache[parent_id]
                             
-                            # Xử lý Answer
                             a_body = attr.get("Body", "")
                             proc_a_body, a_imgs_meta = self.process_content_with_images(a_body, source_type="answer_body")
                             
-                            # --- TẠO JSON ĐÚNG CHUẨN MẪU ---
                             unified_record = {
                                 "id": f"qa_{attr.get('Id')}",
                                 "text": (
@@ -406,7 +401,6 @@ class DataProcessor:
                                     "question": {
                                         "post_id": parent_id,
                                         "title": q_data['title'],
-                                        # Tạo body_cleaned bằng cách strip HTML
                                         "body_cleaned": self.clean_html_text(q_data['body_original']),
                                         "tags": q_data['tags'],
                                         "original_xml_attributes": q_data['original_attr']
@@ -416,7 +410,6 @@ class DataProcessor:
                                         "body_cleaned": self.clean_html_text(a_body),
                                         "original_xml_attributes": attr
                                     },
-                                    # Gộp danh sách ảnh từ cả Hỏi và Đáp
                                     "images_meta": q_data['images_meta'] + a_imgs_meta
                                 },
                                 "interleaved_format_description": "text contains interleaved: question || answer || image_tokens (jpeg_bpe + seed2 + cosmos)"

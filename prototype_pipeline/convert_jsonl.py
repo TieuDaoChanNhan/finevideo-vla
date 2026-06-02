@@ -5,27 +5,27 @@ output_file = "output_pretty.jsonl"
 
 try:
     with open(input_file, 'r', encoding='utf-8') as f:
-        # Bỏ qua dòng đầu tiên (video thứ 1)
+        # Skip the first three lines (videos 1-3)
         f.readline()
         f.readline()
         f.readline()
-        
-        # Đọc dòng tiếp theo (chính là video thứ 2)
+
+        # Read the next line (video 4)
         second_line = f.readline()
 
         if not second_line:
-            print("⚠️ File không có đủ 2 video.")
+            print("⚠️ File does not contain enough videos.")
         else:
-            # Chuyển chuỗi JSON (dạng 1 dòng) thành Python Dictionary
+            # Parse the single-line JSON string into a Python dict
             video_data = json.loads(second_line)
 
-            # Ghi vào file mới với định dạng thụt lề (indent=4)
+            # Write to new file with pretty-print formatting (indent=4)
             with open(output_file, 'w', encoding='utf-8') as f_out:
                 json.dump(video_data, f_out, indent=4, ensure_ascii=False)
-            
-            print(f"✅ Đã trích xuất thành công video thứ 2 vào file: {output_file}")
+
+            print(f"✅ Successfully extracted video to: {output_file}")
 
 except FileNotFoundError:
-    print(f"❌ Không tìm thấy file {input_file}. Hãy kiểm tra lại đường dẫn.")
+    print(f"❌ File not found: {input_file}")
 except json.JSONDecodeError:
-    print("❌ Lỗi định dạng JSON ở dòng thứ 2.")
+    print("❌ JSON decode error on the target line.")
