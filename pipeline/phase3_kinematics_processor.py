@@ -449,9 +449,22 @@ if __name__ == "__main__":
         required=True,
         help="Directory containing 2D pose json files named as <video_id>_2d.json.",
     )
+    parser.add_argument(
+        "--fps-json",
+        default=None,
+        help="Path to fps_lookup.json from tools/extract_fps.py. "
+             "If provided, per-video fps is used for kinematics instead of fixed 30.",
+    )
     args = parser.parse_args()
 
-    processor = KinematicPreprocessor()
+    fps_lookup = {}
+    if args.fps_json:
+        import json as _json
+        with open(args.fps_json) as _f:
+            fps_lookup = {k: v for k, v in _json.load(_f).items() if v}
+
+    # processor is now created per-video inside the loop (see below)
+    default_processor = KinematicPreprocessor(fps=30.0)
 
     input_dir = args.input_dir
     output_dir = args.output_dir
@@ -483,6 +496,12 @@ if __name__ == "__main__":
             continue
 
         try:
+            video_fps = fps_lookup.get(video_id, 30.0) if fps_lookup else 30.0
+            processor = (
+                KinematicPreprocessor(fps=video_fps)
+                if video_fps != 30.0
+                else default_processor
+            )
             success = process_file(
                 npy_path,
                 temp_jsonl,

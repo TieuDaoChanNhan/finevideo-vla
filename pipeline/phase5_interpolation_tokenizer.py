@@ -181,7 +181,8 @@ def process_state_file(input_path, output_path, tokenizer, video_id, stride=16):
                 if np.isnan(states).any():
                     continue
 
-                package = tokenizer.encode_chunk(states)
+                # After Phase 2.5 all poses are at 30fps; 8 frames = 8/30 s
+                package = tokenizer.encode_chunk(states, time_delta=8.0 / 30.0)
 
                 record = {
                     "video_id": video_id,
