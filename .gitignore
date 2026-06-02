@@ -10,6 +10,16 @@ hrnet_storage/
 *.pt
 *.pth
 *.bin
+*.safetensors
+*.jit
+
+# Prototype pipeline — model weights downloaded at runtime
+prototype_pipeline/pretrained_ckpts/*/autoencoder.jit
+prototype_pipeline/pretrained_ckpts/*/encoder.jit
+prototype_pipeline/pretrained_ckpts/*/decoder.jit
+prototype_pipeline/seed2/model.safetensors
+prototype_pipeline/seed2/ae.safetensors
+prototype_pipeline/output_pretty.jsonl
 
 # Large runtime artifacts
 sample_with_agent.json
