@@ -39,9 +39,10 @@ for i in $(seq 1 $NUM_WORKERS); do
     SLURM_ARRAY_TASK_ID=$i \
     SLURM_ARRAY_TASK_COUNT=$NUM_WORKERS \
     python -u pipeline/phase4_yolo_cleaner.py \
-        --videos-dir "videos_staging" \
-        --input-dir "outputs/states_jsonl" \
-        --output-dir "outputs/yolo_cleaned" \
+        --videos-dir "/e/data1/datasets/playground/mmlaion/shared/nguyen38/videos_staging" \
+        --input-dir  "/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/states_jsonl_30fps" \
+        --output-dir "/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/yolo_cleaned_30fps" \
+        --model      "/e/project1/reformo/nguyen38/3d-human-pose/yolo26n.pt" \
         --batch-size 128 > logs/yolo_workers/worker_${i}.log 2>&1 &
 done
 

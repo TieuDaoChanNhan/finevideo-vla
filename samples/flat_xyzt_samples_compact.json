@@ -1,0 +1,182 @@
+[
+  {
+    "source_file": "flat_final_vla_xyzt_rank_0.jsonl",
+    "record_index": 60,
+    "total_words": 24544,
+    "text_char_length": 351410,
+    "modality_counts": {
+      "seed2": 832,
+      "cosmos": 2000,
+      "avclm": 9326,
+      "fps": 30,
+      "joint_xyz": 12240
+    },
+    "title": "Launching",
+    "context_preview": "A video showcasing the diverse vocation paths of Monash Mechanical Engine Room alumnus. Scott Wordley introduces the video and explains its role....",
+    "keywords": "",
+    "body_preview": "<seed2_6750> <seed2_680> <seed2_3264> <seed2_3264> <seed2_2157> <seed2_2787> <seed2_372> <seed2_4247> <seed2_1562> <seed2_3449> <seed2_2157> <seed2_4039> <seed2_372> <seed2_1562> <seed2_3264> <seed2_3264> <seed2_3449> <seed2_2787> <seed2_3449> <seed2_5825> <seed2_4039> <seed2_3264> <seed2_2998> <seed2_3449> <seed2_7291> <seed2_3264> <seed2_1562> <seed2_2787> <seed2_3264> <seed2_4039> <seed2_3264> <seed2_7000> <seed2_1137> <seed2_2157> <seed2_7736> <seed2_3113> <seed2_2157> <seed2_1940> <seed2_7302> <seed2_8169> <seed2_7302> <seed2_3449> <seed2_2157> <seed2_160> <seed2_92> <seed2_4484> <seed2_6",
+    "text_only_preview": "### Title: Launching ### Context: A video showcasing the diverse vocation paths of Monash Mechanical Engine Room alumnus. Scott Wordley introduces the video and explains its role. To give you a wagerer idea of where your mechanical technology stage could take you, we asked some of alumnus and Aerospace Technology here Monash. Hi, my name is Scott Wirdley and I'm the Music Director of Scholarship a"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_0.jsonl",
+    "record_index": 163,
+    "total_words": 6526,
+    "text_char_length": 104855,
+    "modality_counts": {
+      "seed2": 128,
+      "cosmos": 200,
+      "avclm": 0,
+      "fps": 15,
+      "joint_xyz": 6120
+    },
+    "title": "High-Energy Slackline and Tricks",
+    "context_preview": "",
+    "keywords": "Humor, interview betrothal, self-deprecating humor, sociable comment. Humorous. High-energy extolment for a man with incredible hair, and a playful, engaging ambiance.",
+    "body_preview": "<seed2_6750> <seed2_680> <seed2_781> <seed2_6055> <seed2_680> <seed2_5481> <seed2_3983> <seed2_3714> <seed2_6560> <seed2_2157> <seed2_2157> <seed2_6560> <seed2_2023> <seed2_1157> <seed2_781> <seed2_7783> <seed2_2157> <seed2_3585> <seed2_2157> <seed2_6037> <seed2_6560> <seed2_6560> <seed2_4128> <seed2_3449> <seed2_1157> <seed2_7915> <seed2_4056> <seed2_1794> <seed2_8071> <seed2_6524> <seed2_6037> <seed2_242> <fps_30> <joint_0_x_128> <joint_0_y_128> <joint_0_z_128> <joint_1_x_126> <joint_1_y_127> <joint_1_z_140> <joint_2_x_133> <joint_2_y_154> <joint_2_z_146> <joint_3_x_139> <joint_3_y_181> <joi",
+    "text_only_preview": "### Title: High-Energy Slackline and Tricks Stand up. ### Keywords: Humor, interview betrothal, self-deprecating humor, sociable comment. Humorous. High-energy extolment for a man with incredible hair, and a playful, engaging ambiance. ### Context: A comedic street execution featuring a bearded performing artist reconciliation on a slackline, engaging with the consultation through humor and aeroba"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_42.jsonl",
+    "record_index": 257,
+    "total_words": 8269,
+    "text_char_length": 129693,
+    "modality_counts": {
+      "seed2": 640,
+      "cosmos": 1400,
+      "avclm": 0,
+      "fps": 15,
+      "joint_xyz": 6120
+    },
+    "title": "Motivational Stories",
+    "context_preview": "A thrilling overview of the NACA Group Discussion 2023, showcasing attendant experiences, interviews, and invaluable benefits of attendance such an event. Interviewer 1 interviews Woman 1 again....",
+    "keywords": "",
+    "body_preview": "And then I'll fill in the gap with the remaining 15 or so. <seed2_6750> <seed2_680> <seed2_3334> <seed2_2325> <seed2_680> <seed2_1940> <seed2_5121> <seed2_7132> <seed2_2325> <seed2_3449> <seed2_2157> <seed2_404> <seed2_4355> <seed2_7422> <seed2_7132> <seed2_7132> <seed2_2157> <seed2_5003> <seed2_3449> <seed2_455> <seed2_140> <seed2_2325> <seed2_3934> <seed2_3449> <seed2_1378> <seed2_662> <seed2_6119> <seed2_6258> <seed2_3334> <seed2_2325> <seed2_7132> <seed2_2887> <seed2_6750> <seed2_680> <seed2_3334> <seed2_2325> <seed2_680> <seed2_1940> <seed2_140> <seed2_7132> <seed2_2325> <seed2_3449> <see",
+    "text_only_preview": "### Title: Motivational Stories ### Context: A thrilling overview of the NACA Group Discussion 2023, showcasing attendant experiences, interviews, and invaluable benefits of attendance such an event. Interviewer 1 interviews Woman 1 again. And then I'll fill in the gap with the remaining 15 or so. Aaron. Hi, Aaron. Would you evoke it other masses climax to Nacka? They're pretty old schooltime. Wai"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_42.jsonl",
+    "record_index": 487,
+    "total_words": 7936,
+    "text_char_length": 104456,
+    "modality_counts": {
+      "seed2": 544,
+      "cosmos": 1600,
+      "avclm": 4504,
+      "fps": 3,
+      "joint_xyz": 1224
+    },
+    "title": "First Confrontation",
+    "context_preview": "A humorous and fictionalized story about two friends, Iwish and Stain, navigating their friendly relationship through playful conflicts and dreams. Stain walks towards Iwish's house...",
+    "keywords": "Friendly Relationship, mistake, balancing, playful aggressiveness, Transitions from neutral (indifferent) to blackball (angry) then to positive degree (happy)",
+    "body_preview": "<seed2_3501> <seed2_680> <seed2_3748> <seed2_3748> <seed2_2157> <seed2_3184> <seed2_6864> <seed2_7800> <seed2_2673> <seed2_3449> <seed2_2157> <seed2_3748> <seed2_3748> <seed2_6864> <seed2_4052> <seed2_5281> <seed2_2157> <seed2_3184> <seed2_2157> <seed2_7800> <seed2_3748> <seed2_7804> <seed2_7804> <seed2_3449> <seed2_7923> <seed2_1297> <seed2_5189> <seed2_7800> <seed2_4271> <seed2_3748> <seed2_3748> <seed2_6391> <cosmos_63583> <cosmos_61038> <cosmos_58414> <cosmos_63743> <cosmos_48357> <cosmos_58574> <cosmos_61199> <cosmos_56014> <cosmos_63775> <cosmos_60975> <cosmos_17930> <cosmos_3240> <cosmo",
+    "text_only_preview": "### Title: First Confrontation ### Keywords: Friendly Relationship, mistake, balancing, playful aggressiveness, Transitions from neutral (indifferent) to blackball (angry) then to positive degree (happy) ### Context: A humorous and fictionalized story about two friends, Iwish and Stain, navigating their friendly relationship through playful conflicts and dreams. Stain walks towards Iwish's house A"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_80.jsonl",
+    "record_index": 262,
+    "total_words": 8096,
+    "text_char_length": 109130,
+    "modality_counts": {
+      "seed2": 384,
+      "cosmos": 1400,
+      "avclm": 4157,
+      "fps": 5,
+      "joint_xyz": 2040
+    },
+    "title": "Scandinavian Language Style Unveiled",
+    "context_preview": "",
+    "keywords": "versatility of North Germanic Language invention, showcasing its use of color and pastels beyond the typical minimalist white and wood esthetic. Informative, playful",
+    "body_preview": "So I get asked for this a lot at the import and Norse themes are white heterosexual person lines typically <seed2_804> <seed2_680> <seed2_5283> <seed2_7720> <seed2_680> <seed2_1940> <seed2_1570> <seed2_1611> <seed2_5773> <seed2_3449> <seed2_3449> <seed2_7720> <seed2_5713> <seed2_1570> <seed2_1611> <seed2_1611> <seed2_3449> <seed2_1940> <seed2_3449> <seed2_7720> <seed2_6171> <seed2_7720> <seed2_6154> <seed2_3449> <seed2_7272> <seed2_7720> <seed2_7272> <seed2_5159> <seed2_5377> <seed2_4302> <seed2_3408> <seed2_3164> <seed2_6750> <seed2_680> <seed2_8017> <seed2_662> <seed2_680> <seed2_1940> <seed",
+    "text_only_preview": "### Keywords: versatility of North Germanic Language invention, showcasing its use of color and pastels beyond the typical minimalist white and wood esthetic. Informative, playful ### Title: Scandinavian Language Style Unveiled So I get asked for this a lot at the import and Norse themes are white heterosexual person lines typically Well, this is the one that everyone likes. This Scandi. Okay. Rig"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_80.jsonl",
+    "record_index": 331,
+    "total_words": 5677,
+    "text_char_length": 90515,
+    "modality_counts": {
+      "seed2": 96,
+      "cosmos": 600,
+      "avclm": 0,
+      "fps": 12,
+      "joint_xyz": 4896
+    },
+    "title": "Instauration",
+    "context_preview": "",
+    "keywords": "Challenger, strenuosity. Excited. The video starts with Martic and Jankovic walk confidently onto the court, context the stage for the match.",
+    "body_preview": "Croatia's Petra Martich has upset the odds in Kuala Lumpur trouncing former World <seed2_804> <seed2_2157> <seed2_7002> <seed2_4458> <seed2_680> <seed2_1940> <seed2_4252> <seed2_8176> <seed2_4252> <seed2_2157> <seed2_2157> <seed2_6327> <seed2_7305> <seed2_6823> <seed2_7284> <seed2_3257> <seed2_2157> <seed2_1146> <seed2_2157> <seed2_8176> <seed2_7641> <seed2_1760> <seed2_564> <seed2_2157> <seed2_4252> <seed2_1587> <seed2_6736> <seed2_5189> <seed2_8031> <seed2_4458> <seed2_8176> <seed2_242> <fps_30> <joint_0_x_128> <joint_0_y_128> <joint_0_z_128> <joint_1_x_117> <joint_1_y_127> <joint_1_z_120> <",
+    "text_only_preview": "### Keywords: Challenger, strenuosity. Excited. The video starts with Martic and Jankovic walk confidently onto the court, context the stage for the match. ### Title: Instauration Croatia's Petra Martich has upset the odds in Kuala Lumpur trouncing former World ### Context: A video recap the thrilling lawn tennis match between Petra Martic and Jelena Jankovic, showcasing the intense contention and"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_120.jsonl",
+    "record_index": 52,
+    "total_words": 13080,
+    "text_char_length": 198995,
+    "modality_counts": {
+      "seed2": 320,
+      "cosmos": 800,
+      "avclm": 2477,
+      "fps": 23,
+      "joint_xyz": 9384
+    },
+    "title": "Derby Takes the Lead",
+    "context_preview": "A highlighting reel from a thrilling football game match between Derby County and Bournemouth, showcasing key moments, missed opportunities, and stun goals. Derby counter-attack, thespian figure 26 lots a goal....",
+    "keywords": "",
+    "body_preview": "Big right boots. <seed2_6750> <seed2_680> <seed2_5946> <seed2_2589> <seed2_680> <seed2_989> <seed2_1587> <seed2_3209> <seed2_4893> <seed2_3449> <seed2_3449> <seed2_6199> <seed2_6164> <seed2_759> <seed2_5946> <seed2_755> <seed2_3449> <seed2_989> <seed2_3449> <seed2_7110> <seed2_6199> <seed2_5890> <seed2_1587> <seed2_3449> <seed2_2852> <seed2_6199> <seed2_1600> <seed2_1146> <seed2_6971> <seed2_2589> <seed2_4130> <seed2_775> <fps_30> <joint_0_x_128> <joint_0_y_128> <joint_0_z_128> <joint_1_x_129> <joint_1_y_132> <joint_1_z_128> <joint_2_x_132> <joint_2_y_128> <joint_2_z_156> <joint_3_x_135> <join",
+    "text_only_preview": "Big right boots. I must be a bag of it, Stin Isaac. To that quoin. ### Title: Derby Takes the Lead ### Context: A highlighting reel from a thrilling football game match between Derby County and Bournemouth, showcasing key moments, missed opportunities, and stun goals. Derby counter-attack, thespian figure 26 lots a goal. ### Keywords: Impulse Shifts, Underdog Succeeder, Excited, Triumphant - The q"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_120.jsonl",
+    "record_index": 114,
+    "total_words": 7630,
+    "text_char_length": 119926,
+    "modality_counts": {
+      "seed2": 416,
+      "cosmos": 1400,
+      "avclm": 0,
+      "fps": 14,
+      "joint_xyz": 5712
+    },
+    "title": "Stand-Up Carrying Out",
+    "context_preview": "",
+    "keywords": "The scene explores themes home, puerility, and the experiences of a seasoned comic. Happy",
+    "body_preview": "Yeah, go on. <seed2_6750> <seed2_680> <seed2_4949> <seed2_7431> <seed2_680> <seed2_1940> <seed2_3200> <seed2_3657> <seed2_2165> <seed2_2157> <seed2_2157> <seed2_4211> <seed2_4211> <seed2_3200> <seed2_3537> <seed2_5119> <seed2_2157> <seed2_1940> <seed2_2157> <seed2_3791> <seed2_2165> <seed2_2240> <seed2_4971> <seed2_3449> <seed2_2381> <seed2_7431> <seed2_2793> <seed2_604> <seed2_4971> <seed2_3657> <seed2_707> <seed2_429> <seed2_6750> <seed2_680> <seed2_4949> <seed2_7431> <seed2_680> <seed2_1940> <seed2_2250> <seed2_3495> <seed2_2165> <seed2_3449> <seed2_2157> <seed2_4949> <seed2_4949> <seed2_32",
+    "text_only_preview": "Yeah, go on. are my little natal day nowadays. And look how you look like I'm not in debt. I'm alive in Jan. I'll get my breathing in for stuff. ### Keywords: The scene explores themes home, puerility, and the experiences of a seasoned comic. Happy ### Title: Stand-Up Carrying Out ### Context: A detailed psychoanalysis of video featuring Slim's journeying and operation at the Jack London Atomic Nu"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_155.jsonl",
+    "record_index": 307,
+    "total_words": 8739,
+    "text_char_length": 137118,
+    "modality_counts": {
+      "seed2": 448,
+      "cosmos": 1600,
+      "avclm": 0,
+      "fps": 16,
+      "joint_xyz": 6528
+    },
+    "title": "Guard Duty and Dedication",
+    "context_preview": "The video explores the operation and challenges involved in becoming a tomb sentry. It highlights field, preparation, and inscription required for the role, focal point on the Tomb of the Alien Soldier and its symbolic grandness. Teller describes the Sentinels Creed...",
+    "keywords": "The scene showcases the sentinel's loyalty to duty, highlight the rigorous agenda and the personal sacrifices they make. The black and white color system, the sentinel's precise movements, the somber music make a mood of staidness and regard. The scene emphasizes the symbolic import of the Tomb of the Unknown Quantity Soldier, representing the forfeit of all unknown quantity soldiers. Proud",
+    "body_preview": "<seed2_6750> <seed2_2157> <seed2_1878> <seed2_1402> <seed2_2157> <seed2_1940> <seed2_6331> <seed2_3714> <seed2_3516> <seed2_3449> <seed2_2157> <seed2_2841> <seed2_1395> <seed2_6331> <seed2_6670> <seed2_2718> <seed2_3449> <seed2_1940> <seed2_3449> <seed2_2718> <seed2_2841> <seed2_6884> <seed2_6331> <seed2_3449> <seed2_39> <seed2_342> <seed2_1781> <seed2_753> <seed2_7672> <seed2_204> <seed2_2718> <seed2_7877> <fps_30> <joint_0_x_128> <joint_0_y_128> <joint_0_z_128> <joint_1_x_123> <joint_1_y_130> <joint_1_z_139> <joint_2_x_121> <joint_2_y_158> <joint_2_z_143> <joint_3_x_118> <joint_3_y_186> <joi",
+    "text_only_preview": "### Context: The video explores the operation and challenges involved in becoming a tomb sentry. It highlights field, preparation, and inscription required for the role, focal point on the Tomb of the Alien Soldier and its symbolic grandness. Teller describes the Sentinels Creed ### Keywords: The scene showcases the sentinel's loyalty to duty, highlight the rigorous agenda and the personal sacrifi"
+  },
+  {
+    "source_file": "flat_final_vla_xyzt_rank_155.jsonl",
+    "record_index": 318,
+    "total_words": 12085,
+    "text_char_length": 189684,
+    "modality_counts": {
+      "seed2": 768,
+      "cosmos": 2200,
+      "avclm": 0,
+      "fps": 22,
+      "joint_xyz": 8976
+    },
+    "title": "",
+    "context_preview": "A music video featuring Jay-Z and his band acting a remix, highlight his life, commitment, and succeeder. Jay-Z raps on stage....",
+    "keywords": "Trueness, obedience, expression on past experiences. Neutral (Pensive)",
+    "body_preview": "I'm still ass with cryin' cause cryin' pains hustlin' St. <seed2_6750> <seed2_680> <seed2_2472> <seed2_3645> <seed2_680> <seed2_1940> <seed2_1610> <seed2_3495> <seed2_1610> <seed2_2157> <seed2_2157> <seed2_7069> <seed2_7576> <seed2_1610> <seed2_707> <seed2_707> <seed2_2157> <seed2_1940> <seed2_2157> <seed2_3495> <seed2_1610> <seed2_3657> <seed2_1610> <seed2_2157> <seed2_8023> <seed2_3657> <seed2_7735> <seed2_1146> <seed2_7042> <seed2_3645> <seed2_7110> <seed2_6148> <cosmos_59684> <cosmos_43890> <cosmos_37562> <cosmos_45109> <cosmos_44263> <cosmos_41998> <cosmos_21021> <cosmos_47141> <cosmos_21",
+    "text_only_preview": "### Context: A music video featuring Jay-Z and his band acting a remix, highlight his life, commitment, and succeeder. Jay-Z raps on stage. I'm still ass with cryin' cause cryin' pains hustlin' St. Closed for days I never alteration, I never alteration the two stuck in my ways I never alteration, I'm still Closed for days I never variety the two stuck my ways I never alteration, I'm stuck in my am"
+  }
+]

@@ -1,13 +1,13 @@
 # FineVideo-VLA Dataset Pipeline
 
-This repository contains the **complete pipeline** for building the FineVideo-VLA pretraining dataset (~25B tokens) from HuggingFace's [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo) dataset (~40K YouTube videos). The output is a Megatron-LM `.bin/.idx` token file.
+This repository contains the **complete pipeline** for building the FineVideo-VLA pretraining dataset (~25B tokens) from HuggingFace's [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo) dataset (~40K YouTube videos). The output is a Megatron-LM-ready flat JSONL dataset.
 
 There are two parallel branches that produce different token types and are merged at the end:
 
 | Branch | What it produces | Entry point |
 |--------|-----------------|-------------|
 | **Prototype pipeline** (Step A) | Seed2 + Cosmos + AVC-LM video tokens | `prototype_pipeline/pipeline.py` |
-| **3D pose pipeline** (Steps B–F) | Agent tokens (3D human pose, 256 uint8 per 8-frame chunk) | `pipeline/phase1_hrnet_gpu.py` … |
+| **3D pose pipeline** (Steps B–F) | Per-joint XYZT tokens (17 joints × 3 dims, 30fps) | `pipeline/phase1_hrnet_gpu.py` … `pipeline/phase5b_xyzt_tokenizer.py` |
 
 Each video activity in the final dataset produces an interleaved token sequence:
 ```
@@ -15,9 +15,24 @@ USER: <activity_description> [Speech: ...]  ASSISTANT:
   <seed2> <seed2_N> ... </seed2>       # 1 FPS semantic keyframe     (vocab: 8192)
   <cosmos> <cosmos_N> ... </cosmos>    # every 8 frames, spatial     (vocab: 64000)
   <avc_lm> <avclm_N> ... </avc_lm>    # every 8 frames, H.264 BPE   (vocab: 8192)
-  <agent> 0 127 255 ... </agent>       # every 8 frames, 3D pose     (vocab: 256)
+  <agent> <fps_30> <joint_0_x_N> <joint_0_y_N> ... </agent>  # every 8 frames, 3D pose
 ```
-After flattening, `<tag> N </tag>` becomes `<tag_N>` — each is a single vocabulary token.
+
+After flattening, wrapper tags are removed and individual tokens become single vocabulary entries:
+```
+<seed2_3758> <seed2_2157> <cosmos_58567> <avclm_100> <fps_30> <joint_0_x_127> <joint_0_y_200> ...
+```
+
+---
+
+## HuggingFace Datasets
+
+| Dataset | Description | Records | Size |
+|---------|-------------|---------|------|
+| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flattened Megatron-LM JSONL (final output, ready for pretraining) | 69,844 | ~24 GB |
+| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Per-joint XYZT merged dataset (pre-flattening, hierarchical) | — | — |
+
+Both are split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
 
 ---
 
@@ -28,53 +43,61 @@ After flattening, `<tag> N </tag>` becomes `<tag_N>` — each is a single vocabu
 │   ├── pipeline.py                 ← main entry point (read this first)
 │   ├── pipeline_1gpu.py            single-GPU debug version
 │   ├── submit_official.sbatch      SLURM job: 40 nodes × 4 GPU
-│   ├── submit_demo.sbatch          SLURM job: 1 node demo run
 │   ├── cosmos_tokenizer/           Cosmos tokenizer source
 │   ├── seed2/                      Seed2 tokenizer source + vocab
 │   ├── avc_lm_v2/                  AVC-LM BPE vocab (used by pipeline.py)
 │   ├── pretrained_ckpts/           Cosmos model configs (weights gitignored)
-│   └── README.md                   per-file descriptions
+│   └── README.md
 │
-├── pipeline/                   # Steps B–F: 3D pose → agent tokens
+├── pipeline/                   # Steps B–G: 3D pose → XYZT tokens → merge → flatten
 │   ├── phase1_hrnet_gpu.py         2D pose estimation (HRNet)
 │   ├── phase2_motionbert_gpu.py    3D pose lifting (MotionBERT)
 │   ├── phase2_5_resample_30fps.py  Resample native-fps poses to 30fps
 │   ├── phase3_kinematics_processor.py  Signal filter + kinematics
 │   ├── phase4_yolo_cleaner.py      YOLO person-presence filter
-│   ├── phase5_interpolation_tokenizer.py  PCHIP + uint8 quantisation
-│   ├── phase6_macro_filter_dataset.py     Quality filter
-│   ├── merge_agent_tokens.py       Inject <agent> blocks into training_ready
-│   └── flatten_dataset.py          Hierarchical JSON → Megatron flat JSONL
+│   ├── phase5b_xyzt_tokenizer.py   Per-joint XYZ quantisation (409 tokens/window)
+│   ├── phase5_interpolation_tokenizer.py  Legacy: PCHIP + uint8 (256 tokens/window)
+│   ├── merge_xyzt_tokens.py        Inject XYZT <agent> blocks into training_ready
+│   ├── merge_agent_tokens.py       Legacy: inject opaque <agent> blocks
+│   ├── flatten_dataset.py          Legacy: flatten for old token format
+│   └── README.md
 │
-├── slurm/                      # SLURM submit scripts for the 3D pose branch
-│   ├── submit_hrnet.sh
-│   ├── submit_motionbert.sh
-│   ├── submit_phase2_5.sh
-│   ├── submit_kinematics.sh
-│   ├── submit_yolo.sh
-│   ├── submit_beast.sh
-│   ├── submit_phase5_resume.sh
-│   └── submit_integration.sh
-│
-├── tools/                      # Standalone utilities
-│   ├── expand_vocab.py             Extend GPT-NeoX-20b vocab with VLA tokens
+├── tools/                      # Standalone utilities (see tools/README.md)
+│   ├── flatten.py                  Flatten XYZT merged → Megatron JSONL (with augmentation)
+│   ├── expand_vocab.py             Extend GPT-NeoX-20b vocab with all VLA tokens
+│   ├── upload_flattened_hf.py      Upload flattened dataset to HuggingFace
+│   ├── upload_vla_agent_hf.py      Upload XYZT agent dataset to HuggingFace
+│   ├── cleanup_flattened_hf.py     Remove old files from HF repo
 │   ├── decode_agent_tokens.py      Decode agent uint8 tokens → 3D poses
-│   ├── extract_fps.py              Read native fps for all videos → fps_lookup.json
-│   ├── rebuild_parquet_fps.py      Rebuild parquet shards with 30fps poses + fps column
-│   ├── upload_3d_npy_to_hf.py      Upload 3d_npy/ arrays as parquet shards to HuggingFace
-│   ├── upload_parquet_hf.py        Upload rebuilt parquet shards to HuggingFace (resume-safe)
-│   ├── check_vocab.py
-│   ├── check_flattened_data.py
-│   ├── extract_sample.py
-│   ├── fetch_data.py
-│   └── render_filtered_skeleton.py
+│   ├── check_flattened_data.py     Validate flattened Megatron files
+│   ├── check_vocab.py              Verify expanded vocab
+│   ├── extract_fps.py              Read native fps for all videos
+│   ├── extract_sample.py           Extract sample records
+│   ├── fetch_data.py               Fetch video data from HuggingFace
+│   ├── rebuild_parquet_fps.py      Rebuild parquet shards with 30fps poses
+│   ├── render_filtered_skeleton.py Render skeleton overlay video
+│   ├── upload_3d_npy_to_hf.py      Upload 3d_npy/ arrays as parquet
+│   ├── upload_parquet_hf.py        Upload parquet shards to HuggingFace
+│   └── README.md
+│
+├── slurm/                      # SLURM submit scripts
+│   ├── submit_hrnet.sh             Phase 1
+│   ├── submit_motionbert.sh        Phase 2
+│   ├── submit_phase2_5.sh          Phase 2.5
+│   ├── submit_kinematics.sh        Phase 3
+│   ├── submit_yolo.sh              Phase 4
+│   ├── submit_phase5b.sh           Phase 5b (XYZT)
+│   ├── submit_beast.sh             Phase 5 (legacy)
+│   ├── submit_phase5_resume.sh     Phase 5 resume
+│   ├── submit_merge_xyzt.sh        XYZT merge
+│   └── submit_integration.sh       Legacy merge
 │
 ├── dev/                        # Single-video dev/demo scripts
 ├── envs/                       # Conda environment YAML specs
 ├── vocab/                      # vocab.json (GPT-NeoX-20b) + vocab_expanded.json
-├── samples/                    # decoded_agent_sample.json
-├── setup_motionbert.sh         # Activate env for Steps B–F
-└── setup_hrnet_gpu.sh          # Activate env for Step A (HRNet)
+├── samples/                    # Sample outputs for inspection
+├── setup_motionbert.sh         # Activate env for Steps B–G
+└── setup_hrnet_gpu.sh          # Activate env for Step B (HRNet only)
 ```
 
 ---
@@ -91,9 +114,8 @@ Step A   prototype_pipeline/pipeline.py   (submit_official.sbatch, 40 nodes × 4
          Extracts frames at 30fps; tokenizes every activity segment with
          Seed2 (1fps), Cosmos (8-frame), and AVC-LM (8-frame).
          → /e/scratch/reformo/nguyen38/FineVideo-VLA/training_ready_rank_*.jsonl
-           Each activity has a flat video_tokens string and time_range_sec.
 
-──────────────── BRANCH B: 3D Pose / Agent Tokens ──────────────────────────
+──────────────── BRANCH B: 3D Pose / XYZT Tokens ──────────────────────────
 
 Step B   pipeline/phase1_hrnet_gpu.py          (slurm/submit_hrnet.sh)
          HRNet + Faster R-CNN 2D pose estimation
@@ -105,66 +127,107 @@ Step C   pipeline/phase2_motionbert_gpu.py     (slurm/submit_motionbert.sh)
 
 Step D   pipeline/phase2_5_resample_30fps.py   (slurm/submit_phase2_5.sh)
          Resample native-fps 3D poses to 30fps via linear interpolation.
-         Required so Steps E–F share the same time grid as Branch A.
+         Required so Steps E–G share the same time grid as Branch A.
          → outputs/3d_npy_30fps/{video_id}.npy
 
 Step E   pipeline/phase3_kinematics_processor.py  (slurm/submit_kinematics.sh)
          Signal filter, bone normalisation, kinematics (pos/vel/acc)
          → outputs/states_jsonl/{video_id}_states.jsonl   (windows × 8 × 153)
-           153 = 17 joints × 3 dims × 3 kinematics
 
 Step F   pipeline/phase4_yolo_cleaner.py       (slurm/submit_yolo.sh)
          Drop 8-frame windows where ≥ 4 frames have no detected person.
-         Windows that pass keep their original window_id (frame offset).
-         → outputs/yolo_cleaned/{video_id}_cleaned.jsonl
+         → outputs/yolo_cleaned_30fps/{video_id}_cleaned.jsonl
 
-Step G   pipeline/phase5_interpolation_tokenizer.py  (slurm/submit_beast.sh)
-         Adaptive PCHIP interpolation + uint8 quantisation → 256 tokens/window
-         → outputs/agent_tokens/{video_id}_tokens.jsonl
-         Resume incomplete run: slurm/submit_phase5_resume.sh
+Step G   pipeline/phase5b_xyzt_tokenizer.py    (slurm/submit_phase5b.sh)
+         Per-joint XYZ quantisation → 409 self-describing tokens/window
+         → outputs/agent_tokens_xyzt/{video_id}_tokens.jsonl
+         → outputs/agent_xyzt_npy/{video_id}_xyzt.npy
 
-Step H   pipeline/phase6_macro_filter_dataset.py
-         Macro-level quality filter (min token yield per video)
-         → outputs/agent_tokens_filtered/
+──────────────── MERGE + FLATTEN ───────────────────────────────────────────
 
-──────────────── MERGE ──────────────────────────────────────────────────────
+Step H   pipeline/merge_xyzt_tokens.py         (slurm/submit_merge_xyzt.sh)
+         Injects <agent> blocks (with per-joint tokens) after each <avc_lm>
+         block in training_ready files.
+         → final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl
 
-Step I   pipeline/merge_agent_tokens.py        (slurm/submit_integration.sh)
-         Injects <agent> blocks after each <avc_lm> block in training_ready files.
-         → /e/scratch/reformo/nguyen38/FineVideo-VLA/final_dataset/final_vla_rank_*.jsonl
+Step I   tools/flatten.py                      (run on login node or SLURM)
+         Hierarchical JSON → Megatron flat JSONL with data augmentation:
+         synonym replacement, stopword dropout, sentence permutation,
+         modality dropout (99% avc_lm, 90% cosmos, 0% seed2), and
+         speech/token interleaving.
+         → flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl
 
-Step J   pipeline/flatten_dataset.py
-         Hierarchical JSON → Megatron flat JSONL
-         → /p/data1/mmlaion/shared/vla/vla_25b/flat_*.jsonl
+Step J   tools/upload_flattened_hf.py
+         Compress + upload to EmpathicRobotics/FineVideo-VLA-flattened
 ```
 
-Steps B–H run from `3d-human-pose/` as working directory. `outputs/` is a symlink to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/`.
+Steps B–G run from `3d-human-pose/` as working directory. `outputs/` is a symlink to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/`.
+
+---
+
+## XYZT Token Format (current)
+
+Each 8-frame chunk produces **409 self-describing tokens**:
+
+```
+<fps_30> <joint_0_x_127> <joint_0_y_200> <joint_0_z_143> <joint_1_x_130> ...
+```
+
+| Component | Count | Encoding |
+|-----------|-------|----------|
+| `<fps_N>` | 1 | Frame rate (always 30) |
+| `<joint_J_d_V>` | 408 = 8 frames × 17 joints × 3 dims | `V = clip(round((v + 2.0) / 4.0 * 255), 0, 255)` |
+
+- **Joint order** (H36M 17-joint): pelvis, r_hip, r_knee, r_ankle, l_hip, l_knee, l_ankle, spine, thorax, nose, head_top, l_shoulder, l_elbow, l_wrist, r_shoulder, r_elbow, r_wrist
+- **Coordinate range**: [-2.0 m, +2.0 m], precision ~15.7 mm
+- **Root-centred**: pelvis is always at origin [0, 0, 0]
+- All poses are at 30 fps — no variable frame rate
+
+### Legacy Agent Token Format (256 tokens)
+
+The older `phase5_interpolation_tokenizer.py` produced 256 opaque uint8 tokens per chunk (scale + anchor + motion control points). This has been superseded by the per-joint XYZT format above.
 
 ---
 
 ## Token Alignment
 
-All four token types share the same **30fps frame grid**. Step A resamples videos to exactly 30fps via ffmpeg; Step D resamples 3D poses to 30fps. This means:
+All four token types share the same **30fps frame grid**:
 
 | Token type | Fires at | Covers frames | Timestamp formula |
 |------------|----------|---------------|-------------------|
 | Seed2 | every 30 frames | single frame | `activity_start + k × 1.0 s` |
 | Cosmos | every 8 frames | frames `[8k, 8k+7]` | `activity_start + k × 8/30 s` |
 | AVC-LM | every 8 frames | frames `[8k, 8k+7]` | `activity_start + k × 8/30 s` |
-| Agent | every 8 frames | frames `[8k, 8k+7]` | `activity_start + window_id × 8/30 s` |
+| Agent (XYZT) | every 8 frames | frames `[8k, 8k+7]` | `activity_start + window_id × 8/30 s` |
 
-`activity_start` is stored in each activity's `time_range_sec` field in the JSONL.
+**Agent tokens may be non-contiguous** — Phase F (YOLO) drops windows with no detected person. Each surviving record stores `window_id` (original frame offset), so timestamps are always recoverable.
 
-**Seed2/Cosmos/AVC-LM tokens are contiguous** — every frame of every activity is tokenized with no gaps. Timestamps are not stored explicitly but are recoverable by position math above.
+---
 
-**Agent tokens may be non-contiguous** — Phase 4 (YOLO) drops junk windows. Each surviving record stores `window_id` (original frame offset from video start), so the exact timestamp and video segment are always recoverable.
+## Flattened Dataset Statistics
 
-To extract the video segment for any token block:
-```bash
-ffmpeg -ss <timestamp> -t <duration> -i video.mp4 segment.mp4
-# Cosmos/AVC-LM: duration = 8/30 ≈ 0.267s
-# Seed2: duration = 1/30 ≈ 0.033s (single frame)
-```
+The final flattened output (`flat_xyzt/`) contains:
+
+| Metric | Value |
+|--------|-------|
+| Total files | 160 |
+| Total records | 69,844 |
+| Total size | ~24 GB |
+| Avg record size | ~348 KB |
+| Records per file | 321–648 (avg 437) |
+| Bad JSON / missing structure | 0 |
+
+**Modality distribution** (sampled every 10th record):
+
+| Modality | Avg tokens/record | Zero rate | Dropout |
+|----------|-------------------|-----------|---------|
+| seed2 | 1,282 | 0% | 0% |
+| cosmos | 2,995 | 8% | 90% |
+| avclm | 6,738 | 49% | 99% |
+| fps | 31 | 0% | — |
+| joint_xyz | 12,549 | 0% | — |
+
+The high dropout for avclm (99%) and cosmos (90%) balances the token ratio relative to agent/seed2 tokens.
 
 ---
 
@@ -179,7 +242,7 @@ export FFMPEG_PATH=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_
 ```
 Model weights are **not committed** — download once with `prototype_pipeline/download.py` (requires `HF_TOKEN`).
 
-**Steps B–H — 3D pose pipeline** (HRNet, MotionBERT, YOLO, tokenizer):
+**Steps B–G — 3D pose pipeline** (HRNet, MotionBERT, YOLO, tokenizer):
 ```bash
 source setup_motionbert.sh    # activates env_motion_final/
 ```
@@ -189,27 +252,12 @@ source setup_motionbert.sh    # activates env_motion_final/
 source setup_hrnet_gpu.sh
 ```
 
+**Flatten + upload** (tools):
+```bash
+source setup_motionbert.sh    # or any env with huggingface_hub installed
+```
+
 Environment YAML specs are in `envs/`.
-
----
-
-## Agent Token Format
-
-Each 8-frame chunk is encoded as **256 `uint8` tokens**:
-
-| Index | Content | Encoding |
-|-------|---------|----------|
-| `0` | scale (1 token) | `clip(scale / 2.0 * 255, 0, 255)` |
-| `1–51` | anchor — frame-0 pose, root-centred (51 tokens) | `clip((x + 2) / 4 * 255, 0, 255)` per dim |
-| `52–255` | motion control points (204 tokens) | `uint8` from Phase 5 |
-
-```
-token[0]       scale   decode: t / 255.0 * 2.0          (metres, max 2.0 m)
-tokens[1–51]   anchor  decode: t / 255.0 * 4.0 - 2.0    (metres, root-centred, ±2.0 m)
-tokens[52–255] motion  decode: t / 127.5 - 1.0           (normalised [-1,1], 4 CPs × 17 joints × 3)
-```
-
-Reconstruction: `cp_absolute = motion_CPs * scale + anchor`, then PCHIP interpolation over `t ∈ [0, 1]`.
 
 ---
 
@@ -230,8 +278,9 @@ Reconstruction: `cp_absolute = motion_CPs * scale + anchor`, then PCHIP interpol
 | FineVideo HF dataset | `/e/scratch/reformo/nguyen38/finevideo_disk` |
 | Intermediate pose outputs | `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/` |
 | `training_ready` JSONL (Step A output) | `/e/scratch/reformo/nguyen38/FineVideo-VLA/training_ready_rank_*.jsonl` |
-| Final merged JSONL | `/e/scratch/reformo/nguyen38/FineVideo-VLA/final_dataset/final_vla_rank_*.jsonl` |
-| Flat Megatron target | `/p/data1/mmlaion/shared/vla/vla_25b/` |
+| XYZT merged JSONL (Step H output) | `.../FineVideo-VLA/final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl` |
+| Flat Megatron JSONL (Step I output) | `.../nguyen38/flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl` |
+| Legacy final merged JSONL | `/e/scratch/reformo/nguyen38/FineVideo-VLA/final_dataset/final_vla_rank_*.jsonl` |
 
 ---
 
@@ -242,9 +291,10 @@ Reconstruction: `cp_absolute = motion_CPs * scale + anchor`, then PCHIP interpol
 | Token range | Count |
 |-------------|-------|
 | `<agent_0>` … `<agent_255>` | 256 |
-| `<avclm_0>` … `<avclm_8191>` | 8192 |
-| `<seed2_0>` … `<seed2_8191>` | 8192 |
-| `<cosmos_0>` … `<cosmos_63999>` | 64000 |
+| `<avclm_0>` … `<avclm_8191>` | 8,192 |
+| `<seed2_0>` … `<seed2_8191>` | 8,192 |
+| `<cosmos_0>` … `<cosmos_63999>` | 64,000 |
+| `<fps_N>`, `<joint_J_d_V>` | per-joint XYZT tokens |
 | Wrapper tags (`<agent>`, `</agent>`, …) | 8 |
 
 Output: `vocab/vocab_expanded.json`.
@@ -257,22 +307,21 @@ python tools/check_vocab.py   # verify vocab_size (rounds to nearest 128 for Meg
 ## Useful Commands
 
 ```bash
+# Flatten the XYZT merged dataset (Step I)
+python tools/flatten.py
+
+# Upload flattened dataset to HuggingFace
+export HF_TOKEN='hf_...'
+python tools/upload_flattened_hf.py
+
+# Clean old files from HF repo
+python tools/cleanup_flattened_hf.py
+
 # Decode a random agent token block from a final_vla file
 python tools/decode_agent_tokens.py --seed 42
 
-# Count token density across all training_ready shards
+# Count token density across training_ready shards
 python prototype_pipeline/count_tokens.py
-
-# Check agent token coverage in a merged file
-python3 -c "
-import json
-with_agent = without_agent = 0
-for line in open('/e/scratch/reformo/nguyen38/FineVideo-VLA/final_dataset/final_vla_rank_0.jsonl'):
-    d = json.loads(line)
-    has = any('<agent>' in a.get('video_tokens','') for s in d['scenes'] for a in s['activities'])
-    with_agent += has; without_agent += not has
-print(with_agent, 'with agent /', without_agent, 'without')
-"
 
 # Sanity-check a flat Megatron dataset
 python tools/check_flattened_data.py

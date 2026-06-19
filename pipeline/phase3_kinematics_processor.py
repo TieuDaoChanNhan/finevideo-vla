@@ -24,7 +24,7 @@ class KinematicPreprocessor:
         self.skeleton_tree = [
             (0, 1), (1, 2), (2, 3),
             (0, 4), (4, 5), (5, 6),
-            (0, 7), (7, 8), (8, 9),
+            (0, 7), (7, 8), (8, 9), (9, 10),
             (8, 11), (11, 12), (12, 13),
             (8, 14), (14, 15), (15, 16)
         ]
@@ -33,7 +33,7 @@ class KinematicPreprocessor:
             self.target_bone_lengths = {
                 (0, 1): 0.2, (1, 2): 0.45, (2, 3): 0.45,
                 (0, 4): 0.2, (4, 5): 0.45, (5, 6): 0.45,
-                (0, 7): 0.3, (7, 8): 0.3, (8, 9): 0.2,
+                (0, 7): 0.3, (7, 8): 0.3, (8, 9): 0.2, (9, 10): 0.16,
                 (8, 11): 0.2, (11, 12): 0.35, (12, 13): 0.3,
                 (8, 14): 0.2, (14, 15): 0.35, (15, 16): 0.3
             }
@@ -402,16 +402,16 @@ def apply_2d_mask(pose3d, json_2d_path):
 
     return masked_pose3d
 
-def process_file(input_path, output_path, processor, video_id, json_2d_dir):
+def process_file(input_path, output_path, processor, video_id, json_2d_dir, stride=1):
     pose3d = np.load(input_path)
     if pose3d.ndim != 3 or pose3d.shape[1:] != (17, 3):
         return False
 
     json_2d_path = os.path.join(json_2d_dir, f"{video_id}_2d.json")
-    
+
     # STEP 1: Fill natural tracking gaps in the RAW ARRAY before anything else
     pose3d_interp = interpolate_nan_gaps(pose3d, max_gap=5)
-    
+
     # STEP 2: Apply 2D Gate mask (nullify occluded limbs)
     pose3d_masked = apply_2d_mask(pose3d_interp, json_2d_path)
 
@@ -419,7 +419,7 @@ def process_file(input_path, output_path, processor, video_id, json_2d_dir):
     pose_final = processor.process(pose3d_masked)
 
     # STEP 4: Extract windows safely
-    windows, valid_indices = create_windows(pose_final, window_size=8)
+    windows, valid_indices = create_windows(pose_final, window_size=8, stride=stride)
 
     if len(windows) == 0:
         return False
@@ -454,6 +454,12 @@ if __name__ == "__main__":
         default=None,
         help="Path to fps_lookup.json from tools/extract_fps.py. "
              "If provided, per-video fps is used for kinematics instead of fixed 30.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=1,
+        help="Window stride for create_windows. Use 8 to match Phase 5 and avoid storing redundant overlapping windows.",
     )
     args = parser.parse_args()
 
@@ -508,6 +514,7 @@ if __name__ == "__main__":
                 processor,
                 video_id,
                 json_2d_dir=json_2d_dir,
+                stride=args.stride,
             )
 
             if success:

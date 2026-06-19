@@ -46,3 +46,6 @@ __pycache__/
 *.mp4
 *.jsonx
 Miniforge3-Linux-aarch64.sh
+
+# Environment
+env_flatten/

@@ -29,6 +29,18 @@ def expand_vocab(input_vocab_path="vocab.json", output_vocab_path="vocab_expande
     regular_tokens.extend([f"<seed2_{i}>" for i in range(8192)])
     regular_tokens.extend([f"<cosmos_{i}>" for i in range(64000)])
 
+    # 3. Phase 5b per-joint XYZ tokens
+    # <fps_N>          — frame-rate prefix token (1–60 fps covers all realistic videos)
+    # <joint_J_x_N>    — joint J, x coordinate, quantized uint8 value N
+    # <joint_J_y_N>    — joint J, y coordinate, quantized uint8 value N
+    # <joint_J_z_N>    — joint J, z coordinate, quantized uint8 value N
+    # 17 joints × 3 dims × 256 values = 13 056 tokens + 60 fps tokens = 13 116 total
+    regular_tokens.extend([f"<fps_{i}>" for i in range(1, 61)])
+    for j in range(17):
+        regular_tokens.extend([f"<joint_{j}_x_{n}>" for n in range(256)])
+        regular_tokens.extend([f"<joint_{j}_y_{n}>" for n in range(256)])
+        regular_tokens.extend([f"<joint_{j}_z_{n}>" for n in range(256)])
+
     all_new_tokens = special_tokens + regular_tokens
 
     added_count = 0

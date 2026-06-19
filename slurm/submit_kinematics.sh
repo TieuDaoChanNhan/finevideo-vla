@@ -12,9 +12,10 @@
 source setup_motionbert.sh
 
 # Directory configuration
-DIR_INPUT="outputs/3d_npy"
-DIR_OUTPUT="outputs/states_jsonl"
-DIR_2D_JSON="outputs/2d_json"
+DATA_ROOT="/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs"
+DIR_INPUT="${DATA_ROOT}/3d_npy_30fps"
+DIR_OUTPUT="${DATA_ROOT}/states_jsonl_30fps"
+DIR_2D_JSON="${DATA_ROOT}/2d_json"
 
 NUM_WORKERS=64
 
@@ -30,7 +31,8 @@ for i in $(seq 0 $MAX_ID); do
     python -u pipeline/phase3_kinematics_processor.py \
         --input-dir "$DIR_INPUT" \
         --output-dir "$DIR_OUTPUT" \
-        --json-2d-dir "$DIR_2D_JSON" &
+        --json-2d-dir "$DIR_2D_JSON" \
+        --stride 8 &
 done
 
 # Wait for all 64 background processes to finish
