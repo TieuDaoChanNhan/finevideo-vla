@@ -105,15 +105,14 @@ Both are split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
 ## End-to-End Pipeline
 
 ```
-HuggingFace FineVideo disk
-/e/scratch/reformo/nguyen38/finevideo_disk
+$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen38
 
 ──────────────── BRANCH A: Video Tokens ────────────────────────────────────
 
 Step A   prototype_pipeline/pipeline.py   (submit_official.sbatch, 40 nodes × 4 GPU)
          Extracts frames at 30fps; tokenizes every activity segment with
          Seed2 (1fps), Cosmos (8-frame), and AVC-LM (8-frame).
-         → /e/scratch/reformo/nguyen38/FineVideo-VLA/training_ready_rank_*.jsonl
+         → $DATA/FineVideo-VLA/training_ready_rank_*.jsonl
 
 ──────────────── BRANCH B: 3D Pose / XYZT Tokens ──────────────────────────
 
@@ -148,20 +147,20 @@ Step G   pipeline/phase5b_xyzt_tokenizer.py    (slurm/submit_phase5b.sh)
 Step H   pipeline/merge_xyzt_tokens.py         (slurm/submit_merge_xyzt.sh)
          Injects <agent> blocks (with per-joint tokens) after each <avc_lm>
          block in training_ready files.
-         → final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl
+         → $DATA/FineVideo-VLA/final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl
 
 Step I   tools/flatten.py                      (run on login node or SLURM)
          Hierarchical JSON → Megatron flat JSONL with data augmentation:
          synonym replacement, stopword dropout, sentence permutation,
          modality dropout (99% avc_lm, 90% cosmos, 0% seed2), and
          speech/token interleaving.
-         → flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl
+         → $DATA/flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl
 
 Step J   tools/upload_flattened_hf.py
          Compress + upload to EmpathicRobotics/FineVideo-VLA-flattened
 ```
 
-Steps B–G run from `3d-human-pose/` as working directory. `outputs/` is a symlink to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/`.
+Steps B–G run from `3d-human-pose/` as working directory. `outputs/` is a symlink to `$DATA/outputs/`.
 
 ---
 
@@ -273,14 +272,17 @@ Environment YAML specs are in `envs/`.
 
 ## Key Data Paths
 
+All data lives under `$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen38`.
+
 | What | Path |
 |------|------|
-| FineVideo HF dataset | `/e/scratch/reformo/nguyen38/finevideo_disk` |
-| Intermediate pose outputs | `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/` |
-| `training_ready` JSONL (Step A output) | `/e/scratch/reformo/nguyen38/FineVideo-VLA/training_ready_rank_*.jsonl` |
-| XYZT merged JSONL (Step H output) | `.../FineVideo-VLA/final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl` |
-| Flat Megatron JSONL (Step I output) | `.../nguyen38/flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl` |
-| Legacy final merged JSONL | `/e/scratch/reformo/nguyen38/FineVideo-VLA/final_dataset/final_vla_rank_*.jsonl` |
+| FineVideo HF dataset | `$DATA/finevideo_disk` |
+| Intermediate pose outputs | `$DATA/outputs/` |
+| `training_ready` JSONL (Step A output) | `$DATA/FineVideo-VLA/training_ready_rank_*.jsonl` |
+| XYZT merged JSONL (Step H output) | `$DATA/FineVideo-VLA/final_dataset_xyzt/final_vla_xyzt_rank_*.jsonl` |
+| Flat Megatron JSONL (Step I output) | `$DATA/flat_xyzt/flat_final_vla_xyzt_rank_*.jsonl` |
+| HF upload staging | `$DATA/flat_xyzt_hf_upload/` |
+| Legacy final merged JSONL | `$DATA/FineVideo-VLA/final_dataset/final_vla_rank_*.jsonl` |
 
 ---
 
