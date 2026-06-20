@@ -198,15 +198,15 @@ All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, see
 
 | Dataset | What | Records | Size | Format |
 |---------|------|---------|------|--------|
-| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL, ready for pretraining | ~372K | ~2.1 TB | `{"text": "USER: ... ASSISTANT: ..."}` |
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Full hierarchical merged dataset (all metadata preserved) | ~399K activities | ~657 GB | Hierarchical JSON (video → scenes → activities) |
+| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL, ready for pretraining (agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
+| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Full hierarchical merged dataset (all metadata preserved, no dropout) | ~399K activities | ~657 GB | Hierarchical JSON (video → scenes → activities) |
 | [EmpathicRobotics/FineVideo-Phase4-Pose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-Pose) | YOLO-cleaned 3D poses (raw float arrays, pre-tokenisation) | millions of windows | ~107 GB | `{video_id, window_id, states: float[8][17][3]}` |
 
 ### What's in each dataset
 
-**FineVideo-VLA-flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string. No structure, no metadata — just tokens.
+**FineVideo-VLA-flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string, with modality dropout (99% AVC-LM, 90% Cosmos) and text augmentation applied. Only activities containing 3D pose agent tokens are included.
 
-**FineVideo-VLA-Agent** — Use this if you need the full structure. Each record is a full video with scenes, activities, timestamps (`chunk_timing`), speech transcripts, and all modality tokens in their original hierarchical form. You can extract timestamps, filter by modality, or re-flatten with custom logic.
+**FineVideo-VLA-Agent** — Use this if you need the full structure. Each record is a full video with scenes, activities, timestamps (`chunk_timing`), speech transcripts, and all modality tokens in their original hierarchical form. No dropout or augmentation — all data preserved. You can extract timestamps, filter by modality, or re-flatten with custom logic.
 
 **FineVideo-Phase4-Pose** — Use this if you need raw 3D joint positions (floats in metres, not tokenised). Each record is one 8-frame window with 17 joints × 3 dims. Root-centred, bone-normalised, smoothed.
 
@@ -306,9 +306,11 @@ In the **flattened** dataset, timestamps can be computed from the token sequence
 
 ```json
 {
-  "text": "USER: Sara stands in front of a sign and talks about the course. [Speech: We're in West Bank, BC...] ASSISTANT: <seed2> <seed2_3758> <seed2_2157> ... </seed2> <cosmos> <cosmos_58567> ... </cosmos> <avc_lm> <avclm_263> <avclm_107> ... </avc_lm> <agent> <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> <pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis> <r_hip> ... </r_hip> ... </agent> <seed2> ... </seed2> ..."
+  "text": "### Keywords: educational, informative\n### Title: Introduction to Forspoken\n### Context: Join Ircha as she shares her thoughts on two games...\n<seed2_6750> <seed2_680> ... <cosmos_63127> <cosmos_42647> ... When it comes to Forspoken... <avclm_263> <avclm_107> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> <pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis> <r_hip> ... </r_hip> ..."
 }
 ```
+
+Note: layout blocks (Title/Context/Keywords/tokens) are randomly shuffled, and speech chunks are interleaved among tokens at random positions.
 
 ---
 
@@ -325,7 +327,7 @@ In the **flattened** dataset, timestamps can be computed from the token sequence
 | Phase 4: YOLO cleaning | 40,195 | 107 GB | `pipeline/phase4_yolo_cleaner.py` |
 | Phase 5: Adaptive PCHIP | 18,847 | 7.4 GB | `pipeline/phase5_adaptive_pchip.py` |
 | Phase 6: Merge | 160 files | 657 GB | `pipeline/merge_adaptive_tokens.py` |
-| Phase 7: Flatten | 160 files | 2.12 TB | `pipeline/flatten_dataset.py` |
+| Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline/flatten_dataset.py` |
 
 ### Why 18,847 not 40,000?
 
@@ -354,24 +356,40 @@ All data under `$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen38`:
 
 ## 8. Flattened Dataset Quality Metrics
 
-Evaluated on the final `megatron_dataset_adaptive/` output:
+Evaluated on the final `megatron_dataset_adaptive/` output (with modality dropout and augmentation):
 
 | Metric | Value |
 |--------|-------|
 | Total files | 160 shards |
-| Total records | ~372,385 activities |
-| Total size | 2.12 TB |
-| File size range | 11.1 – 15.7 GB |
+| Total records | 69,844 |
+| Total size | 19.2 GB |
+| Avg file size | 120 MB (range: 85.8 – 176.7 MB) |
 | Malformed JSON | 0 |
-| Records with `USER:`/`ASSISTANT:` | 100% |
-| Records with seed2 | 100% |
-| Records with cosmos | 100% |
-| Records with avc_lm | 100% |
-| Records with agent (3D pose) | ~16–20% |
-| Records with speech transcript | ~97% |
+| Records with `### Title:` | 100% |
+| Records with `### Context:` | 100% |
+| Records with `### Keywords:` | 100% |
+| Records with agent (3D pose) | **100%** (agent-only filter) |
 
-Agent block validation:
-- All 17 joints present (pelvis through r_wrist, using `head_top` per H36M convention)
+### Modality coverage (after dropout)
+
+| Modality | Coverage | Avg tokens/record |
+|----------|----------|-------------------|
+| seed2 | 100% | ~1,320 |
+| cosmos | ~88% | ~3,091 |
+| avclm | ~49% | ~7,260 |
+| agent | 100% | ~9,712 |
+
+### Token length per record
+
+| Stat | Value |
+|------|-------|
+| Min | 336 |
+| Median | 8,512 |
+| Mean | 21,563 |
+| Max | 505,180 |
+
+### Agent block validation
+- All 17 joints present in every record (pelvis through r_wrist, using `head_top` per H36M convention)
 - XYZ values in valid range [0, 255]
 - T values in valid range [0, 7]
 - Agent tokens per block: 171–555, mean ~327
@@ -382,14 +400,14 @@ Agent block validation:
 
 ### For LLM pretraining (Megatron-LM)
 
-Use `EmpathicRobotics/FineVideo-VLA-flattened`. Each line is `{"text": "..."}` — ready for Megatron-LM tokenization with the expanded vocab.
+Use `EmpathicRobotics/FineVideo-VLA-flattened`. Each line is `{"text": "..."}` — ready for Megatron-LM tokenization with the expanded vocab. Every record contains agent (3D pose) tokens with balanced modality ratios.
 
 ```python
 from datasets import load_dataset
 
 ds = load_dataset("EmpathicRobotics/FineVideo-VLA-flattened", streaming=True)
 for sample in ds["train"]:
-    text = sample["text"]  # USER: ... ASSISTANT: <seed2_N> ... <agent> ... </agent>
+    text = sample["text"]  # ### Title: ... <seed2_N> ... <fps_30> <pelvis> ...
     break
 ```
 
