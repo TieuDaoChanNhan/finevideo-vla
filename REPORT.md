@@ -312,6 +312,16 @@ In the **flattened** dataset, timestamps can be computed from the token sequence
 
 Note: layout blocks (Title/Context/Keywords/tokens) are randomly shuffled, and speech chunks are interleaved among tokens at random positions.
 
+### Sample files
+
+See the [`samples/`](samples/) directory for concrete examples of the data before and after flattening:
+
+| File | Description |
+|------|-------------|
+| [`before_flatten.json`](samples/before_flatten.json) | One hierarchical record from `final_dataset_adaptive` — shows video_id, scene metadata, chunk_timing, timing_meta, and one chunk preview per modality (seed2, cosmos, avc_lm, agent) |
+| [`after_flatten.json`](samples/after_flatten.json) | Three flattened records from `megatron_dataset_adaptive` — shows the flat `{"text": "..."}` format with per-modality token breakdown (seed2, cosmos, avclm, agent counts after dropout) |
+| [`before_vs_after.txt`](samples/before_vs_after.txt) | Readable side-by-side comparison of hierarchical vs flat format, with token counts and text previews |
+
 ---
 
 ## 6. Pipeline Summary (numbers)
