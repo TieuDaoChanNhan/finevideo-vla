@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Upload flattened XYZT Megatron-LM shards to EmpathicRobotics/FineVideo-VLA-flattened.
+Upload flattened adaptive Megatron-LM shards to EmpathicRobotics/FineVideo-VLA-flattened.
 
   - 160 shards split 95/5 train/test (seed 42)
   - gzip compressed in parallel
@@ -68,29 +68,28 @@ def main():
     )
     parser.add_argument(
         "--source-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/flat_xyzt",
+        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/megatron_dataset_adaptive",
     )
     parser.add_argument(
         "--upload-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/flat_xyzt_hf_upload",
+        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/hf_upload_flattened_adaptive",
     )
     parser.add_argument(
         "--skip-compress", action="store_true",
         help="Skip compression step (reuse existing compressed files)",
     )
+    parser.add_argument(
+        "--skip-upload", action="store_true",
+        help="Only compress, don't upload.",
+    )
     args = parser.parse_args()
-
-    if "HF_TOKEN" not in os.environ:
-        raise EnvironmentError("HF_TOKEN not set. Run: export HF_TOKEN='hf_...'")
-
-    login(token=os.environ["HF_TOKEN"])
 
     train_dir = os.path.join(args.upload_dir, "train")
     test_dir = os.path.join(args.upload_dir, "test")
     os.makedirs(train_dir, exist_ok=True)
     os.makedirs(test_dir, exist_ok=True)
 
-    all_shards = [f"flat_final_vla_xyzt_rank_{i}.jsonl" for i in range(TOTAL_SHARDS)]
+    all_shards = [f"flat_final_vla_adaptive_rank_{i}.jsonl" for i in range(TOTAL_SHARDS)]
 
     print("Verifying all shards exist...")
     missing = [f for f in all_shards if not os.path.exists(os.path.join(args.source_dir, f))]
@@ -120,6 +119,15 @@ def main():
     if actual_test != expected_test:
         raise ValueError(f"Expected {expected_test} test shards, found {actual_test}")
 
+    if args.skip_upload:
+        print("Skipping upload (--skip-upload). Files in:", args.upload_dir)
+        return
+
+    if "HF_TOKEN" not in os.environ:
+        raise EnvironmentError("HF_TOKEN not set. Run: export HF_TOKEN='hf_...'")
+
+    login(token=os.environ["HF_TOKEN"])
+
     print(f"Uploading to {REPO_ID} ...")
     api = HfApi()
     api.create_repo(repo_id=REPO_ID, repo_type="dataset", exist_ok=True)
@@ -127,7 +135,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload flattened XYZT Megatron-LM dataset (30fps, per-joint tokens)",
+        commit_message="Upload flattened adaptive Megatron-LM dataset (160 shards, ~372K records, ~2.1TB)",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")

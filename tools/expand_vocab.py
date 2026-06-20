@@ -1,7 +1,7 @@
 import json
 import os
 
-def expand_vocab(input_vocab_path="vocab.json", output_vocab_path="vocab_expanded.json"):
+def expand_vocab(input_vocab_path="vocab/vocab.json", output_vocab_path="vocab/vocab_expanded.json"):
     if not os.path.exists(input_vocab_path):
         print(f"❌ {input_vocab_path} not found. Download the base vocab from EleutherAI/gpt-neox-20b.")
         return
@@ -29,17 +29,27 @@ def expand_vocab(input_vocab_path="vocab.json", output_vocab_path="vocab_expande
     regular_tokens.extend([f"<seed2_{i}>" for i in range(8192)])
     regular_tokens.extend([f"<cosmos_{i}>" for i in range(64000)])
 
-    # 3. Phase 5b per-joint XYZ tokens
-    # <fps_N>          — frame-rate prefix token (1–60 fps covers all realistic videos)
-    # <joint_J_x_N>    — joint J, x coordinate, quantized uint8 value N
-    # <joint_J_y_N>    — joint J, y coordinate, quantized uint8 value N
-    # <joint_J_z_N>    — joint J, z coordinate, quantized uint8 value N
-    # 17 joints × 3 dims × 256 values = 13 056 tokens + 60 fps tokens = 13 116 total
+    # 3. Phase 5 adaptive PCHIP per-joint tokens (named joints)
+    # <fps_N>             — frame-rate prefix (1–60)
+    # <{joint}>/</{joint}> — per-joint wrapper (17 joints)
+    # <{joint}_x_N>       — x coordinate, uint8 [0,255]
+    # <{joint}_y_N>       — y coordinate, uint8 [0,255]
+    # <{joint}_z_N>       — z coordinate, uint8 [0,255]
+    # <{joint}_t_N>       — frame index within 8-frame window [0,7]
+    joint_names = [
+        "pelvis", "r_hip", "r_knee", "r_ankle",
+        "l_hip", "l_knee", "l_ankle",
+        "spine", "thorax", "nose", "head_top",
+        "l_shoulder", "l_elbow", "l_wrist",
+        "r_shoulder", "r_elbow", "r_wrist",
+    ]
     regular_tokens.extend([f"<fps_{i}>" for i in range(1, 61)])
-    for j in range(17):
-        regular_tokens.extend([f"<joint_{j}_x_{n}>" for n in range(256)])
-        regular_tokens.extend([f"<joint_{j}_y_{n}>" for n in range(256)])
-        regular_tokens.extend([f"<joint_{j}_z_{n}>" for n in range(256)])
+    for name in joint_names:
+        special_tokens.extend([f"<{name}>", f"</{name}>"])
+        regular_tokens.extend([f"<{name}_x_{n}>" for n in range(256)])
+        regular_tokens.extend([f"<{name}_y_{n}>" for n in range(256)])
+        regular_tokens.extend([f"<{name}_z_{n}>" for n in range(256)])
+        regular_tokens.extend([f"<{name}_t_{n}>" for n in range(8)])
 
     all_new_tokens = special_tokens + regular_tokens
 

@@ -1,0 +1,206 @@
+MERGED DATASET SAMPLES (before flattening)
+Source: final_dataset_adaptive/final_vla_adaptive_rank_0.jsonl
+
+==========================================================================================
+SAMPLE: merged_no_agent_1  |  video: d6b4OmUFt7I  |  scene: 0, activity: 0
+==========================================================================================
+PROMPT: Sara stands in front of a 'Heavy Equipment Operator Training Centre' sign and talks about the course.
+SPEECH: We're in West Bank, BC, in the heart of the reserve.  And I'm part of this heavy equipment operators course, and I love it.
+
+<seed2> [32 keyframe tokens]
+  3758 2157 3402 7800 ... (32 total) ... 3402 4671 7800 7246
+</seed2>
+  <cosmos> [200 tokens] 58567 56071 58055 ... (200 total) ... 31895 27485 46668 </cosmos>
+  <avc_lm> [885 tokens] 263 107 70 ... (885 total) ... 24 255 188 </avc_lm>
+  <cosmos> [200 tokens] 10779 57503 35413 ... (200 total) ... 45166 30109 44625 </cosmos>
+  <avc_lm> [1453 tokens] 263 107 70 ... (1453 total) ... 1202 2011 6048 </avc_lm>
+  <cosmos> [200 tokens] 10873 60143 32860 ... (200 total) ... 47204 19366 28376 </cosmos>
+  <avc_lm> [2182 tokens] 263 107 70 ... (2182 total) ... 238 5420 172 </avc_lm>
+  ... (60 more chunk groups) ...
+  <avc_lm> [3456 tokens] 263 107 70 ... (3456 total) ... 319 334 140 </avc_lm>
+  <cosmos> [200 tokens] 16308 25968 31096 ... (200 total) ... 32482 50537 42473 </cosmos>
+  <avc_lm> [3136 tokens] 263 107 70 ... (3136 total) ... 110 514 148 </avc_lm>
+
+TIMING: 34 chunks, 0 with agent, fps=30
+  first: {'chunk_idx': 0, 'abs_frame': 0, 'start_sec': 0.0, 'end_sec': 0.2667, 'has_seed2': True, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': False}
+
+==========================================================================================
+SAMPLE: merged_no_agent_2  |  video: d6b4OmUFt7I  |  scene: 0, activity: 1
+==========================================================================================
+PROMPT: Sara explains her prior exposure to heavy equipment.
+SPEECH: And I'm part of this heavy equipment operators course, and I love it.  With the email Anderson for about a year, but my whole life growing up, I was exposed to it a lot.  My dad always showed me all t
+
+<seed2> [32 keyframe tokens]
+  6750 680 1306 5192 ... (32 total) ... 7582 5733 3714 4342
+</seed2>
+  <cosmos> [200 tokens] 26547 41328 34168 ... (200 total) ... 41571 55210 35186 </cosmos>
+  <avc_lm> [3437 tokens] 263 107 70 ... (3437 total) ... 1604 6055 154 </avc_lm>
+  <cosmos> [200 tokens] 38833 44408 21816 ... (200 total) ... 30646 46187 28348 </cosmos>
+  <avc_lm> [3736 tokens] 263 107 70 ... (3736 total) ... 169 208 61 </avc_lm>
+  <cosmos> [200 tokens] 5885 22210 16942 ... (200 total) ... 42422 34523 31467 </cosmos>
+  <avc_lm> [2839 tokens] 263 107 70 ... (2839 total) ... 52 191 132 </avc_lm>
+  ... (60 more chunk groups) ...
+  <avc_lm> [2905 tokens] 263 107 70 ... (2905 total) ... 114 20 205 </avc_lm>
+  <cosmos> [200 tokens] 57145 18290 7851 ... (200 total) ... 33949 44698 15565 </cosmos>
+  <avc_lm> [2867 tokens] 263 107 70 ... (2867 total) ... 2896 255 132 </avc_lm>
+
+TIMING: 34 chunks, 0 with agent, fps=30
+  first: {'chunk_idx': 0, 'abs_frame': 270, 'start_sec': 9.0, 'end_sec': 9.2667, 'has_seed2': True, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': False}
+
+==========================================================================================
+SAMPLE: merged_with_agent_1  |  video: bswbQtOPk6E  |  scene: 0, activity: 1
+==========================================================================================
+PROMPT: Ircha speaks to the camera.
+SPEECH: When it comes to For Spoken, we need to talk about For Spoken and I feel so bad.  I don't know if you have heard the news, but the company got bought by Square Enix and that is probably
+
+<seed2> [32 keyframe tokens]
+  6750 680 4021 6120 ... (32 total) ... 4021 5321 429 4482
+</seed2>
+  <cosmos> [200 tokens] 35479 55958 32462 ... (200 total) ... 17054 31982 32479 </cosmos>
+  <avc_lm> [5361 tokens] 263 107 70 ... (5361 total) ... 119 8 212 </avc_lm>
+  <cosmos> [200 tokens] 50831 55959 32526 ... (200 total) ... 29846 31973 32479 </cosmos>
+  <avc_lm> [4443 tokens] 263 107 70 ... (4443 total) ... 186 13 164 </avc_lm>
+  <cosmos> [200 tokens] 63631 55511 45262 ... (200 total) ... 29854 32037 32415 </cosmos>
+  <avc_lm> [4519 tokens] 263 107 70 ... (4519 total) ... 159 134 108 </avc_lm>
+  ... (60 more chunk groups) ...
+  <agent> fps=30, 17 joints
+    pelvis          CPs=2  t=[0 7]  first_xyz=(128,128,128)
+    r_hip           CPs=4  t=[0 4 6 7]  first_xyz=(117,128,121)
+    r_knee          CPs=8  t=[0 1 2 3 4 5 6 7]  first_xyz=(120,155,130)
+    r_ankle         CPs=8  t=[0 1 2 3 4 5 6 7]  first_xyz=(123,182,139)
+    l_hip           CPs=4  t=[0 4 6 7]  first_xyz=(137,124,135)
+    l_knee          CPs=8  t=[0 1 2 3 4 5 6 7]  first_xyz=(140,154,144)
+    l_ankle         CPs=8  t=[0 1 2 3 4 5 6 7]  first_xyz=(142,181,153)
+    spine           CPs=4  t=[0 5 6 7]  first_xyz=(123,110,123)
+    thorax          CPs=4  t=[0 4 6 7]  first_xyz=(124,92,115)
+    nose            CPs=4  t=[0 4 6 7]  first_xyz=(130,81,118)
+    head_top        CPs=4  t=[0 4 5 7]  first_xyz=(135,73,121)
+    l_shoulder      CPs=4  t=[0 5 6 7]  first_xyz=(132,93,125)
+    l_elbow         CPs=4  t=[0 5 6 7]  first_xyz=(140,114,125)
+    l_wrist         CPs=8  t=[0 1 2 3 4 5 6 7]  first_xyz=(124,103,123)
+    r_shoulder      CPs=4  t=[0 4 6 7]  first_xyz=(112,93,111)
+    r_elbow         CPs=4  t=[0 4 6 7]  first_xyz=(109,115,109)
+    r_wrist         CPs=4  t=[0 2 6 7]  first_xyz=(111,134,110)
+  </agent>
+  <cosmos> [200 tokens] 53094 57146 2744 ... (200 total) ... 29076 13717 23965 </cosmos>
+  <avc_lm> [5651 tokens] 263 107 70 ... (5651 total) ... 43 63 52 </avc_lm>
+
+TIMING: 30 chunks, 8 with agent, fps=30
+  first: {'chunk_idx': 0, 'abs_frame': 30, 'start_sec': 1.0, 'end_sec': 1.2667, 'has_seed2': True, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': False}
+  first_agent: {'chunk_idx': 19, 'abs_frame': 182, 'start_sec': 6.0667, 'end_sec': 6.3333, 'has_seed2': False, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': True}
+
+==========================================================================================
+SAMPLE: merged_with_agent_2  |  video: bswbQtOPk6E  |  scene: 4, activity: 0
+==========================================================================================
+PROMPT: Ircha continues discussing Forspoken's main character.
+SPEECH: The character could have been improved a tiny bit. She was very rude.  Even I thought so. And that cringey cutscene that was kind of viral for a moment.  That is 0.01% of my game experience in the gam
+
+<seed2> [32 keyframe tokens]
+  3260 680 3537 5222 ... (32 total) ... 7819 5222 8096 7229
+</seed2>
+  <cosmos> [200 tokens] 8324 17100 29830 ... (200 total) ... 14378 10651 18155 </cosmos>
+  <avc_lm> [4529 tokens] 263 107 70 ... (4529 total) ... 91 5761 64 </avc_lm>
+  <cosmos> [200 tokens] 8324 17100 29318 ... (200 total) ... 17066 8083 18283 </cosmos>
+  <avc_lm> [4652 tokens] 263 107 70 ... (4652 total) ... 99 59 84 </avc_lm>
+  <cosmos> [200 tokens] 6804 1239 36612 ... (200 total) ... 17132 8468 28914 </cosmos>
+  <avc_lm> [4603 tokens] 263 107 70 ... (4603 total) ... 72 1184 172 </avc_lm>
+  ... (222 more chunk groups) ...
+  <avc_lm> [4516 tokens] 263 107 70 ... (4516 total) ... 4410 241 22 </avc_lm>
+  <cosmos> [200 tokens] 63631 55455 33038 ... (200 total) ... 4110 31974 32991 </cosmos>
+  <avc_lm> [3908 tokens] 263 107 70 ... (3908 total) ... 66 6 98 </avc_lm>
+
+TIMING: 113 chunks, 4 with agent, fps=30
+  first: {'chunk_idx': 0, 'abs_frame': 3660, 'start_sec': 122.0, 'end_sec': 122.2667, 'has_seed2': True, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': False}
+  first_agent: {'chunk_idx': 20, 'abs_frame': 3820, 'start_sec': 127.3333, 'end_sec': 127.6, 'has_seed2': True, 'has_cosmos': True, 'has_avc_lm': True, 'has_agent': True}
+
+
+FLATTENED DATASET SAMPLES (after flattening)
+Source: megatron_dataset_adaptive/flat_final_vla_adaptive_rank_0.jsonl
+
+==========================================================================================
+SAMPLE: flat_no_agent_1  |  record_index: 0
+==========================================================================================
+USER: Sara stands in front of a 'Heavy Equipment Operator Training Centre' sign and talks about the course. [Speech: We're in West Bank, BC, in the heart of the reserve.  And I'm part of this heavy equipment operators course, and I love it.]
+
+ASSISTANT:
+  <seed2> [32 tokens]
+    <seed2_3758> <seed2_2157> <seed2_3402> <seed2_7800> <seed2_2157> <seed2_5825> ... <seed2_3402> <seed2_4671> <seed2_7800> <seed2_7246>
+  </seed2>
+  <cosmos> [200 tokens] <cosmos_58567> <cosmos_56071> <cosmos_58055> <cosmos_45255> ... <cosmos_27485> <cosmos_46668> </cosmos>
+  <avc_lm> [885 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_255> <avclm_188> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_10779> <cosmos_57503> <cosmos_35413> <cosmos_17970> ... <cosmos_30109> <cosmos_44625> </cosmos>
+  <avc_lm> [1453 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_2011> <avclm_6048> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_10873> <cosmos_60143> <cosmos_32860> <cosmos_41720> ... <cosmos_19366> <cosmos_28376> </cosmos>
+  <avc_lm> [2182 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_5420> <avclm_172> </avc_lm>
+  ... (59 more blocks) ...
+  <avc_lm> [3456 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_334> <avclm_140> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_16308> <cosmos_25968> <cosmos_31096> <cosmos_31988> ... <cosmos_50537> <cosmos_42473> </cosmos>
+  <avc_lm> [3136 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_514> <avclm_148> </avc_lm>
+
+TOTAL TOKENS: 115,780
+
+==========================================================================================
+SAMPLE: flat_no_agent_2  |  record_index: 1
+==========================================================================================
+USER: Sara explains her prior exposure to heavy equipment. [Speech: And I'm part of this heavy equipment operators course, and I love it.  With the email Anderson for about a year, but my whole life growing up, I was exposed to it a lot.  My dad always showed me all the equipment.]
+
+ASSISTANT:
+  <seed2> [32 tokens]
+    <seed2_6750> <seed2_680> <seed2_1306> <seed2_5192> <seed2_680> <seed2_1940> ... <seed2_7582> <seed2_5733> <seed2_3714> <seed2_4342>
+  </seed2>
+  <cosmos> [200 tokens] <cosmos_26547> <cosmos_41328> <cosmos_34168> <cosmos_18740> ... <cosmos_55210> <cosmos_35186> </cosmos>
+  <avc_lm> [3437 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_6055> <avclm_154> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_38833> <cosmos_44408> <cosmos_21816> <cosmos_31540> ... <cosmos_46187> <cosmos_28348> </cosmos>
+  <avc_lm> [3736 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_208> <avclm_61> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_5885> <cosmos_22210> <cosmos_16942> <cosmos_16227> ... <cosmos_34523> <cosmos_31467> </cosmos>
+  <avc_lm> [2839 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_191> <avclm_132> </avc_lm>
+  ... (59 more blocks) ...
+  <avc_lm> [2905 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_20> <avclm_205> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_57145> <cosmos_18290> <cosmos_7851> <cosmos_24434> ... <cosmos_44698> <cosmos_15565> </cosmos>
+  <avc_lm> [2867 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_255> <avclm_132> </avc_lm>
+
+TOTAL TOKENS: 117,653
+
+==========================================================================================
+SAMPLE: flat_with_agent_1  |  record_index: 12
+==========================================================================================
+USER: Ircha speaks to the camera. [Speech: When it comes to For Spoken, we need to talk about For Spoken and I feel so bad.  I don't know if you have heard the news, but the company got bought by Square Enix and that is probably]
+
+ASSISTANT:
+  <seed2> [32 tokens]
+    <seed2_6750> <seed2_680> <seed2_4021> <seed2_6120> <seed2_680> <seed2_1940> ... <seed2_4021> <seed2_5321> <seed2_429> <seed2_4482>
+  </seed2>
+  <cosmos> [200 tokens] <cosmos_35479> <cosmos_55958> <cosmos_32462> <cosmos_42151> ... <cosmos_31982> <cosmos_32479> </cosmos>
+  <avc_lm> [5361 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_8> <avclm_212> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_50831> <cosmos_55959> <cosmos_32526> <cosmos_54951> ... <cosmos_31973> <cosmos_32479> </cosmos>
+  <avc_lm> [4443 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_13> <avclm_164> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_63631> <cosmos_55511> <cosmos_45262> <cosmos_54951> ... <cosmos_32037> <cosmos_32415> </cosmos>
+  <avc_lm> [4519 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_134> <avclm_108> </avc_lm>
+  ... (59 more blocks) ...
+  <agent> fps=30 | pelvis(2CP) r_hip(4CP) r_knee(8CP) r_ankle(8CP) l_hip(4CP) l_knee(8CP) l_ankle(8CP) spine(4CP) thorax(4CP) nose(4CP) head_top(4CP) l_shoulder(4CP) l_elbow(4CP) l_wrist(8CP) r_shoulder(4CP) r_elbow(4CP) r_wrist(4CP) </agent>
+  <cosmos> [200 tokens] <cosmos_53094> <cosmos_57146> <cosmos_2744> <cosmos_24440> ... <cosmos_13717> <cosmos_23965> </cosmos>
+  <avc_lm> [5651 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_63> <avclm_52> </avc_lm>
+
+TOTAL TOKENS: 154,488
+
+==========================================================================================
+SAMPLE: flat_with_agent_2  |  record_index: 16
+==========================================================================================
+USER: Ircha continues discussing Forspoken's main character. [Speech: The character could have been improved a tiny bit. She was very rude.  Even I thought so. And that cringey cutscene that was kind of viral for a moment.  That is 0.01% of my game experience in the game.  That passes by so fast that is like in the beginning of the game.  And I am 70 hours in this game or more I don't remember.  But that did not define my experience with the game.  It was actually the open world and let me just tell you the combat.]
+
+ASSISTANT:
+  <seed2> [32 tokens]
+    <seed2_3260> <seed2_680> <seed2_3537> <seed2_5222> <seed2_680> <seed2_5003> ... <seed2_7819> <seed2_5222> <seed2_8096> <seed2_7229>
+  </seed2>
+  <cosmos> [200 tokens] <cosmos_8324> <cosmos_17100> <cosmos_29830> <cosmos_3942> ... <cosmos_10651> <cosmos_18155> </cosmos>
+  <avc_lm> [4529 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_5761> <avclm_64> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_8324> <cosmos_17100> <cosmos_29318> <cosmos_3942> ... <cosmos_8083> <cosmos_18283> </cosmos>
+  <avc_lm> [4652 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_59> <avclm_84> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_6804> <cosmos_1239> <cosmos_36612> <cosmos_27349> ... <cosmos_8468> <cosmos_28914> </cosmos>
+  <avc_lm> [4603 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_1184> <avclm_172> </avc_lm>
+  ... (221 more blocks) ...
+  <avc_lm> [4516 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_241> <avclm_22> </avc_lm>
+  <cosmos> [200 tokens] <cosmos_63631> <cosmos_55455> <cosmos_33038> <cosmos_55015> ... <cosmos_31974> <cosmos_32991> </cosmos>
+  <avc_lm> [3908 tokens] <avclm_263> <avclm_107> <avclm_70> <avclm_196> ... <avclm_6> <avclm_98> </avc_lm>
+
+TOTAL TOKENS: 510,621
