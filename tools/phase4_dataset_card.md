@@ -21,9 +21,22 @@ size_categories:
 
 This dataset contains **YOLO-cleaned, bone-normalised 3D human pose** data extracted from ~40K YouTube videos in the [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo) dataset. It is the output of **Phase 4** in the FineVideo-VLA pipeline and serves as input to Phase 5 (adaptive PCHIP tokenisation for LLM pretraining).
 
+Use this dataset if you need **raw 3D joint positions** (floats in metres, not tokenised). For tokenised versions, see the related datasets below.
+
+## Statistics
+
+| Metric | Value |
+|--------|-------|
+| Source videos | ~40,000 from FineVideo |
+| Videos after cleaning | 40,195 |
+| Total size | ~107 GB (uncompressed JSONL) |
+| Frame rate | 30 fps (resampled from native video fps) |
+| Joints per frame | 17 (H36M skeleton) |
+| Frames per window | 8 (~0.267 seconds) |
+
 ## Pipeline Context
 
-This dataset is part of a multi-phase pipeline that produces the **FineVideo-VLA** multimodal pretraining dataset (~25B tokens). The full pipeline:
+This dataset is part of a multi-phase pipeline that produces the **FineVideo-VLA** multimodal pretraining dataset:
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -54,12 +67,18 @@ Each record is a JSON line:
 | `window_id` | int | Absolute frame index of the first frame in this window |
 | `states` | float[8][17][3] | 3D joint positions in metres |
 
+### Timestamp
+
+Absolute timestamp from video start: `window_id / 30.0` seconds.
+
+Each window covers 8 frames = `8/30 = 0.267` seconds.
+
 ### Joint coordinates
 
 - **Root-centred**: pelvis (joint 0) is always at origin `[0, 0, 0]`
 - **Bone-normalised**: skeleton retargeted to canonical bone lengths
 - **Smoothed**: temporal smoothing + anti-teleportation filter applied in Phase 3
-- **Coordinate range**: typically ±0.5m, max ±2.0m
+- **Coordinate range**: typically +/-0.5m, max +/-2.0m
 
 ### Joint order (H36M 17-joint skeleton)
 
@@ -110,26 +129,32 @@ Windows are dropped if **>= 4 of 8 frames** have no person detected by YOLOv8 (c
 
 Some windows may still contain `null`/`NaN` values for individual joints where the pose estimator failed — downstream consumers should check for this.
 
-## Statistics
+## Related Datasets
 
-- **~40,000 videos** from FineVideo
-- **~107 GB** uncompressed JSONL
-- **30 fps** (resampled from original video fps)
-- **17 joints** per frame (H36M skeleton)
+| Dataset | Description |
+|---------|-------------|
+| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Merged multimodal dataset with tokenised pose + video tokens (hierarchical, full metadata) |
+| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL (ready for pretraining) |
 
 ## Usage
 
 ```python
 from datasets import load_dataset
+import numpy as np
 
-ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-Pose")
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-Pose", streaming=True)
 
-# Access a sample
-sample = ds["train"][0]
-print(sample["video_id"])      # e.g., "abc123XYZ"
-print(sample["window_id"])     # e.g., 320
-print(len(sample["states"]))   # 8 (frames)
-print(len(sample["states"][0]))# 17 (joints)
+for sample in ds["train"]:
+    video_id = sample["video_id"]
+    window_id = sample["window_id"]
+    states = np.array(sample["states"])  # (8, 17, 3)
+    timestamp = window_id / 30.0         # seconds from video start
+
+    print(f"Video: {video_id}")
+    print(f"Window: {window_id} ({timestamp:.3f}s)")
+    print(f"Pelvis (frame 0): {states[0, 0]}")  # always [0, 0, 0]
+    print(f"Right wrist (frame 0): {states[0, 16]}")
+    break
 ```
 
 ## Citation
