@@ -131,6 +131,18 @@ def main():
     print(f"Uploading to {REPO_ID} ...")
     api = HfApi()
     api.create_repo(repo_id=REPO_ID, repo_type="dataset", exist_ok=True)
+
+    readme_path = os.path.join(os.path.dirname(__file__), "vla_flattened_dataset_card.md")
+    if os.path.exists(readme_path):
+        api.upload_file(
+            path_or_fileobj=readme_path,
+            path_in_repo="README.md",
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            commit_message="Update dataset card for flattened adaptive Megatron-LM format",
+        )
+        print("Uploaded dataset card.")
+
     api.upload_folder(
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
