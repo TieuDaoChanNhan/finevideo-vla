@@ -127,27 +127,26 @@ def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_co
 
     Standard modalities:  <tag> N1 N2 </tag> → <prefix_N1> <prefix_N2>
     Agent blocks:         <agent> <fps_30> <pelvis> ... </agent> → kept as-is
+
+    Agent blocks are extracted first (they contain nested joint tags that
+    would confuse the generic regex), then remaining modalities are parsed.
     """
     if not isinstance(token_str, str):
         return [], ""
 
-    pattern = r'(<\w+>.*?</\w+>)'
-    segments = re.findall(pattern, token_str, re.DOTALL)
-    trailing_text = re.sub(pattern, '', token_str, flags=re.DOTALL).strip()
     all_final_tokens = []
 
-    for seg in segments:
-        match = re.match(r'<([^>]+)>(.*?)</\1>', seg, re.DOTALL)
-        if not match:
-            continue
+    agent_pattern = re.compile(r'<agent>(.*?)</agent>', re.DOTALL)
+    agent_blocks = agent_pattern.findall(token_str)
+    remaining = agent_pattern.sub('', token_str)
 
+    pattern = r'<([a-zA-Z0-9_]+)>\s*(.*?)\s*</\1>'
+    for match in re.finditer(pattern, remaining, re.DOTALL):
         tag_name = match.group(1).strip()
         payload = match.group(2).strip()
         tag_lower = tag_name.lower()
 
-        if "agent" in tag_lower:
-            keep = True
-        elif tag_lower.startswith("avc"):
+        if tag_lower.startswith("avc"):
             keep = random.random() > drop_rate_avc
         elif tag_lower.startswith("cosmos"):
             keep = random.random() > drop_rate_cosmos
@@ -159,18 +158,19 @@ def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_co
         if not keep:
             continue
 
-        if "agent" in tag_lower:
-            inner_tokens = re.findall(r'<[^>]+>', payload)
-            if inner_tokens:
-                all_final_tokens.extend(inner_tokens)
-            else:
-                nums = payload.split()
-                all_final_tokens.extend(f"<agent_{n}>" for n in nums if n.isdigit())
-        else:
-            prefix = "avclm" if tag_name == "avc_lm" else tag_name
-            nums = payload.split()
-            all_final_tokens.extend(f"<{prefix}_{n}>" for n in nums if n.isdigit())
+        prefix = "avclm" if tag_name == "avc_lm" else tag_name
+        nums = payload.split()
+        all_final_tokens.extend(f"<{prefix}_{n}>" for n in nums if n.isdigit())
 
+    for agent_payload in agent_blocks:
+        inner_tokens = re.findall(r'<[^>]+>', agent_payload)
+        if inner_tokens:
+            all_final_tokens.extend(inner_tokens)
+        else:
+            nums = agent_payload.split()
+            all_final_tokens.extend(f"<agent_{n}>" for n in nums if n.isdigit())
+
+    trailing_text = re.sub(r'<[^>]+>.*?</[^>]+>', '', remaining, flags=re.DOTALL).strip()
     return all_final_tokens, trailing_text
 
 
