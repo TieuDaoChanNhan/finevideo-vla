@@ -18,7 +18,7 @@ tags:
 language:
   - en
 size_categories:
-  - 100K<n<1M
+  - 10K<n<100K
 ---
 
 # FineVideo-VLA-flattened — Megatron-LM Multimodal Pretraining Dataset
@@ -36,28 +36,44 @@ Four token modalities are interleaved per record:
 
 Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo).
 
+**Only activities containing 3D pose (`<agent>`) tokens are included.** This ensures every record has action data for Vision-Language-Action pretraining.
+
+## Modality Dropout (Token Balancing)
+
+In the raw data, image tokens massively outnumber action tokens. To balance the modalities for pretraining, **modality dropout** is applied during flattening:
+
+| Modality | Raw avg tokens | Ratio vs Agent | Drop rate | Effective tokens |
+|----------|---------------|----------------|-----------|-----------------|
+| AVC-LM | ~125,000 | 373x | **99%** | ~1,250 |
+| Cosmos | ~6,400 | 19x | **90%** | ~640 |
+| Seed2 | ~340 | 1x | 0% | ~340 |
+| Agent | ~300 | 1x | 0% | ~300 |
+
+This brings all four modalities into roughly the same order of magnitude (~300–1,250 tokens each), preventing the model from being overwhelmed by image tokens during pretraining.
+
+## Data Augmentation
+
+Each record has text augmentation applied:
+
+| Augmentation | Rate | Description |
+|-------------|------|-------------|
+| Synonym replacement | 15% | Content words (>5 chars) randomly replaced with WordNet synonyms |
+| Stopword dropout | 5% | Common stopwords randomly removed |
+| Sentence permutation | 10% | Speech transcript sentences randomly reordered |
+| Speech/token interleaving | — | Speech chunks inserted at random positions among tokens |
+| Layout block shuffling | — | Title/Context/Keywords/Tokens blocks randomly reordered |
+
 ## Statistics
 
 | Metric | Value |
 |--------|-------|
 | Total shards | 160 |
-| Total records | ~372,385 activities |
-| Total size | ~2.1 TB (uncompressed) |
 | Train shards | 152 |
 | Test shards | 8 |
 | Split ratio | 95/5 (seed 42) |
-| Avg file size | 13.2 GB |
-| Malformed records | 0 |
+| Compression | gzip level 5 |
 
-### Modality coverage
-
-| Modality | Coverage | Description |
-|----------|----------|-------------|
-| seed2 | 100% | Semantic keyframes |
-| cosmos | 100% | Spatial video tokens |
-| avc_lm | 100% | H.264 BPE tokens |
-| agent (3D pose) | ~16–20% | Only for videos with visible humans |
-| speech transcript | ~97% | `[Speech: ...]` in prompt |
+*Note: record counts and sizes depend on the flatten run. Check the repo files tab for current shard sizes.*
 
 ## Data Format
 
@@ -65,50 +81,40 @@ Each line is a JSON object with a single `text` field:
 
 ```json
 {
-  "text": "USER: A person is cooking in a kitchen. [Speech: First, we add the oil...] ASSISTANT: <seed2> <seed2_3758> <seed2_2157> ... </seed2> <cosmos> <cosmos_58567> <cosmos_56071> ... </cosmos> <avc_lm> <avclm_263> <avclm_107> ... </avc_lm> <agent> <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> <pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis> <r_hip> ... </r_hip> ... </agent> <seed2> ... </seed2> <cosmos> ... </cosmos> ..."
+  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n<seed2_6750> <seed2_680> ... <cosmos_18232> ... <avclm_263> <avclm_107> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ..."
 }
 ```
 
 ### Structure within `text`
 
-```
-USER: <activity_description> [Speech: <transcript>] ASSISTANT: <tokens...>
-```
-
-Tokens are grouped by 8-frame chunk, repeating in order:
+Each record contains four layout blocks (randomly shuffled):
 
 ```
-<seed2> <seed2_N> ... </seed2>          (every 30 frames)
-<cosmos> <cosmos_N> ... </cosmos>        (every 8 frames)
-<avc_lm> <avclm_N> ... </avc_lm>        (every 8 frames)
-<agent> <fps_30> <joint>...</joint> ... </agent>  (every 8 frames, when pose data exists)
+### Title: <scene title, augmented>
+### Context: <global context + activity prompt, augmented>
+### Keywords: <scene thematic + mood, augmented>
+<interleaved speech chunks and flattened tokens>
 ```
 
 ### Token details
 
-**Seed2/Cosmos/AVC-LM**: Flattened from raw numbers into individual vocabulary tokens.
-- `<seed2> 3758 2157 </seed2>` → `<seed2> <seed2_3758> <seed2_2157> </seed2>`
-- `<avc_lm> 263 107 </avc_lm>` → `<avc_lm> <avclm_263> <avclm_107> </avc_lm>`
+**Seed2/Cosmos/AVC-LM**: Flattened from raw numbers into individual vocabulary tokens (with modality dropout applied).
 
-**Agent (3D pose)**: Self-describing named tokens, passed through unchanged:
+**Agent (3D pose)**: Self-describing named tokens, always kept:
 
 ```
-<agent>
-  <fps_30>
-  <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
-           <pelvis_t_7> <pelvis_x_130> <pelvis_y_128> <pelvis_z_130> </pelvis>
-  <r_hip>  <r_hip_t_0>  <r_hip_x_115> <r_hip_y_130> <r_hip_z_126>
-           <r_hip_t_7>  <r_hip_x_116> <r_hip_y_125> <r_hip_z_124> </r_hip>
-  ...17 joints...
-</agent>
+<fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+<pelvis_t_7> <pelvis_x_130> <pelvis_y_128> <pelvis_z_130> </pelvis>
+<r_hip> <r_hip_t_0> <r_hip_x_115> <r_hip_y_130> <r_hip_z_126>
+<r_hip_t_7> <r_hip_x_116> <r_hip_y_125> <r_hip_z_124> </r_hip>
+...17 joints...
 ```
 
 - **t tokens**: frame index 0–7 within the 8-frame window (control point time)
 - **xyz tokens**: quantized uint8 [0, 255], mapping [-2.0m, +2.0m]
 - **Dequantize**: `position_metres = token_value / 255.0 * 4.0 - 2.0`
 - **CP tiers**: 2 CPs (static joints) / 4 CPs (moderate motion) / 8 CPs (fast motion)
-- **Token count per chunk**: 171–579, typical ~250–300
-- **Reconstruct 8 frames**: parse t/x/y/z per joint → PCHIP interpolation
+- **Reconstruct 8 frames**: parse t/x/y/z per joint, apply PCHIP interpolation
 
 ### Joint names (H36M 17-joint skeleton)
 
@@ -120,19 +126,6 @@ Tokens are grouped by 8-frame chunk, repeating in order:
 | nose | head_top | l_shoulder |
 | l_elbow | l_wrist | r_shoulder |
 | r_elbow | r_wrist | |
-
-## Time Alignment
-
-All modalities share the same **30fps frame grid**:
-
-| Token type | Rate | Timestamp formula |
-|------------|------|-------------------|
-| Seed2 | every 30 frames | `activity_start + k × 1.0s` |
-| Cosmos | every 8 frames | `activity_start + k × 8/30s` |
-| AVC-LM | every 8 frames | `activity_start + k × 8/30s` |
-| Agent | every 8 frames | `activity_start + k × 8/30s` |
-
-Agent tokens may be absent for some chunks (no person detected by YOLO in that window).
 
 ## Vocabulary
 
@@ -153,14 +146,14 @@ This dataset uses an extended GPT-NeoX-20b vocabulary. The expanded vocab file i
 
 | Dataset | Description |
 |---------|-------------|
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Pre-flattening hierarchical dataset with full metadata (timestamps, scenes, activities) |
+| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Pre-flattening hierarchical dataset with full metadata (timestamps, scenes, activities, no dropout) |
 | [EmpathicRobotics/FineVideo-Phase4-Pose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-Pose) | Raw 3D pose data (float arrays, not tokenised) |
 
 ## Pipeline
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Step A | Seed2 + Cosmos + AVC-LM tokenisation (40 nodes × 4 GPU) | Done |
+| Step A | Seed2 + Cosmos + AVC-LM tokenisation (40 nodes x 4 GPU) | Done |
 | Phase 1 | HRNet 2D pose detection | Done |
 | Phase 2 | MotionBERT 2D→3D lifting | Done |
 | Phase 2.5 | Resample to 30fps | Done |
@@ -168,7 +161,7 @@ This dataset uses an extended GPT-NeoX-20b vocabulary. The expanded vocab file i
 | Phase 4 | YOLO person-detection cleaning | Done |
 | Phase 5 | Adaptive PCHIP per-joint tokenisation | Done |
 | Phase 6 | Merge agent tokens into multimodal dataset | Done |
-| **Phase 7** | **Flatten to Megatron-LM format (this dataset)** | **Done** |
+| **Phase 7** | **Flatten with modality dropout + augmentation (this dataset)** | **Done** |
 
 ## Usage
 
@@ -179,9 +172,7 @@ ds = load_dataset("EmpathicRobotics/FineVideo-VLA-flattened", streaming=True)
 
 for sample in ds["train"]:
     text = sample["text"]
-    # text starts with "USER: ..." and contains all interleaved tokens
-    has_pose = "<agent>" in text
-    print(f"Length: {len(text.split())} tokens, has pose: {has_pose}")
+    print(f"Length: {len(text.split())} tokens")
     break
 ```
 

@@ -64,7 +64,7 @@ def process_and_compress(file_list, prefix, target_dir, source_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Upload flattened XYZT shards to HuggingFace."
+        description="Upload flattened adaptive shards to HuggingFace."
     )
     parser.add_argument(
         "--source-dir",
@@ -147,7 +147,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload flattened adaptive Megatron-LM dataset (160 shards, ~372K records, ~2.1TB)",
+        commit_message="Upload flattened adaptive Megatron-LM dataset with modality dropout and augmentation",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")

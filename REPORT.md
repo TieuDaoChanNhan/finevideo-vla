@@ -121,37 +121,52 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 **Script:** `pipeline/flatten_dataset.py`
 
 - Converted hierarchical JSON (video → scenes → activities) to flat Megatron-LM JSONL
-- Each output record: `{"text": "USER: <prompt> [Speech: ...] ASSISTANT: <seed2_N> ... <cosmos_N> ... <avclm_N> ... <agent> ... </agent> ..."}`
-- Seed2/cosmos/avc_lm tokens flattened: `<seed2> 3758 2157 </seed2>` → `<seed2> <seed2_3758> <seed2_2157> </seed2>`
+- **Agent-only filter**: only activities containing `<agent>` blocks are emitted, ensuring every record has action data
+- Seed2/cosmos/avc_lm tokens flattened: `<seed2> 3758 2157 </seed2>` → `<seed2_3758> <seed2_2157>`
 - Agent blocks passed through unchanged (already self-describing named tokens)
-- All activities emitted (not just those with `<agent>`)
-- Output: 160 `flat_final_vla_adaptive_rank_*.jsonl` files, **2.12 TB** total, **~372K records**
+- Output: 160 `flat_final_vla_adaptive_rank_*.jsonl` files
 
-#### Modality drop rate (previous XYZT flatten — `tools/flatten.py`)
+#### Modality dropout (token balancing)
 
-In the earlier XYZT pipeline, before flattening we found that image tokens (AVC-LM, Cosmos) massively outnumbered the action tokens (agent). The raw token ratio was approximately:
+In the raw data, image tokens massively outnumber action tokens. The raw token ratio per activity:
 
-| Modality | Avg tokens/activity | Ratio vs agent |
+| Modality | Avg tokens/activity | Ratio vs Agent |
 |----------|-------------------|----------------|
 | AVC-LM | ~125,000 | ~373x |
 | Cosmos | ~6,400 | ~19x |
 | Seed2 | ~340 | ~1x |
-| Agent (XYZT) | ~335 | 1x (baseline) |
+| Agent | ~300 | 1x (baseline) |
 
-To bring all modalities into a balanced ratio for pretraining, we applied **modality dropout** during flattening:
+To balance modalities for pretraining, **modality dropout** is applied during flattening:
 
-| Modality | Drop rate | Effective keep | Result |
-|----------|-----------|---------------|--------|
-| AVC-LM | 99% | ~1% of chunks | Reduces ~125K → ~1.25K tokens |
-| Cosmos | 90% | ~10% of chunks | Reduces ~6.4K → ~640 tokens |
-| Seed2 | 0% | 100% | Kept all ~340 tokens |
-| Agent | 0% | 100% | Kept all ~335 tokens |
+| Modality | Drop rate | Effective keep | Resulting tokens |
+|----------|-----------|---------------|-----------------|
+| AVC-LM | **99%** | ~1% of chunks | ~1,250 |
+| Cosmos | **90%** | ~10% of chunks | ~640 |
+| Seed2 | 0% | 100% | ~340 |
+| Agent | 0% | 100% | ~300 |
 
-This brought all four modalities into roughly the same order of magnitude (~300–1300 tokens each), preventing the model from being overwhelmed by AVC-LM tokens during pretraining.
+This brings all four modalities into roughly the same order of magnitude (~300–1,250 tokens each), preventing the model from being overwhelmed by image tokens during pretraining.
 
-The old `tools/flatten.py` also applied **data augmentation** (synonym replacement at 15%, stopword dropout at 5%, sentence permutation at 10%, speech/token interleaving) and only emitted activities containing `<agent>` blocks — producing a smaller, agent-focused dataset of ~70K records at ~24 GB.
+#### Data augmentation
 
-The current adaptive flatten (`pipeline/flatten_dataset.py`) emits **all** activities (with or without agent) without dropout or augmentation, producing the full ~372K record / 2.12 TB dataset. Drop rates and augmentation can be re-applied downstream if needed during training.
+The flatten also applies text augmentation to improve robustness:
+
+| Augmentation | Rate | Description |
+|-------------|------|-------------|
+| Synonym replacement | 15% | Content words (>5 chars) replaced with WordNet synonyms |
+| Stopword dropout | 5% | Common stopwords randomly removed |
+| Sentence permutation | 10% | Speech transcript sentences randomly reordered |
+| Speech/token interleaving | — | Speech chunks inserted at random positions among tokens |
+| Layout block shuffling | — | Title/Context/Keywords/Tokens blocks randomly reordered |
+
+Each output record contains four layout blocks (randomly shuffled):
+```
+### Title: <scene title, augmented>
+### Context: <global context + activity prompt, augmented>
+### Keywords: <scene thematic + mood, augmented>
+<interleaved speech chunks and flattened tokens>
+```
 
 ### 2.5 Vocabulary Extension
 **Script:** `tools/expand_vocab.py`
