@@ -1,0 +1,47 @@
+[
+  {
+    "_description": "AFTER flattening — flat Megatron-LM format with dropout + augmentation",
+    "record_index": 0,
+    "total_whitespace_tokens": 3133,
+    "text_char_length": 44329,
+    "token_breakdown": {
+      "seed2": 256,
+      "cosmos": 400,
+      "avclm": 0,
+      "agent_fps_tags": 8,
+      "agent_joint_tokens": 2104,
+      "text_and_other": 365
+    },
+    "text_preview": "### Context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Lord Force'. Find Out what makes these games stand out in the gambling world. Ircha speaks to television camera.\n<seed2_6750> <seed2_680> <seed2_4021> <seed2_6120> <seed2_680> <seed2_1940> <seed2_4551> <seed2_3495> <seed2_938> <seed2_2157> <seed2_2157> <seed2_6120> <seed2_2998> <seed2_2269> <seed2_7575> <seed2_2191> <seed2_2157> <seed2_1940> <seed2_3449> <seed2_2081> <seed2_6281> <seed2_6120> <seed2_2269> <seed2_3449> <seed2_6970> <seed2_6133> <seed2_5121> <seed2_5481> <seed2_4021> <seed2_5321> <seed2_429> <seed2_4482> <seed2_6750> <seed2_680> <seed2_2353> <seed2_6120> <seed2_680> <seed2_1940> <seed2_5121> <seed2_4815> <seed2_5260> <seed2_3449> <seed2_2157> <seed2_3088> <seed2_1281> <seed2_1786> <seed2_6994> <seed2_3225> <seed2_3449> <seed2_1940> <seed2_2666> <seed2_3791> <seed2_3088> <seed2_5773> <seed2_2998> <seed2_3449> <seed2_6970> <seed2_1740> <seed2_5121> <seed2_1146> <seed2_95> <seed2_5168> <seed2_2684> <seed2_5564> <seed2_6750> <seed2_680> <seed2_95> <seed2_6120> <seed2_680> <seed2_1940> <seed2_3088> <seed2_7801> <seed2_5773> <seed2_3449> <seed2_3449> <seed2_3088> <seed2_1281> <seed2_2269> <seed2_6994> <seed2_455> <seed2_3449> <seed2_5003> <seed2_3449> <seed2_3088> <seed2_3088> <seed2_7275> <seed2_5121> <seed2_3449> <seed2_6970> <seed2_6697> <seed2_5121> <seed2_1146> <seed2_95> <seed2_5168> <seed2_1186> <seed2_2191> <seed2_1137> <seed2_680> <seed2_6643> <seed2_1454> <seed2_680> <seed2_1940> <seed2_1296> <seed2_3726> <seed2_3140> <seed2_2315> <seed2_2315> <seed2_3140> <seed2_2187> <seed2_8165> <seed2_2738> <seed2_5807> <seed2_2315> <seed2_1940> <seed2_3140> <seed2_3726> <seed2_2187> <seed2_6643> <seed2_3140> <seed2_3449> <seed2_8165> <seed2_5121> <seed2_1281> <seed2_1448> <seed2_6643> <seed2_2187> <seed2_2738> <seed2_3682> <seed2_1137> <seed2_680> <seed2_6643> <seed2_1454> <seed2_680> <seed2_1940> <seed2_1296> <seed2_3726> <seed2_3140> <seed2_2315> <se"
+  },
+  {
+    "_description": "AFTER flattening — flat Megatron-LM format with dropout + augmentation",
+    "record_index": 1,
+    "total_whitespace_tokens": 4694,
+    "text_char_length": 65456,
+    "token_breakdown": {
+      "seed2": 960,
+      "cosmos": 2200,
+      "avclm": 0,
+      "agent_fps_tags": 4,
+      "agent_joint_tokens": 1248,
+      "text_and_other": 282
+    },
+    "text_preview": "### Context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Creator Force'. Let On what makes these games stand out in the play world. Ircha continues discussing Forspoken's main theatrical role.\n### Keywords: Critiques and acknowledgments of Forspoken's main persona. Neutral (Pensive)\n### Title: Analyzing Forspoken's Main Graph\nThe persona could have been improved a tiny bit. <seed2_3260> <seed2_680> <seed2_3537> <seed2_5222> <seed2_680> <seed2_5003> <seed2_440> <seed2_3495> <seed2_6947> <seed2_2315> <seed2_2157> <seed2_7344> <seed2_781> <seed2_6947> <seed2_7819> <seed2_8176> <seed2_2157> <seed2_5003> <seed2_2157> <seed2_3495> <seed2_781> <seed2_4255> <seed2_440> <seed2_2315> <seed2_5796> <seed2_5222> <seed2_5796> <seed2_4237> <seed2_7819> <seed2_5222> <seed2_8096> <seed2_7229> <cosmos_8324> <cosmos_17100> <cosmos_29830> <cosmos_3942> <cosmos_4303> <cosmos_11473> <cosmos_14495> <cosmos_21571> <cosmos_18583> <cosmos_46794> <cosmos_33295> <cosmos_3807> <cosmos_11470> <cosmos_43091> <cosmos_4943> <cosmos_31308> <cosmos_35975> <cosmos_8877> <cosmos_16395> <cosmos_3171> <cosmos_16033> <cosmos_9267> <cosmos_29910> <cosmos_11788> <cosmos_3757> <cosmos_46252> <cosmos_26003> <cosmos_22683> <cosmos_28303> <cosmos_5268> <cosmos_10961> <cosmos_28363> <cosmos_741> <cosmos_39378> <cosmos_5895> <cosmos_24268> <cosmos_44577> <cosmos_20143> <cosmos_19203> <cosmos_19186> <cosmos_3626> <cosmos_1633> <cosmos_32484> <cosmos_35548> <cosmos_29748> <cosmos_13985> <cosmos_1818> <cosmos_4199> <cosmos_37969> <cosmos_20135> <cosmos_6551> <cosmos_28858> <cosmos_22242> <cosmos_49383> <cosmos_21801> <cosmos_31594> <cosmos_18978> <cosmos_3355> <cosmos_6424> <cosmos_3891> <cosmos_49832> <cosmos_16096> <cosmos_11164> <cosmos_45326> <cosmos_46803> <cosmos_17000> <cosmos_21361> <cosmos_3817> <cosmos_5227> <cosmos_13585> <cosmos_2410> <cosmos_4634> <cosmos_15588> <cosmos_37060> <cosmos_41374> <cosmos_3276> <cosmos_1235> <cosmos_4114> <cosmos_15955> <cos"
+  },
+  {
+    "_description": "AFTER flattening — flat Megatron-LM format with dropout + augmentation",
+    "record_index": 2,
+    "total_whitespace_tokens": 19947,
+    "text_char_length": 248320,
+    "token_breakdown": {
+      "seed2": 1472,
+      "cosmos": 3000,
+      "avclm": 14026,
+      "agent_fps_tags": 4,
+      "agent_joint_tokens": 1104,
+      "text_and_other": 341
+    },
+    "text_preview": "### Title: Fighting End Game Subject Matter in Forspoken\n### Context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Godhead Force'. Strike what makes these games stand out in gambling world. Ircha continues discussing Forspoken's scrap arrangement.\n<seed2_6750> <seed2_680> <seed2_2353> <seed2_6120> <seed2_680> <seed2_1940> <seed2_2269> <seed2_2191> <seed2_7800> <seed2_3449> <seed2_3449> <seed2_4204> <seed2_2219> <seed2_1786> <seed2_8031> <seed2_6637> <seed2_3449> <seed2_1940> <seed2_3449> <seed2_7800> <seed2_7055> <seed2_6120> <seed2_2269> <seed2_3449> <seed2_7800> <seed2_3399> <seed2_7800> <seed2_1146> <seed2_8031> <seed2_6120> <seed2_2684> <seed2_7800> <seed2_6750> <seed2_680> <seed2_95> <seed2_6120> <seed2_680> <seed2_1940> <seed2_2269> <seed2_7801> <seed2_3088> <seed2_3449> <seed2_3449> <seed2_5489> <seed2_2219> <seed2_5851> <seed2_6994> <seed2_6637> <seed2_3449> <seed2_1940> <seed2_3449> <seed2_1470> <seed2_1183> <seed2_3868> <seed2_2269> <seed2_3449> <seed2_6970> <seed2_3251> <seed2_5825> <seed2_1146> <seed2_8031> <seed2_6120> <seed2_2691> <seed2_3702> <seed2_6750> <seed2_680> <seed2_7819> <seed2_4255> <seed2_680> <seed2_1940> <seed2_5598> <seed2_604> <seed2_8165> <seed2_2157> <seed2_2157> <seed2_5604> <seed2_5604> <seed2_3147> <seed2_7801> <seed2_5436> <seed2_2157> <seed2_5003> <seed2_2157> <seed2_2191> <seed2_5604> <seed2_4255> <seed2_5598> <seed2_3449> <seed2_3147> <seed2_5230> <seed2_3147> <seed2_3209> <seed2_5> <seed2_4255> <seed2_5> <seed2_242> <seed2_4840> <seed2_680> <seed2_5> <seed2_3965> <seed2_2157> <seed2_1940> <seed2_7376> <seed2_7660> <seed2_4354> <seed2_2157> <seed2_2157> <seed2_5873> <seed2_3965> <seed2_3939> <seed2_7652> <seed2_5696> <seed2_2157> <seed2_1146> <seed2_3449> <seed2_7660> <seed2_5873> <seed2_5> <seed2_5823> <seed2_3449> <seed2_4354> <seed2_7713> <seed2_809> <seed2_7660> <seed2_2460> <seed2_3965> <seed2_5> <seed2_7660> <seed2_6750> <seed2_680> <seed2_5> <seed2_2460> <seed2_2157> <se"
+  }
+]

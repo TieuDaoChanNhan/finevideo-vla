@@ -1,0 +1,161 @@
+================================================================================
+  BEFORE vs AFTER FLATTENING — FineVideo-VLA Dataset
+================================================================================
+
+================================================================================
+  BEFORE FLATTENING (final_dataset_adaptive)
+  Hierarchical JSON: video -> scenes -> activities
+  Dataset: EmpathicRobotics/FineVideo-VLA-Agent
+================================================================================
+
+video_id: bswbQtOPk6E
+global_context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Divine Force'. Discover what makes these games stand out in the gaming world.
+scene_title: Introduction to Forspoken
+scene_thematic: Reception of Forspoken by the gaming community.
+scene_mood: Neutral (Curious)
+text_prompt: Ircha speaks to the camera.
+speech_transcript: When it comes to For Spoken, we need to talk about For Spoken and I feel so bad.  I don't know if you have heard the news, but the company got bought by Square Enix and that is probably...
+agent_fps: 30
+video_tokens_total_chars: 625841
+chunk_timing_total: 30 chunks
+
+--- timing_meta ---
+  video_fps: 30
+  chunk_frames: 8
+  seed2_rate: 1fps_keyframe
+  cosmos_rate: every_8_frames
+  avc_lm_rate: every_8_frames
+  agent_rate: every_8_frames_adaptive_pchip
+
+--- chunk_timing (first 3) ---
+  {"chunk_idx": 0, "abs_frame": 30, "start_sec": 1.0, "end_sec": 1.2667, "has_seed2": true, "has_cosmos": true, "has_avc_lm": true, "has_agent": false}
+  {"chunk_idx": 1, "abs_frame": 38, "start_sec": 1.2667, "end_sec": 1.5333, "has_seed2": true, "has_cosmos": true, "has_avc_lm": true, "has_agent": false}
+  {"chunk_idx": 2, "abs_frame": 46, "start_sec": 1.5333, "end_sec": 1.8, "has_seed2": true, "has_cosmos": true, "has_avc_lm": true, "has_agent": false}
+
+--- video_tokens preview (one chunk per modality) ---
+
+[seed2]
+  <seed2> 6750 680 4021 6120 680 1940 4551 3495 938 2157 2157 6120 2998 2269 7575 2191 2157
+  1940 3449 2081 6281 6120 2269 3449 6970 6133 5121 5481 4021 5321 429 4482 </seed2>...
+
+[cosmos]
+  <cosmos> 35479 55958 32462 42151 45350 31895 57511 45286 45382 47239 43662 18664 29421
+  26608 3450 48977 3242 16376 28307 44103 19095 50038 44782 45345 37740 36430 31536 7064
+  21861 44694 41678 57604 42195 52440 42762 59038 19288 17134 19621 38615 19215 60630 47438
+  43223 36837 47631 9000 16866 32967 5...
+
+[avc_lm]
+  <avc_lm> 263 107 70 196 17 6552 6560 6559 6612 6846 84 224 73 237 193 234 221 76 187 154 48
+  5845 5855 6055 4912 1531 103 115 481 36 53 1631 36 118 1199 2428 36 56 58 1615 101 103 55
+  1531 76 2356 1631 4006 4450 75 49 56 36 4249 71 2290 115 817 103 1531 71 4802 125 112 1738
+  120 36 54 52 52 4068 52 404...
+
+[agent]
+  <agent> <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+  <pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis> <r_hip> <r_hip_t_0>
+  <r_hip_x_115> <r_hip_y_130> <r_hip_z_126> <r_hip_t_1> <r_hip_x_115> <r_hip_y_130>
+  <r_hip_z_126> <r_hip_t_3> <r_hip_x_115> <r_hip_y_128> <r_hip_z_126> <r_hip_t_7>
+  <r_hip_x_116> <r_hip_y_125> <r_hip_z_124> </r_hip> <r_knee> <r_knee_t_0> <r_knee_x_122>
+  <r_knee_y_157> <r_knee_z_132> <r_knee_t_1> <r_knee_x_122> <r_knee_y_157> <r_knee_z_132>
+  <r_knee_t_3> <r_knee_x_118> <r_knee_y_157> <r_knee_z_131> <r_knee_t_7> <r_knee_x_116>
+  <r_k...
+
+
+================================================================================
+  AFTER FLATTENING (megatron_dataset_adaptive)
+  Flat JSONL: one {"text": "..."} per activity
+  Agent-only filter | 99% AVC-LM dropout | 90% Cosmos dropout
+  Synonym replacement | Stopword dropout | Speech interleaving
+  Dataset: EmpathicRobotics/FineVideo-VLA-flattened
+================================================================================
+
+--- Record 0 ---
+Total tokens: 3133
+  seed2:           256
+  cosmos:          400  (after 90% dropout)
+  avclm:             0  (after 99% dropout)
+  agent joints:   2104  (kept 100%)
+  agent fps:         8
+  text/other:      365
+
+Text preview (first 1500 chars):
+  ### Context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and
+  'Star Ocean: The Lord Force'. Find Out what makes these games stand out in the gambling
+  world. Ircha speaks to television camera. <seed2_6750> <seed2_680> <seed2_4021>
+  <seed2_6120> <seed2_680> <seed2_1940> <seed2_4551> <seed2_3495> <seed2_938> <seed2_2157>
+  <seed2_2157> <seed2_6120> <seed2_2998> <seed2_2269> <seed2_7575> <seed2_2191> <seed2_2157>
+  <seed2_1940> <seed2_3449> <seed2_2081> <seed2_6281> <seed2_6120> <seed2_2269> <seed2_3449>
+  <seed2_6970> <seed2_6133> <seed2_5121> <seed2_5481> <seed2_4021> <seed2_5321> <seed2_429>
+  <seed2_4482> <seed2_6750> <seed2_680> <seed2_2353> <seed2_6120> <seed2_680> <seed2_1940>
+  <seed2_5121> <seed2_4815> <seed2_5260> <seed2_3449> <seed2_2157> <seed2_3088> <seed2_1281>
+  <seed2_1786> <seed2_6994> <seed2_3225> <seed2_3449> <seed2_1940> <seed2_2666> <seed2_3791>
+  <seed2_3088> <seed2_5773> <seed2_2998> <seed2_3449> <seed2_6970> <seed2_1740> <seed2_5121>
+  <seed2_1146> <seed2_95> <seed2_5168> <seed2_2684> <seed2_5564> <seed2_6750> <seed2_680>
+  <seed2_95> <seed2_6120> <seed2_680> <seed2_1940> <seed2_3088> <seed2_7801> <seed2_5773>
+  <seed2_3449> <seed2_3449> <seed2_3088> <seed2_1281> <seed2_2269> <seed2_6994> <seed2_455>
+  <seed2_3449> <seed2_5003> <seed2_3449> <seed2_3088> <seed2_3088> <seed2_7275> <seed2_5121>
+  <seed2_3449> <seed2_6970> <seed2_6697> <seed2_5121> <seed2_1146> <seed2_95> <seed2_5168>
+  <seed2_1186> <seed2_2191> <seed2_1137> <seed2_680> <seed2_6643> <seed2_
+
+----------------------------------------
+
+--- Record 1 ---
+Total tokens: 4694
+  seed2:           960
+  cosmos:         2200  (after 90% dropout)
+  avclm:             0  (after 99% dropout)
+  agent joints:   1248  (kept 100%)
+  agent fps:         4
+  text/other:      282
+
+Text preview (first 1500 chars):
+  ### Context: Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and
+  'Star Ocean: The Creator Force'. Let On what makes these games stand out in the play world.
+  Ircha continues discussing Forspoken's main theatrical role. ### Keywords: Critiques and
+  acknowledgments of Forspoken's main persona. Neutral (Pensive) ### Title: Analyzing
+  Forspoken's Main Graph The persona could have been improved a tiny bit. <seed2_3260>
+  <seed2_680> <seed2_3537> <seed2_5222> <seed2_680> <seed2_5003> <seed2_440> <seed2_3495>
+  <seed2_6947> <seed2_2315> <seed2_2157> <seed2_7344> <seed2_781> <seed2_6947> <seed2_7819>
+  <seed2_8176> <seed2_2157> <seed2_5003> <seed2_2157> <seed2_3495> <seed2_781> <seed2_4255>
+  <seed2_440> <seed2_2315> <seed2_5796> <seed2_5222> <seed2_5796> <seed2_4237> <seed2_7819>
+  <seed2_5222> <seed2_8096> <seed2_7229> <cosmos_8324> <cosmos_17100> <cosmos_29830>
+  <cosmos_3942> <cosmos_4303> <cosmos_11473> <cosmos_14495> <cosmos_21571> <cosmos_18583>
+  <cosmos_46794> <cosmos_33295> <cosmos_3807> <cosmos_11470> <cosmos_43091> <cosmos_4943>
+  <cosmos_31308> <cosmos_35975> <cosmos_8877> <cosmos_16395> <cosmos_3171> <cosmos_16033>
+  <cosmos_9267> <cosmos_29910> <cosmos_11788> <cosmos_3757> <cosmos_46252> <cosmos_26003>
+  <cosmos_22683> <cosmos_28303> <cosmos_5268> <cosmos_10961> <cosmos_28363> <cosmos_741>
+  <cosmos_39378> <cosmos_5895> <cosmos_24268> <cosmos_44577> <cosmos_20143> <cosmos_19203>
+  <cosmos_19186> <cosmos_3626> <cosmos_1633> <cosmos_32484> <cosmos_35548> <cosmos_29748> <
+
+----------------------------------------
+
+--- Record 2 ---
+Total tokens: 19947
+  seed2:          1472
+  cosmos:         3000  (after 90% dropout)
+  avclm:         14026  (after 99% dropout)
+  agent joints:   1104  (kept 100%)
+  agent fps:         4
+  text/other:      341
+
+Text preview (first 1500 chars):
+  ### Title: Fighting End Game Subject Matter in Forspoken ### Context: Join Ircha as she
+  shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Godhead
+  Force'. Strike what makes these games stand out in gambling world. Ircha continues
+  discussing Forspoken's scrap arrangement. <seed2_6750> <seed2_680> <seed2_2353>
+  <seed2_6120> <seed2_680> <seed2_1940> <seed2_2269> <seed2_2191> <seed2_7800> <seed2_3449>
+  <seed2_3449> <seed2_4204> <seed2_2219> <seed2_1786> <seed2_8031> <seed2_6637> <seed2_3449>
+  <seed2_1940> <seed2_3449> <seed2_7800> <seed2_7055> <seed2_6120> <seed2_2269> <seed2_3449>
+  <seed2_7800> <seed2_3399> <seed2_7800> <seed2_1146> <seed2_8031> <seed2_6120> <seed2_2684>
+  <seed2_7800> <seed2_6750> <seed2_680> <seed2_95> <seed2_6120> <seed2_680> <seed2_1940>
+  <seed2_2269> <seed2_7801> <seed2_3088> <seed2_3449> <seed2_3449> <seed2_5489> <seed2_2219>
+  <seed2_5851> <seed2_6994> <seed2_6637> <seed2_3449> <seed2_1940> <seed2_3449> <seed2_1470>
+  <seed2_1183> <seed2_3868> <seed2_2269> <seed2_3449> <seed2_6970> <seed2_3251> <seed2_5825>
+  <seed2_1146> <seed2_8031> <seed2_6120> <seed2_2691> <seed2_3702> <seed2_6750> <seed2_680>
+  <seed2_7819> <seed2_4255> <seed2_680> <seed2_1940> <seed2_5598> <seed2_604> <seed2_8165>
+  <seed2_2157> <seed2_2157> <seed2_5604> <seed2_5604> <seed2_3147> <seed2_7801> <seed2_5436>
+  <seed2_2157> <seed2_5003> <seed2_2157> <seed2_2191> <seed2_5604> <seed2_4255> <seed2_5598>
+  <seed2_3449> <seed2_3147> <seed2_5230> <seed2_3147> <seed2_3209> <seed2_5> <see
+
+----------------------------------------
+

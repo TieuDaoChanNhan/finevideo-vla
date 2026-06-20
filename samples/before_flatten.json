@@ -1,0 +1,62 @@
+{
+  "_description": "BEFORE flattening — hierarchical format from final_dataset_adaptive",
+  "video_id": "bswbQtOPk6E",
+  "global_context": "Join Ircha as she shares her thoughts on two intriguing games, 'Forspoken' and 'Star Ocean: The Divine Force'. Discover what makes these games stand out in the gaming world.",
+  "scene_title": "Introduction to Forspoken",
+  "scene_thematic": "Reception of Forspoken by the gaming community.",
+  "scene_mood": "Neutral (Curious)",
+  "activity": {
+    "text_prompt": "Ircha speaks to the camera.",
+    "speech_transcript": "When it comes to For Spoken, we need to talk about For Spoken and I feel so bad.  I don't know if you have heard the news, but the company got bought by Square Enix and that is probably",
+    "agent_fps": 30,
+    "agent_token_order": "image_first"
+  },
+  "timing_meta": {
+    "video_fps": 30,
+    "chunk_frames": 8,
+    "seed2_rate": "1fps_keyframe",
+    "cosmos_rate": "every_8_frames",
+    "avc_lm_rate": "every_8_frames",
+    "agent_rate": "every_8_frames_adaptive_pchip"
+  },
+  "chunk_timing_first_3": [
+    {
+      "chunk_idx": 0,
+      "abs_frame": 30,
+      "start_sec": 1.0,
+      "end_sec": 1.2667,
+      "has_seed2": true,
+      "has_cosmos": true,
+      "has_avc_lm": true,
+      "has_agent": false
+    },
+    {
+      "chunk_idx": 1,
+      "abs_frame": 38,
+      "start_sec": 1.2667,
+      "end_sec": 1.5333,
+      "has_seed2": true,
+      "has_cosmos": true,
+      "has_avc_lm": true,
+      "has_agent": false
+    },
+    {
+      "chunk_idx": 2,
+      "abs_frame": 46,
+      "start_sec": 1.5333,
+      "end_sec": 1.8,
+      "has_seed2": true,
+      "has_cosmos": true,
+      "has_avc_lm": true,
+      "has_agent": false
+    }
+  ],
+  "chunk_timing_total": 30,
+  "video_tokens_one_chunk_preview": {
+    "seed2": "<seed2> 6750 680 4021 6120 680 1940 4551 3495 938 2157 2157 6120 2998 2269 7575 2191 2157 1940 3449 2081 6281 6120 2269 3449 6970 6133 5121 5481 4021 5321 429 4482 </seed2>...",
+    "cosmos": "<cosmos> 35479 55958 32462 42151 45350 31895 57511 45286 45382 47239 43662 18664 29421 26608 3450 48977 3242 16376 28307 44103 19095 50038 44782 45345 37740 36430 31536 7064 21861 44694 41678 57604 42195 52440 42762 59038 19288 17134 19621 38615 19215 60630 47438 43223 36837 47631 9000 16866 32967 5...",
+    "avc_lm": "<avc_lm> 263 107 70 196 17 6552 6560 6559 6612 6846 84 224 73 237 193 234 221 76 187 154 48 5845 5855 6055 4912 1531 103 115 481 36 53 1631 36 118 1199 2428 36 56 58 1615 101 103 55 1531 76 2356 1631 4006 4450 75 49 56 36 4249 71 2290 115 817 103 1531 71 4802 125 112 1738 120 36 54 52 52 4068 52 404...",
+    "agent": "<agent> <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> <pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis> <r_hip> <r_hip_t_0> <r_hip_x_115> <r_hip_y_130> <r_hip_z_126> <r_hip_t_1> <r_hip_x_115> <r_hip_y_130> <r_hip_z_126> <r_hip_t_3> <r_hip_x_115> <r_hip_y_128> <r_hip_z_126> <r_hip_t_7> <r_hip_x_116> <r_hip_y_125> <r_hip_z_124> </r_hip> <r_knee> <r_knee_t_0> <r_knee_x_122> <r_knee_y_157> <r_knee_z_132> <r_knee_t_1> <r_knee_x_122> <r_knee_y_157> <r_knee_z_132> <r_knee_t_3> <r_knee_x_118> <r_knee_y_157> <r_knee_z_131> <r_knee_t_7> <r_knee_x_116> <r_k..."
+  },
+  "video_tokens_total_chars": 625841
+}
