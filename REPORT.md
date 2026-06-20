@@ -124,7 +124,34 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - Each output record: `{"text": "USER: <prompt> [Speech: ...] ASSISTANT: <seed2_N> ... <cosmos_N> ... <avclm_N> ... <agent> ... </agent> ..."}`
 - Seed2/cosmos/avc_lm tokens flattened: `<seed2> 3758 2157 </seed2>` → `<seed2> <seed2_3758> <seed2_2157> </seed2>`
 - Agent blocks passed through unchanged (already self-describing named tokens)
-- Output: 160 `flat_final_vla_adaptive_rank_*.jsonl` files, **2.12 TB** total
+- All activities emitted (not just those with `<agent>`)
+- Output: 160 `flat_final_vla_adaptive_rank_*.jsonl` files, **2.12 TB** total, **~372K records**
+
+#### Modality drop rate (previous XYZT flatten — `tools/flatten.py`)
+
+In the earlier XYZT pipeline, before flattening we found that image tokens (AVC-LM, Cosmos) massively outnumbered the action tokens (agent). The raw token ratio was approximately:
+
+| Modality | Avg tokens/activity | Ratio vs agent |
+|----------|-------------------|----------------|
+| AVC-LM | ~125,000 | ~373x |
+| Cosmos | ~6,400 | ~19x |
+| Seed2 | ~340 | ~1x |
+| Agent (XYZT) | ~335 | 1x (baseline) |
+
+To bring all modalities into a balanced ratio for pretraining, we applied **modality dropout** during flattening:
+
+| Modality | Drop rate | Effective keep | Result |
+|----------|-----------|---------------|--------|
+| AVC-LM | 99% | ~1% of chunks | Reduces ~125K → ~1.25K tokens |
+| Cosmos | 90% | ~10% of chunks | Reduces ~6.4K → ~640 tokens |
+| Seed2 | 0% | 100% | Kept all ~340 tokens |
+| Agent | 0% | 100% | Kept all ~335 tokens |
+
+This brought all four modalities into roughly the same order of magnitude (~300–1300 tokens each), preventing the model from being overwhelmed by AVC-LM tokens during pretraining.
+
+The old `tools/flatten.py` also applied **data augmentation** (synonym replacement at 15%, stopword dropout at 5%, sentence permutation at 10%, speech/token interleaving) and only emitted activities containing `<agent>` blocks — producing a smaller, agent-focused dataset of ~70K records at ~24 GB.
+
+The current adaptive flatten (`pipeline/flatten_dataset.py`) emits **all** activities (with or without agent) without dropout or augmentation, producing the full ~372K record / 2.12 TB dataset. Drop rates and augmentation can be re-applied downstream if needed during training.
 
 ### 2.5 Vocabulary Extension
 **Script:** `tools/expand_vocab.py`
