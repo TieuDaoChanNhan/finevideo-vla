@@ -18,7 +18,7 @@ size_categories:
   - 100K<n<1M
 ---
 
-# FineVideo-VLA-Agent — Multimodal Video+Pose Dataset (Hierarchical)
+# FineVideo-Phase5-AgentTokens — Multimodal Video+Pose Dataset (Hierarchical)
 
 ## Overview
 
@@ -29,7 +29,7 @@ This dataset is the **full-structure merged multimodal dataset** from the FineVi
 - **AVC-LM** — every 8 frames H.264 BPE tokens (vocab: 8192)
 - **Agent** — adaptive PCHIP 3D human pose tokens with named joints (17 joints, variable CPs)
 
-Use this dataset when you need the full hierarchical structure, timestamps, or metadata. For flat Megatron-LM training, use [FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) instead.
+Use this dataset when you need the full hierarchical structure, timestamps, or metadata. For flat Megatron-LM training, use [FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) instead.
 
 ## Statistics
 
@@ -159,20 +159,22 @@ Use this to associate any token group with an absolute timestamp in the video.
 | Phase 5 | Adaptive PCHIP per-joint tokenisation | Done |
 | **Phase 6** | **Merge agent tokens into multimodal dataset (this dataset)** | **Done** |
 | Phase 7 | Flatten to Megatron-LM format | Done |
+| Phase 8 | Megatron-LM tokenization (.bin/.idx) | Done |
 
-## Related Datasets
+## Related Resources
 
-| Dataset | Description |
-|---------|-------------|
-| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL (ready for pretraining, no structure/metadata) |
-| [EmpathicRobotics/FineVideo-Phase4-Pose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-Pose) | Raw 3D pose data (float arrays, not tokenised) |
+| Resource | Description |
+|----------|-------------|
+| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer (144,215 vocab, all VLA tokens atomic) |
+| [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (ready for pretraining, no structure/metadata) |
+| [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | Raw 3D pose data (float arrays, not tokenised) |
 
 ## Usage
 
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("EmpathicRobotics/FineVideo-VLA-Agent", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase5-AgentTokens", streaming=True)
 
 for sample in ds["train"]:
     video_id = sample["video_id"]

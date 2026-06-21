@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Upload flattened adaptive Megatron-LM shards to EmpathicRobotics/FineVideo-VLA-flattened.
+Upload flattened adaptive Megatron-LM shards to EmpathicRobotics/FineVideo-Phase7-Flattened.
 
   - 160 shards split 95/5 train/test (seed 42)
   - gzip compressed in parallel
@@ -21,7 +21,7 @@ import shutil
 from huggingface_hub import HfApi, login
 
 
-REPO_ID = "EmpathicRobotics/FineVideo-VLA-flattened"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase7-Flattened"
 TOTAL_SHARDS = 160
 TEST_RATIO = 0.05
 SEED = 42

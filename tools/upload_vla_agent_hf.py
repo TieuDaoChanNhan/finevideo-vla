@@ -3,7 +3,7 @@
 Upload final merged VLA-Agent adaptive dataset to HuggingFace.
 
 Compresses 160 rank JSONL files into gzipped train/test shards,
-then uploads to EmpathicRobotics/FineVideo-VLA-Agent.
+then uploads to EmpathicRobotics/FineVideo-Phase5-AgentTokens.
 
 Usage:
     export HF_TOKEN='hf_...'
@@ -20,7 +20,7 @@ import shutil
 from huggingface_hub import HfApi, login
 
 
-REPO_ID = "EmpathicRobotics/FineVideo-VLA-Agent"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase5-AgentTokens"
 TOTAL_SHARDS = 160
 TEST_RATIO = 0.05
 SEED = 42

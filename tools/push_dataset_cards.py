@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Push dataset cards (README.md) to all three HuggingFace dataset repos.
+Push dataset cards (README.md) to all five HuggingFace dataset repos.
 
 Usage:
     export HF_TOKEN='hf_...'
@@ -13,16 +13,24 @@ from huggingface_hub import HfApi, login
 
 CARDS = [
     {
-        "repo_id": "EmpathicRobotics/FineVideo-VLA-Agent",
+        "repo_id": "EmpathicRobotics/FineVideo-Prototype-Tokenized",
+        "card_file": os.path.join(os.path.dirname(__file__), "prototype_tokenized_dataset_card.md"),
+    },
+    {
+        "repo_id": "EmpathicRobotics/FineVideo-Phase2-3DPose",
+        "card_file": os.path.join(os.path.dirname(__file__), "phase2_3dpose_dataset_card.md"),
+    },
+    {
+        "repo_id": "EmpathicRobotics/FineVideo-Phase4-YOLOPose",
+        "card_file": os.path.join(os.path.dirname(__file__), "phase4_dataset_card.md"),
+    },
+    {
+        "repo_id": "EmpathicRobotics/FineVideo-Phase5-AgentTokens",
         "card_file": os.path.join(os.path.dirname(__file__), "vla_agent_dataset_card.md"),
     },
     {
-        "repo_id": "EmpathicRobotics/FineVideo-VLA-flattened",
+        "repo_id": "EmpathicRobotics/FineVideo-Phase7-Flattened",
         "card_file": os.path.join(os.path.dirname(__file__), "vla_flattened_dataset_card.md"),
-    },
-    {
-        "repo_id": "EmpathicRobotics/FineVideo-Phase4-Pose",
-        "card_file": os.path.join(os.path.dirname(__file__), "phase4_dataset_card.md"),
     },
 ]
 

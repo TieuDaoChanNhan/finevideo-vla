@@ -48,6 +48,7 @@ This dataset is part of a multi-phase pipeline that produces the **FineVideo-VLA
 | Phase 5 | Adaptive PCHIP per-joint tokenisation | Done |
 | Phase 6 | Merge agent tokens into multimodal dataset | Done |
 | Phase 7 | Flatten to Megatron-LM format | Done |
+| Phase 8 | Megatron-LM tokenization (.bin/.idx) | Done |
 
 ## Data Format
 
@@ -129,12 +130,13 @@ Windows are dropped if **>= 4 of 8 frames** have no person detected by YOLOv8 (c
 
 Some windows may still contain `null`/`NaN` values for individual joints where the pose estimator failed — downstream consumers should check for this.
 
-## Related Datasets
+## Related Resources
 
-| Dataset | Description |
-|---------|-------------|
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Merged multimodal dataset with tokenised pose + video tokens (hierarchical, full metadata) |
-| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL (ready for pretraining) |
+| Resource | Description |
+|----------|-------------|
+| [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Merged multimodal dataset with tokenised pose + video tokens (hierarchical, full metadata) |
+| [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (ready for pretraining) |
+| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer (144,215 vocab) |
 
 ## Usage
 
@@ -142,7 +144,7 @@ Some windows may still contain `null`/`NaN` values for individual joints where t
 from datasets import load_dataset
 import numpy as np
 
-ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-Pose", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-YOLOPose", streaming=True)
 
 for sample in ds["train"]:
     video_id = sample["video_id"]

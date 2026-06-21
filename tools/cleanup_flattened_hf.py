@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delete old root-level files from EmpathicRobotics/FineVideo-VLA-flattened.
+Delete old root-level files from EmpathicRobotics/FineVideo-Phase7-Flattened.
 
 Removes the previous upload's files (train-*_flattened.jsonl.gz,
 test-*_flattened.jsonl.gz, nohup.out) that sit in the repo root,
@@ -14,7 +14,7 @@ Usage:
 import os
 from huggingface_hub import CommitOperationDelete, HfApi, login
 
-REPO_ID = "EmpathicRobotics/FineVideo-VLA-flattened"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase7-Flattened"
 
 
 def main():

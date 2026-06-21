@@ -55,7 +55,7 @@ def main():
     SEED = 42
 
     # 2. Target HuggingFace repo
-    REPO_ID = "EmpathicRobotics/FineVideo-VLA-Agent"
+    REPO_ID = "EmpathicRobotics/FineVideo-Phase5-AgentTokens"
 
     os.makedirs(TRAIN_DIR, exist_ok=True)
     os.makedirs(TEST_DIR, exist_ok=True)

@@ -1,5 +1,5 @@
 """
-Upload rebuilt parquet shards to EmpathicRobotics/finevideo-3d-pose,
+Upload rebuilt parquet shards to EmpathicRobotics/FineVideo-Phase2-3DPose,
 replacing the current train split entirely, and push an updated README.
 
 Features:
@@ -9,7 +9,7 @@ Features:
 Usage:
     python tools/upload_parquet_hf.py \
         --parquet-dir /e/scratch/reformo/nguyen38/parquet_3d_shards_30fps \
-        --repo        EmpathicRobotics/finevideo-3d-pose \
+        --repo        EmpathicRobotics/FineVideo-Phase2-3DPose \
         --token       YOUR_HF_TOKEN   # or set HF_TOKEN env var
 """
 
@@ -88,7 +88,7 @@ Coordinates are **root-centred** (pelvis = origin) and in metres.
 from datasets import load_dataset
 import numpy as np
 
-ds = load_dataset("EmpathicRobotics/finevideo-3d-pose", split="train")
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase2-3DPose", split="train")
 
 row = ds[0]
 
@@ -167,7 +167,7 @@ def get_uploaded_shards(api: HfApi, repo: str) -> set:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--parquet-dir", required=True)
-    parser.add_argument("--repo",        default="EmpathicRobotics/finevideo-3d-pose")
+    parser.add_argument("--repo",        default="EmpathicRobotics/FineVideo-Phase2-3DPose")
     parser.add_argument("--token",       default=None,
                         help="HF write token (fallback: HF_TOKEN env var)")
     parser.add_argument("--skip-readme", action="store_true",

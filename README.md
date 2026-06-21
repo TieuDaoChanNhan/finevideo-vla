@@ -23,14 +23,18 @@ Agent tokens are already self-describing (`<pelvis_x_128>` etc) and pass through
 
 ---
 
-## HuggingFace Datasets
+## HuggingFace Datasets & Tokenizer
 
-| Dataset | Description | Records | Size |
-|---------|-------------|---------|------|
-| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flattened Megatron-LM JSONL (final output, ready for pretraining) | ~372K | ~2.1 TB |
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Adaptive PCHIP merged dataset (pre-flattening, hierarchical) | ~399K activities | ~657 GB |
+| Resource | Description | Size |
+|----------|-------------|------|
+| [FineVideo-Prototype-Tokenized](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Prototype-Tokenized) | Base video tokens (Seed2/Cosmos/AVC-LM) from prototype pipeline | ~660 GB |
+| [FineVideo-Phase2-3DPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase2-3DPose) | 3D pose NPY from MotionBERT (after Phase 2) | ~259 GB |
+| [FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | YOLO-cleaned 3D poses (raw floats, after Phase 3+4) | ~107 GB |
+| [FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Full hierarchical merged dataset with agent tokens (after Phase 5+6) | ~657 GB |
+| [FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (final output, ready for pretraining) | ~19 GB |
+| [tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer (GPT-NeoX-20b + 93,938 VLA tokens, 144,215 total) | — |
 
-Both are split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
+All datasets under `EmpathicRobotics/`, split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
 
 ---
 
@@ -54,8 +58,8 @@ Both are split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
 │   ├── phase3_kinematics_processor.py  Signal filter + kinematics
 │   ├── phase4_yolo_cleaner.py      YOLO person-presence filter
 │   ├── phase5_adaptive_pchip.py    Adaptive PCHIP per-joint tokeniser (2/4/8 CPs)
-│   ├── merge_adaptive_tokens.py    Inject adaptive <agent> blocks into training_ready
-│   ├── flatten_dataset.py          Flatten merged → Megatron flat JSONL
+│   ├── phase6_merge_adaptive.py    Inject adaptive <agent> blocks into training_ready
+│   ├── phase7_flatten.py           Flatten merged → Megatron flat JSONL
 │   ├── phase5b_xyzt_tokenizer.py   Legacy: fixed 409-token XYZT format
 │   ├── phase5_interpolation_tokenizer.py  Legacy: opaque 256-token format
 │   ├── merge_xyzt_tokens.py        Legacy: XYZT merge
@@ -63,9 +67,11 @@ Both are split 152 train / 8 test shards (95/5, seed 42), gzip compressed.
 │
 ├── tools/                      # Standalone utilities (see tools/README.md)
 │   ├── expand_vocab.py             Extend GPT-NeoX-20b vocab with all VLA tokens
+│   ├── upload_tokenizer.py         Create + upload HF tokenizer (add_tokens) to HuggingFace
 │   ├── upload_flattened_hf.py      Upload flattened dataset to HuggingFace
 │   ├── upload_vla_agent_hf.py      Upload merged agent dataset to HuggingFace
 │   ├── upload_phase4_hf.py         Upload Phase 4 cleaned poses to HuggingFace
+│   ├── rename_hf_repos.py          Rename HF repos to phase-numbered convention
 │   ├── cleanup_hf_repo.py          Remove leftover folders from HF repo
 │   ├── check_flattened_data.py     Validate flattened Megatron files
 │   ├── check_vocab.py              Verify expanded vocab
@@ -141,18 +147,23 @@ Step G   pipeline/phase5_adaptive_pchip.py     (slurm/submit_phase5_adaptive.sh)
 
 ──────────────── MERGE + FLATTEN ───────────────────────────────────────────
 
-Step H   pipeline/merge_adaptive_tokens.py     (slurm/submit_merge_adaptive.sh)
+Step H   pipeline/phase6_merge_adaptive.py     (slurm/submit_merge_adaptive.sh)
          Injects <agent> blocks (with per-joint named tokens) after each
          <avc_lm> block in training_ready files. Adds chunk_timing + timing_meta.
          → $DATA/FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl
 
-Step I   pipeline/flatten_dataset.py           (run on login node or SLURM)
+Step I   pipeline/phase7_flatten.py            (run on login node or SLURM)
          Hierarchical JSON → Megatron flat JSONL.
          Agent blocks pass through unchanged (already self-describing).
          → $DATA/FineVideo-VLA/megatron_dataset_adaptive/flat_*.jsonl
 
-Step J   tools/upload_flattened_hf.py
-         Compress + upload to EmpathicRobotics/FineVideo-VLA-flattened
+Step J   tokenize_vla_adaptive.sbatch          (4 nodes, Ray-distributed)
+         Megatron-LM tokenization using EmpathicRobotics/tokenizer-vla-adaptive.
+         All VLA tokens are atomic (added via add_tokens, not manual JSON).
+         → /p/data1/mmlaion/shared/vla/tokenized_output/vla_adaptive/
+
+Step K   tools/upload_flattened_hf.py
+         Compress + upload to EmpathicRobotics/FineVideo-Phase7-Flattened
 ```
 
 Steps B–G run from `3d-human-pose/` as working directory. `outputs/` is a symlink to `$DATA/outputs/`.
@@ -210,37 +221,25 @@ All four token types share the same **30fps frame grid**:
 
 ## Flattened Dataset Statistics
 
-The final flattened output (`megatron_dataset_adaptive/`) contains:
+The final flattened output (`megatron_dataset_adaptive/`, agent-only with modality dropout) contains:
 
 | Metric | Value |
 |--------|-------|
 | Total files | 160 |
-| Total records | ~372,385 |
-| Total size | ~2.12 TB |
-| Avg file size | 13.2 GB (range: 11.1–15.7 GB) |
+| Total records | 69,844 |
+| Total size | ~19.2 GB |
+| Avg file size | ~120 MB (range: 85.8–176.7 MB) |
 | Malformed JSON | 0 |
-| Records with agent | ~16–20% |
-| Records with speech | ~97% |
+| Records with agent | **100%** (agent-only filter) |
 
-**Modality coverage** (all records):
+**Modality coverage** (after dropout):
 
-| Modality | Coverage |
-|----------|----------|
-| seed2 | 100% |
-| cosmos | 100% |
-| avc_lm | 100% |
-| agent (3D pose) | ~16–20% |
-
-**Token length distribution** (whitespace tokens per record):
-
-| Bucket | Count |
-|--------|-------|
-| 10K–50K | 424 |
-| 50K–100K | 456 |
-| 100K–500K | 1,098 |
-| 500K–1M | 295 |
-| 1M–5M | 237 |
-| >5M | 31 |
+| Modality | Coverage | Avg tokens/record |
+|----------|----------|-------------------|
+| seed2 | 100% | ~1,320 |
+| cosmos | ~88% | ~3,091 |
+| avclm | ~49% | ~7,260 |
+| agent (3D pose) | 100% | ~9,712 |
 
 ---
 
@@ -301,7 +300,7 @@ All data lives under `$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen
 
 ---
 
-## Vocabulary
+## Vocabulary & Tokenizer
 
 `tools/expand_vocab.py` extends the GPT-NeoX-20b base (`vocab/vocab.json`) with:
 
@@ -317,9 +316,13 @@ All data lives under `$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen
 | `<{joint}_t_N>` (0–7) | 136 |
 | Wrapper tags (`<agent>`, `</agent>`, …) | 8 |
 
-Output: `vocab/vocab_expanded.json`.
+Output: `vocab/vocab_expanded.json` (JSON lookup only).
+
+**Important:** The vocab JSON alone does not make BPE tokenizers treat these as atomic tokens. A separate HuggingFace tokenizer was created using `tokenizer.add_tokens(special_tokens=True)` and published at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive). This tokenizer must be used for Megatron-LM tokenization — the base GPT-NeoX-20b tokenizer will incorrectly split tokens like `<seed2_1137>` into sub-pieces.
+
 ```bash
-python tools/check_vocab.py   # verify vocab_size (rounds to nearest 128 for Megatron)
+python tools/check_vocab.py       # verify vocab_size (rounds to nearest 128 for Megatron)
+python tools/upload_tokenizer.py  # create + upload HF tokenizer
 ```
 
 ---
@@ -328,11 +331,14 @@ python tools/check_vocab.py   # verify vocab_size (rounds to nearest 128 for Meg
 
 ```bash
 # Flatten the adaptive merged dataset (Step I)
-python pipeline/flatten_dataset.py
+python pipeline/phase7_flatten.py
 
 # Upload flattened dataset to HuggingFace
 export HF_TOKEN='hf_...'
 python tools/upload_flattened_hf.py
+
+# Upload the VLA tokenizer to HuggingFace
+python tools/upload_tokenizer.py
 
 # Upload merged agent dataset to HuggingFace
 python tools/upload_vla_agent_hf.py

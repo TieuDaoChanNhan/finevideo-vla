@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Delete leftover train/ and test/ folders from EmpathicRobotics/FineVideo-VLA-Agent on HuggingFace.
+Delete leftover train/ and test/ folders from EmpathicRobotics/FineVideo-Phase5-AgentTokens on HuggingFace.
 
 Usage:
     export HF_TOKEN='hf_...'
@@ -12,7 +12,7 @@ import os
 from huggingface_hub import CommitOperationDelete, HfApi, login
 
 
-REPO_ID = "EmpathicRobotics/FineVideo-VLA-Agent"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase5-AgentTokens"
 
 
 def main():

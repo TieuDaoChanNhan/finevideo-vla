@@ -3,7 +3,7 @@
 Upload Phase 4 YOLO-cleaned 3D pose data to HuggingFace.
 
 Shards 40K per-video JSONL files into combined JSONL.GZ shards,
-then uploads to EmpathicRobotics/FineVideo-Phase4-Pose.
+then uploads to EmpathicRobotics/FineVideo-Phase4-YOLOPose.
 
 Each output line: {"video_id": str, "window_id": int, "states": [8][17][3]}
   - states[f][j] = [x, y, z] in metres, root-centred, bone-normalised
@@ -25,7 +25,7 @@ import glob
 from huggingface_hub import HfApi, login
 
 
-REPO_ID = "EmpathicRobotics/FineVideo-Phase4-Pose"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase4-YOLOPose"
 NUM_SHARDS = 64
 TEST_RATIO = 0.05
 SEED = 42

@@ -2,7 +2,7 @@
 """
 Convert 3d_npy/*.npy files to Parquet shards and upload to HuggingFace.
 
-Dataset: EmpathicRobotics/finevideo-3d-pose
+Dataset: EmpathicRobotics/FineVideo-Phase2-3DPose
 Schema per row:
   video_id   : str   — YouTube video ID (filename without .npy)
   num_frames : int32 — number of frames T
@@ -25,7 +25,7 @@ import pyarrow.parquet as pq
 from huggingface_hub import HfApi, DatasetCard
 
 NPY_DIR = Path("/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/3d_npy")
-REPO_ID = "EmpathicRobotics/finevideo-3d-pose"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase2-3DPose"
 REPO_TYPE = "dataset"
 
 SCHEMA = pa.schema([
@@ -135,7 +135,7 @@ Coordinates are in metres, camera-relative.
 from datasets import load_dataset
 import numpy as np
 
-ds = load_dataset("EmpathicRobotics/finevideo-3d-pose", split="train", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase2-3DPose", split="train", streaming=True)
 for row in ds:
     poses = np.frombuffer(row["joints_3d"], dtype=np.float32).reshape(row["num_frames"], 17, 3)
     print(row["video_id"], poses.shape)

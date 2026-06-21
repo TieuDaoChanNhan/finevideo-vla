@@ -21,7 +21,7 @@ size_categories:
   - 10K<n<100K
 ---
 
-# FineVideo-VLA-flattened — Megatron-LM Multimodal Pretraining Dataset
+# FineVideo-Phase7-Flattened — Megatron-LM Multimodal Pretraining Dataset
 
 ## Overview
 
@@ -127,9 +127,19 @@ Each record contains four layout blocks (randomly shuffled):
 | l_elbow | l_wrist | r_shoulder |
 | r_elbow | r_wrist | |
 
-## Vocabulary
+## Vocabulary & Tokenizer
 
-This dataset uses an extended GPT-NeoX-20b vocabulary. The expanded vocab file is available at [the pipeline repository](https://github.com/TieuDaoChanNhan/3D-Human-Pose-VLA).
+This dataset uses an extended GPT-NeoX-20b vocabulary with 93,938 additional VLA tokens (total: 144,215).
+
+The HuggingFace tokenizer is available at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive). All VLA tokens are registered as atomic tokens via `add_tokens(special_tokens=True)` — the BPE tokenizer will never split them into sub-pieces.
+
+```python
+from transformers import AutoTokenizer
+
+tok = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-adaptive")
+tok.encode("<seed2_1137>")    # -> [59908]  (single token, not split)
+tok.encode("<pelvis_x_128>")  # -> [131151] (single token, not split)
+```
 
 | Token range | Count |
 |-------------|-------|
@@ -142,12 +152,13 @@ This dataset uses an extended GPT-NeoX-20b vocabulary. The expanded vocab file i
 | Modality wrappers | 8 |
 | Legacy `<agent_N>` | 256 |
 
-## Related Datasets
+## Related Resources
 
-| Dataset | Description |
-|---------|-------------|
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Pre-flattening hierarchical dataset with full metadata (timestamps, scenes, activities, no dropout) |
-| [EmpathicRobotics/FineVideo-Phase4-Pose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-Pose) | Raw 3D pose data (float arrays, not tokenised) |
+| Resource | Description |
+|----------|-------------|
+| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer for this dataset (144,215 vocab) |
+| [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Pre-flattening hierarchical dataset with full metadata (timestamps, scenes, activities, no dropout) |
+| [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | Raw 3D pose data (float arrays, not tokenised) |
 
 ## Pipeline
 
@@ -162,13 +173,14 @@ This dataset uses an extended GPT-NeoX-20b vocabulary. The expanded vocab file i
 | Phase 5 | Adaptive PCHIP per-joint tokenisation | Done |
 | Phase 6 | Merge agent tokens into multimodal dataset | Done |
 | **Phase 7** | **Flatten with modality dropout + augmentation (this dataset)** | **Done** |
+| Phase 8 | Megatron-LM tokenization (.bin/.idx) | Done |
 
 ## Usage
 
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("EmpathicRobotics/FineVideo-VLA-flattened", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase7-Flattened", streaming=True)
 
 for sample in ds["train"]:
     text = sample["text"]

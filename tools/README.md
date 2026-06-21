@@ -10,12 +10,14 @@ independently as needed.
 
 | Script | Purpose |
 |--------|---------|
-| `upload_flattened_hf.py` | Compress + upload flattened adaptive Megatron-LM dataset to [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened). 160 shards → 152 train / 8 test (95/5, seed 42), gzip level 5. Source: `megatron_dataset_adaptive/` |
-| `upload_vla_agent_hf.py` | Upload adaptive PCHIP merged shards to [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent). Source: `final_dataset_adaptive/` |
-| `upload_phase4_hf.py` | Upload Phase 4 YOLO-cleaned pose data to HuggingFace |
+| `upload_tokenizer.py` | Create + upload the VLA tokenizer (GPT-NeoX-20b + 93,938 tokens via `add_tokens`) to [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) |
+| `upload_flattened_hf.py` | Compress + upload flattened adaptive Megatron-LM dataset to [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened). 160 shards → 152 train / 8 test (95/5, seed 42), gzip level 5 |
+| `upload_vla_agent_hf.py` | Upload adaptive PCHIP merged shards to [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) |
+| `upload_phase4_hf.py` | Upload Phase 4 YOLO-cleaned pose data to [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) |
 | `upload_3d_npy_to_hf.py` | Upload raw 3D pose numpy arrays as parquet shards |
 | `upload_parquet_hf.py` | Upload rebuilt parquet shards (resume-safe) |
-| `cleanup_hf_repo.py` | Delete leftover `train/` and `test/` folders from `EmpathicRobotics/FineVideo-VLA-Agent` |
+| `rename_hf_repos.py` | Rename HF repos to phase-numbered naming convention |
+| `cleanup_hf_repo.py` | Delete leftover `train/` and `test/` folders from HF repos |
 
 All upload scripts require `HF_TOKEN`:
 ```bash
@@ -27,16 +29,18 @@ python tools/upload_flattened_hf.py --skip-compress  # upload only (reuse compre
 
 ---
 
-## Vocabulary
+## Vocabulary & Tokenizer
 
 | Script | Purpose |
 |--------|---------|
-| `expand_vocab.py` | Extend GPT-NeoX-20b vocab (`vocab/vocab.json`) with all VLA tokens: `<agent_N>` (256), `<avclm_N>` (8192), `<seed2_N>` (8192), `<cosmos_N>` (64000), `<fps_N>` (60), per-joint named tokens (`<{joint}_x_N>`, `<{joint}_t_N>`, wrappers), and modality wrapper tags. Output: `vocab/vocab_expanded.json` |
+| `expand_vocab.py` | Extend GPT-NeoX-20b vocab (`vocab/vocab.json`) with all VLA tokens. Output: `vocab/vocab_expanded.json` (JSON lookup only) |
+| `upload_tokenizer.py` | Create a proper HuggingFace tokenizer using `add_tokens(special_tokens=True)` and upload to [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive). This is the tokenizer that must be used for Megatron-LM tokenization — the base GPT-NeoX-20b tokenizer will split VLA tokens into sub-pieces |
 | `check_vocab.py` | Verify expanded vocab size and token ranges (rounds to nearest 128 for Megatron) |
 
 ```bash
-python tools/expand_vocab.py
-python tools/check_vocab.py
+python tools/expand_vocab.py       # generate vocab JSON
+python tools/upload_tokenizer.py   # create + upload HF tokenizer (requires HF_TOKEN)
+python tools/check_vocab.py        # verify
 ```
 
 ---

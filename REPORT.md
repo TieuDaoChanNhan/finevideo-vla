@@ -96,7 +96,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - `phase5b_xyzt_tokenizer.py` — 409 fixed tokens per chunk (all 8 frames × 17 joints × 3 dims). Clear and self-describing but wasteful for static joints.
 
 ### 2.3 Merge (Phase 6)
-**Script:** `pipeline/merge_adaptive_tokens.py` | **SLURM:** `slurm/submit_merge_adaptive.sh`
+**Script:** `pipeline/phase6_merge_adaptive.py` | **SLURM:** `slurm/submit_merge_adaptive.sh`
 
 - Injected `<agent>` blocks after each `<avc_lm>` block in the training_ready files
 - Time alignment: matched agent windows to AVC-LM chunks by frame index (both at 30fps, 8-frame windows)
@@ -118,7 +118,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **~399K activities** across all videos, **~2.15M agent blocks** injected
 
 ### 2.4 Flatten (Phase 7)
-**Script:** `pipeline/flatten_dataset.py`
+**Script:** `pipeline/phase7_flatten.py`
 
 - Converted hierarchical JSON (video → scenes → activities) to flat Megatron-LM JSONL
 - **Agent-only filter**: only activities containing `<agent>` blocks are emitted, ensuring every record has action data
@@ -168,7 +168,7 @@ Each output record contains four layout blocks (randomly shuffled):
 <interleaved speech chunks and flattened tokens>
 ```
 
-### 2.5 Vocabulary Extension
+### 2.5 Vocabulary Extension & Tokenizer
 **Script:** `tools/expand_vocab.py`
 
 Extended GPT-NeoX-20b base vocabulary (`vocab/vocab.json`) with all VLA tokens:
@@ -187,28 +187,60 @@ Extended GPT-NeoX-20b base vocabulary (`vocab/vocab.json`) with all VLA tokens:
 
 Output: `vocab/vocab_expanded.json`
 
-### 2.6 HuggingFace Uploads
-**Scripts:** `tools/upload_flattened_hf.py`, `tools/upload_vla_agent_hf.py`, `tools/upload_phase4_hf.py`
+#### Tokenizer creation
+
+The vocab JSON is a lookup table only — it does **not** make the HuggingFace tokenizer treat these as atomic tokens. A BPE tokenizer without proper registration will split `<seed2_1137>` into sub-pieces (`<`, `seed`, `2`, `_`, `11`, `37`, `>`).
+
+To fix this, a proper HuggingFace tokenizer was created using `tokenizer.add_tokens(special_tokens=True)`:
+
+```python
+from transformers import AutoTokenizer
+tok = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+tok.add_tokens(new_vla_tokens, special_tokens=True)  # 93,938 tokens
+tok.save_pretrained("tokenizer_vla_adaptive")         # vocab size: 144,215
+```
+
+This tokenizer is published at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) and used for Megatron-LM tokenization.
+
+**Script:** `tools/upload_tokenizer.py` — creates and uploads the tokenizer to HuggingFace.
+
+### 2.6 Megatron-LM Tokenization (Phase 8)
+**Script:** `/p/data1/mmlaion/nguyen38/mv-scale/tokenize_vla_adaptive.sbatch`
+
+Tokenizes the flattened JSONL into Megatron-LM binary format (`.bin/.idx` shards) for pretraining:
+
+- **Input:** 160 `flat_final_vla_adaptive_rank_*.jsonl` files (18 GB)
+- **Tokenizer:** `EmpathicRobotics/tokenizer-vla-adaptive` (144,215 vocab, all VLA tokens atomic)
+- **Compute:** 4 nodes, Ray-distributed, 48 CPUs per worker
+- **Output:** `/p/data1/mmlaion/shared/vla/tokenized_output/vla_adaptive/data_shard_*.bin/.idx`
+
+### 2.7 HuggingFace Uploads
+**Scripts:** `tools/upload_flattened_hf.py`, `tools/upload_vla_agent_hf.py`, `tools/upload_phase4_hf.py`, `tools/upload_tokenizer.py`
 
 All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, seed 42).
 
 ---
 
-## 3. Published Datasets
+## 3. Published Datasets & Tokenizer
 
-| Dataset | What | Records | Size | Format |
-|---------|------|---------|------|--------|
-| [EmpathicRobotics/FineVideo-VLA-flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-flattened) | Flat Megatron-LM JSONL, ready for pretraining (agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
-| [EmpathicRobotics/FineVideo-VLA-Agent](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-VLA-Agent) | Full hierarchical merged dataset (all metadata preserved, no dropout) | ~399K activities | ~657 GB | Hierarchical JSON (video → scenes → activities) |
-| [EmpathicRobotics/FineVideo-Phase4-Pose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-Pose) | YOLO-cleaned 3D poses (raw float arrays, pre-tokenisation) | millions of windows | ~107 GB | `{video_id, window_id, states: float[8][17][3]}` |
+| Resource | What | Records | Size | Format |
+|----------|------|---------|------|--------|
+| [EmpathicRobotics/FineVideo-Prototype-Tokenized](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Prototype-Tokenized) | Base video tokens (Seed2/Cosmos/AVC-LM) from prototype pipeline | ~40K videos | ~660 GB | Hierarchical JSON |
+| [EmpathicRobotics/FineVideo-Phase2-3DPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase2-3DPose) | 3D pose NPY from MotionBERT (after Phase 2) | ~40K videos | ~259 GB | NumPy arrays |
+| [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | YOLO-cleaned 3D poses (after Phase 3+4, raw floats) | millions of windows | ~107 GB | `{video_id, window_id, states: float[8][17][3]}` |
+| [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Full hierarchical merged dataset with agent tokens (after Phase 5+6) | ~399K activities | ~657 GB | Hierarchical JSON |
+| [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (after Phase 7, agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
+| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer with 93,938 VLA tokens added via `add_tokens()` | — | 144,215 vocab | HF tokenizer dir |
 
 ### What's in each dataset
 
-**FineVideo-VLA-flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string, with modality dropout (99% AVC-LM, 90% Cosmos) and text augmentation applied. Only activities containing 3D pose agent tokens are included.
+**FineVideo-Phase7-Flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string, with modality dropout (99% AVC-LM, 90% Cosmos) and text augmentation applied. Only activities containing 3D pose agent tokens are included.
 
-**FineVideo-VLA-Agent** — Use this if you need the full structure. Each record is a full video with scenes, activities, timestamps (`chunk_timing`), speech transcripts, and all modality tokens in their original hierarchical form. No dropout or augmentation — all data preserved. You can extract timestamps, filter by modality, or re-flatten with custom logic.
+**FineVideo-Phase5-AgentTokens** — Use this if you need the full structure. Each record is a full video with scenes, activities, timestamps (`chunk_timing`), speech transcripts, and all modality tokens in their original hierarchical form. No dropout or augmentation — all data preserved. You can extract timestamps, filter by modality, or re-flatten with custom logic.
 
-**FineVideo-Phase4-Pose** — Use this if you need raw 3D joint positions (floats in metres, not tokenised). Each record is one 8-frame window with 17 joints × 3 dims. Root-centred, bone-normalised, smoothed.
+**FineVideo-Phase4-YOLOPose** — Use this if you need raw 3D joint positions (floats in metres, not tokenised). Each record is one 8-frame window with 17 joints × 3 dims. Root-centred, bone-normalised, smoothed.
+
+**tokenizer-vla-adaptive** — The HuggingFace tokenizer for Megatron-LM tokenization. Base GPT-NeoX-20b extended with 93,938 VLA tokens using `add_tokens(special_tokens=True)`. All tokens like `<seed2_1137>` and `<pelvis_x_128>` are treated as single atomic tokens by the BPE tokenizer.
 
 ---
 
@@ -225,7 +257,7 @@ All four modalities share the same **30fps frame grid**:
 
 ### How to get the timestamp for any token
 
-In the **FineVideo-VLA-Agent** dataset, each activity has:
+In the **FineVideo-Phase5-AgentTokens** dataset, each activity has:
 
 ```json
 {
@@ -336,8 +368,9 @@ See the [`samples/`](samples/) directory for concrete examples of the data befor
 | Phase 3: Kinematics | 40,200 | 193 GB | `pipeline/phase3_kinematics_processor.py` |
 | Phase 4: YOLO cleaning | 40,195 | 107 GB | `pipeline/phase4_yolo_cleaner.py` |
 | Phase 5: Adaptive PCHIP | 18,847 | 7.4 GB | `pipeline/phase5_adaptive_pchip.py` |
-| Phase 6: Merge | 160 files | 657 GB | `pipeline/merge_adaptive_tokens.py` |
-| Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline/flatten_dataset.py` |
+| Phase 6: Merge | 160 files | 657 GB | `pipeline/phase6_merge_adaptive.py` |
+| Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline/phase7_flatten.py` |
+| Phase 8: Megatron tokenization | .bin/.idx shards | TBD | `tokenize_vla_adaptive.sbatch` |
 
 ### Why 18,847 not 40,000?
 
@@ -410,25 +443,34 @@ Evaluated on the final `megatron_dataset_adaptive/` output (with modality dropou
 
 ### For LLM pretraining (Megatron-LM)
 
-Use `EmpathicRobotics/FineVideo-VLA-flattened`. Each line is `{"text": "..."}` — ready for Megatron-LM tokenization with the expanded vocab. Every record contains agent (3D pose) tokens with balanced modality ratios.
+Use `EmpathicRobotics/FineVideo-Phase7-Flattened`. Each line is `{"text": "..."}` — ready for Megatron-LM tokenization with the expanded tokenizer. Every record contains agent (3D pose) tokens with balanced modality ratios.
 
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("EmpathicRobotics/FineVideo-VLA-flattened", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase7-Flattened", streaming=True)
 for sample in ds["train"]:
     text = sample["text"]  # ### Title: ... <seed2_N> ... <fps_30> <pelvis> ...
     break
 ```
 
+To tokenize with the correct tokenizer:
+
+```python
+from transformers import AutoTokenizer
+
+tok = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-adaptive")
+ids = tok.encode(text)  # all VLA tokens are single atomic tokens
+```
+
 ### For structured analysis (timestamps, filtering)
 
-Use `EmpathicRobotics/FineVideo-VLA-Agent`. Full hierarchical data with all metadata.
+Use `EmpathicRobotics/FineVideo-Phase5-AgentTokens`. Full hierarchical data with all metadata.
 
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("EmpathicRobotics/FineVideo-VLA-Agent", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase5-AgentTokens", streaming=True)
 for sample in ds["train"]:
     video_id = sample["video_id"]
     for scene in sample["scenes"]:
@@ -443,12 +485,12 @@ for sample in ds["train"]:
 
 ### For raw 3D poses (float coordinates)
 
-Use `EmpathicRobotics/FineVideo-Phase4-Pose`. Raw float arrays, not tokenised.
+Use `EmpathicRobotics/FineVideo-Phase4-YOLOPose`. Raw float arrays, not tokenised.
 
 ```python
 from datasets import load_dataset
 
-ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-Pose", streaming=True)
+ds = load_dataset("EmpathicRobotics/FineVideo-Phase4-YOLOPose", streaming=True)
 for sample in ds["train"]:
     states = sample["states"]     # float[8][17][3] — 8 frames, 17 joints, xyz
     video_id = sample["video_id"]
@@ -459,15 +501,102 @@ for sample in ds["train"]:
 
 ---
 
-## 10. Upcoming Work
+## 10. Tokenizer Fix & Megatron Tokenization (Phase 8)
 
-- **Caption interleaving**: Associate image/video segment captions with token timestamps for richer language context
-- **Caption generation**: Use timestamps to find specific frames/segments and generate captions for them
-- **Language data enrichment**: Current dataset is token-heavy, language-light — interleaving captions will balance the modality ratio
+### 10.1 The tokenizer bug
+
+The first VLA model ([EmpathicRobotics/vla-1.7b-pab-spline-25b-test](https://huggingface.co/EmpathicRobotics/vla-1.7b-pab-spline-25b-test), May 2026) was trained with a broken tokenizer. The expanded vocabulary was created by manually editing `vocab.json`, but this **does not register tokens with the BPE merge rules**. The HuggingFace tokenizer split VLA tokens into sub-pieces:
+
+```
+<seed2_1137>  →  ['<', 'seed', '2', '_', '11', '37', '>']   (7 sub-tokens)
+<pelvis_x_128>  →  ['<', 'pel', 'vis', '_', 'x', '_', '128', '>']  (8 sub-tokens)
+```
+
+Despite this, the model still showed signal — it learned to predict sequences of sub-tokens that looked like VLA tokens. But it was not decoding real tokens.
+
+### 10.2 The fix
+
+A proper HuggingFace tokenizer was created using `tokenizer.add_tokens(special_tokens=True)`:
+
+```python
+tok = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")  # 50,277 tokens
+tok.add_tokens(new_vla_tokens, special_tokens=True)               # +93,938 tokens
+tok.save_pretrained("tokenizer_vla_adaptive")                     # 144,215 total
+```
+
+Now each VLA token is a single atomic token:
+```
+<seed2_1137>    →  [59908]     (1 token)
+<pelvis_x_128>  →  [131151]    (1 token)
+```
+
+Published at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive).
+
+### 10.3 Megatron-LM tokenization
+
+The flattened JSONL was tokenized into Megatron `.bin/.idx` binary format using the fixed tokenizer:
+
+- **Script:** `tokenize_vla_adaptive.sbatch` (4 nodes, Ray-distributed, 48 CPUs/worker)
+- **Input:** 160 `flat_final_vla_adaptive_rank_*.jsonl` files (18 GB)
+- **Output:** 2 shards in `/p/data1/mmlaion/shared/vla/tokenized_output/vla_adaptive/`
+
+| Shard | Tokens | Size |
+|-------|--------|------|
+| `data_shard_00000.bin` | 2,684,323,146 | 10.00 GB |
+| `data_shard_00001.bin` | 156,389,702 | 0.58 GB |
+| **Total** | **2,840,712,848 (2.84B)** | **10.58 GB** |
 
 ---
 
-## 11. Repository
+## 11. Training (Phase 9)
+
+### 11.1 First model (May 2026, broken tokenizer)
+
+- **Model:** [EmpathicRobotics/vla-1.7b-pab-spline-25b-test](https://huggingface.co/EmpathicRobotics/vla-1.7b-pab-spline-25b-test)
+- **Architecture:** OpenSci-Ref 1.7B (24 layers, 2048 hidden, 32 heads)
+- **Data:** ~25B tokens from the old `vla_25b` dataset (broken tokenizer, no joint tokens)
+- **Result:** Model could replicate seed2/cosmos token sequences but was decoding sub-pieces, not real VLA tokens
+
+### 11.2 Second model (June 2026, fixed tokenizer)
+
+- **Architecture:** OpenSci-Ref 1.7B (same)
+- **Data:** 2.84B tokens from `vla_adaptive` (fixed tokenizer, with named joint tokens)
+- **Training config:** `oellm-autoexp/config/experiments/nguyen38/vla_adaptive.yaml`
+- **Schedule:** 2,032 iters (~3 epochs), GBS=1024, seq_len=4096, 64 nodes
+- **Tokenizer:** `EmpathicRobotics/tokenizer-vla-adaptive` (144,215 vocab, all VLA tokens atomic)
+- **Vocab size:** 144,256 (padded to 128)
+
+### 11.3 Known limitations
+
+- **Data scarcity:** 2.84B tokens is small for a 1.7B model (Chinchilla optimal: ~20B). This is a validation run to confirm the tokenizer fix works.
+- **No simulation data:** Training data is 100% FineVideo YouTube videos. No Isaac Sim rollouts, RL policies, or MoCap data are included yet.
+- **Simplified tokenizer vs spec:** The current adaptive PCHIP tokenizer encodes only xyz positions. The PAB-Spline spec calls for joint angles (q), velocities (qd), phase variable φ, cyclic detection, and static joint compression — all not yet implemented.
+
+---
+
+## 12. Upcoming Work
+
+### Data improvements
+- **Rich augmentation pipeline:** Run `process_finevideo.py` + `decode_and_caption.py` (from the FineVideo VLA Pipeline doc) to add perspective framing (robot/human/cinematic), `<think>` planning blocks, Cosmos/Seed2 visual decoding + SmolVLM2 captioning. This would produce 4× more records with much richer language context.
+- **More data sources:** Incorporate [SenseNova-SI-8M](https://huggingface.co/datasets/sensenova/SenseNova-SI-8M), [stera-10m](https://huggingface.co/datasets/fpvlabs/stera-10m), [MixtureVitae-Omni](https://huggingface.co/datasets/mixture-vitae/MixtureVitae-Omni) to scale beyond 20B tokens.
+- **Isaac Sim integration:** Generate simulation rollouts with the Unitree H1, tokenize with the PAB-Spline tokenizer, and mix into training data.
+
+### Tokenizer improvements
+- **Upgrade to PAB-Spline spec:** Add joint angles (q/qd), phase variable φ ∈ [0,1], cyclic gait detection, static joint compression. Current PCHIP xyz-only tokenizer is v1.
+- **Qwen3 migration:** Retokenize data with Qwen3-based expanded tokenizer for ecosystem compatibility (native HF support, vLLM, llama.cpp).
+
+### Evaluation
+- **Token verification:** Decode `.bin/.idx` shards back to text and verify per-token round-trip (as Huu suggested: `['He', 'llo', '<seed2_1137>']` not `['He', 'llo', '<seed2_', '1137', '>']`).
+- **Pose reconstruction quality:** Decode agent tokens from model output → PCHIP interpolation → 3D skeleton → compare to ground truth.
+- **Video evaluation:** Use CLIP Benchmark video evals (per Jenia's suggestion).
+
+### Deployment
+- **Sim-to-real:** Map predicted joint tokens to Unitree H1 control signals via Isaac Sim / ManiSkill.
+- **Multi-agent OS:** Safety, Motion, Vision, Exploration agents for real-time trajectory execution with preemption.
+
+---
+
+## 13. Repository
 
 **GitHub:** [TieuDaoChanNhan/3D-Human-Pose-VLA](https://github.com/TieuDaoChanNhan/3D-Human-Pose-VLA)
 
