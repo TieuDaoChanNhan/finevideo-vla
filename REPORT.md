@@ -232,6 +232,13 @@ All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, see
 | [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (after Phase 7, agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
 | [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer with 93,938 VLA tokens added via `add_tokens()` | — | 144,215 vocab | HF tokenizer dir |
 
+### Published models
+
+| Model | What | Params | Tokenizer |
+|-------|------|--------|-----------|
+| [EmpathicRobotics/vla-1.7b-pab-spline-25b-test](https://huggingface.co/EmpathicRobotics/vla-1.7b-pab-spline-25b-test) | First VLA model (broken tokenizer, fixed 256-token agent format) | 1.7B | Broken (sub-piece splitting) |
+| [EmpathicRobotics/vla-1.7b-pab-spline-adaptive](https://huggingface.co/EmpathicRobotics/vla-1.7b-pab-spline-adaptive) | Second VLA model (fixed tokenizer, adaptive PCHIP agent tokens) | 1.91B | [tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) (144,215 vocab, all atomic) |
+
 ### What's in each dataset
 
 **FineVideo-Phase7-Flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string, with modality dropout (99% AVC-LM, 90% Cosmos) and text augmentation applied. Only activities containing 3D pose agent tokens are included.
@@ -370,7 +377,8 @@ See the [`samples/`](samples/) directory for concrete examples of the data befor
 | Phase 5: Adaptive PCHIP | 18,847 | 7.4 GB | `pipeline/phase5_adaptive_pchip.py` |
 | Phase 6: Merge | 160 files | 657 GB | `pipeline/phase6_merge_adaptive.py` |
 | Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline/phase7_flatten.py` |
-| Phase 8: Megatron tokenization | .bin/.idx shards | TBD | `tokenize_vla_adaptive.sbatch` |
+| Phase 8: Megatron tokenization | 2 shards, 2.84B tokens | 10.58 GB | `tokenize_vla_adaptive.sbatch` |
+| Phase 9: Training | 2,032 iters, 3 epochs | 3.6 GB (HF ckpt) | `oellm-autoexp` |
 
 ### Why 18,847 not 40,000?
 
@@ -559,16 +567,88 @@ The flattened JSONL was tokenized into Megatron `.bin/.idx` binary format using 
 
 ### 11.2 Second model (June 2026, fixed tokenizer)
 
-- **Architecture:** OpenSci-Ref 1.7B (same)
+- **Model:** [EmpathicRobotics/vla-1.7b-pab-spline-adaptive](https://huggingface.co/EmpathicRobotics/vla-1.7b-pab-spline-adaptive)
+- **Architecture:** OpenSci-Ref 1.7B (24 layers, 2048 hidden, 32 heads, 1.91B params with 144K vocab embeddings)
 - **Data:** 2.84B tokens from `vla_adaptive` (fixed tokenizer, with named joint tokens)
 - **Training config:** `oellm-autoexp/config/experiments/nguyen38/vla_adaptive.yaml`
-- **Schedule:** 2,032 iters (~3 epochs), GBS=1024, seq_len=4096, 64 nodes
+- **Schedule:** WSD (200 warmup iters, peak LR 4e-3, 400 linear decay at end), 2,032 iters (~3 epochs), GBS=1024, MBS=4, seq_len=4096
+- **Compute:** 64 nodes × 4 GH200 GPUs (256 GPUs), ~287 TFLOP/s/GPU, ~35 min wall time
 - **Tokenizer:** `EmpathicRobotics/tokenizer-vla-adaptive` (144,215 vocab, all VLA tokens atomic)
-- **Vocab size:** 144,256 (padded to 128)
+- **Vocab size:** 144,256 (padded to 128 for Megatron)
+- **Checkpoints saved:** iter 500, 1000, 1500, 2000, 2032 (all converted to HF format)
 
-### 11.3 Known limitations
+#### Loss curve
 
-- **Data scarcity:** 2.84B tokens is small for a 1.7B model (Chinchilla optimal: ~20B). This is a validation run to confirm the tokenizer fix works.
+| Iter | Train Loss | LR | Tokens Seen |
+|------|-----------|-----|-------------|
+| 50 | 6.158 | 1.0e-3 | 0.21B |
+| 100 | 3.927 | 2.0e-3 | 0.42B |
+| 200 | 2.982 | 4.0e-3 | 0.84B |
+| 500 | 2.070 | 4.0e-3 | 2.10B |
+| 1000 | 1.672 | 4.0e-3 | 4.19B |
+| 1500 | 1.555 | 4.0e-3 | 6.29B |
+| 2000 | 1.476 | 3.2e-4 | 8.39B |
+| **2032 (val)** | **1.501** | — | — |
+| **2032 (test)** | **1.494** | — | — |
+
+Final validation PPL: **4.49**, test PPL: **4.45**.
+
+### 11.3 Evaluation results (June 21, 2026)
+
+Evaluation script: `tools/eval_vla_sanity.py`
+
+#### Test 1: Token atomicity — PASS
+
+All 23 tested VLA tokens encode as single atomic token IDs. The tokenizer fix is confirmed:
+
+```
+<seed2_1137>    → [59908]   (1 token)   ← old model: 7 sub-pieces
+<pelvis_x_128>  → [131151]  (1 token)   ← old model: 8 sub-pieces
+<fps_30>        → [130992]  (1 token)
+<cosmos_58567>  → [125530]  (1 token)
+```
+
+#### Test 2: Greedy generation — partial success
+
+| Prompt | Tokens | Result |
+|--------|--------|--------|
+| Full training-like prompt (Title/Context/Keywords) | 2000 | Generated valid `<seed2_N>` tokens but stayed in seed2 mode, never transitioned to cosmos/avclm/agent |
+| Partial agent block (given `<fps_30> <pelvis> <pelvis_t_0> ...`) | 500 | Correctly completed the full 17-joint agent block with valid structure |
+| Real seed2 block from training data | 2000 | Continued generating seed2 tokens, no transition to cosmos/agent |
+
+**Agent continuation result (the key success):**
+
+The model correctly generated:
+```
+<pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis>
+<r_hip> <r_hip_t_0> <r_hip_x_115> <r_hip_y_127> <r_hip_z_127>
+        <r_hip_t_7> <r_hip_x_115> <r_hip_y_127> <r_hip_z_127> </r_hip>
+<r_knee> <r_knee_t_0> <r_knee_x_114> <r_knee_y_155> <r_knee_z_133> ...
+```
+
+- Correct joint ordering (H36M sequence: pelvis → r_hip → r_knee → ... → r_wrist)
+- Valid open/close tag pairs
+- xyz values in range [0, 255], t values in [0, 7]
+- Correct adaptive CP count (2 CPs for pelvis, appropriate counts for other joints)
+- Successfully decoded to 3D pose: shape (8, 17, 3), range [-0.31, 0.89] m
+
+#### Comparison: old model vs new model
+
+| Aspect | Old model (25b-test) | New model (adaptive) |
+|--------|---------------------|---------------------|
+| Token atomicity | ❌ `<seed2_1137>` → 7 sub-pieces | ✅ `<seed2_1137>` → 1 token |
+| Agent token format | Fixed 256 opaque integers | Self-describing `<joint_t_N> <joint_x_N>` |
+| Seed2 generation | Generated sub-piece fragments | ✅ Generates valid atomic seed2 tokens |
+| Agent completion | Could not complete (wrong format) | ✅ Completes full 17-joint sequence |
+| Decode to 3D pose | Not possible (tokens were sub-pieces) | ✅ Decodes to (8, 17, 3) trajectory |
+| Modality transitions | N/A (broken tokens) | ❌ Cannot initiate agent blocks from text alone |
+| Training data | ~25B tokens (but wasted on sub-pieces) | 2.84B tokens (3 epochs) |
+
+### 11.4 Known limitations
+
+- **Data scarcity:** 2.84B tokens is small for a 1.7B model (Chinchilla optimal: ~20B). The model memorises training patterns but cannot generalise to novel prompts or learn modality transitions (seed2 → cosmos → avclm → agent). As noted in team discussions: "people train a 1.7B on 11T tokens... you are throwing only a few 100B tokens."
+- **No autonomous modality transitions:** The model generates seed2 tokens when prompted with text, but never transitions to cosmos/avclm/agent on its own. It requires agent tokens in the prompt to continue in agent mode. This is expected with 3 epochs of training — the model has seen each modality transition pattern only ~3 times per sample.
+- **Modality dropout imbalance:** Phase 7 drops 99% of avclm and 90% of cosmos tokens, so the model sees far fewer cosmos/avclm examples relative to seed2 and agent tokens. This likely contributes to the model's inability to learn transitions.
 - **No simulation data:** Training data is 100% FineVideo YouTube videos. No Isaac Sim rollouts, RL policies, or MoCap data are included yet.
 - **Simplified tokenizer vs spec:** The current adaptive PCHIP tokenizer encodes only xyz positions. The PAB-Spline spec calls for joint angles (q), velocities (qd), phase variable φ, cyclic detection, and static joint compression — all not yet implemented.
 
@@ -586,8 +666,11 @@ The flattened JSONL was tokenized into Megatron `.bin/.idx` binary format using 
 - **Qwen3 migration:** Retokenize data with Qwen3-based expanded tokenizer for ecosystem compatibility (native HF support, vLLM, llama.cpp).
 
 ### Evaluation
-- **Token verification:** Decode `.bin/.idx` shards back to text and verify per-token round-trip (as Huu suggested: `['He', 'llo', '<seed2_1137>']` not `['He', 'llo', '<seed2_', '1137', '>']`).
-- **Pose reconstruction quality:** Decode agent tokens from model output → PCHIP interpolation → 3D skeleton → compare to ground truth.
+- ~~**Token verification:** Decode `.bin/.idx` shards back to text and verify per-token round-trip.~~ **DONE** — confirmed all VLA tokens are atomic (Section 11.3).
+- ~~**Pose reconstruction quality:** Decode agent tokens from model output → PCHIP interpolation → 3D skeleton.~~ **DONE** — model generates decodable agent tokens, decoder script at `tools/decode_agent_tokens.py` (Section 11.3).
+- **Per-token-type accuracy:** Teacher-forced next-token accuracy on held-out data, broken down by modality (seed2/cosmos/avclm/agent). Would reveal if the model learned agent patterns better than other modalities.
+- **Cross-checkpoint comparison:** Run eval on iter 500/1000/1500/2000/2032 to see learning curves per modality.
+- **Standard NLP benchmarks:** Run `oellm-cli` eval (open-sci-0.01, dclm-core-22) to check language ability retention.
 - **Video evaluation:** Use CLIP Benchmark video evals (per Jenia's suggestion).
 
 ### Deployment

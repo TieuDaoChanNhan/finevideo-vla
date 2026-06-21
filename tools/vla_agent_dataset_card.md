@@ -199,11 +199,11 @@ for sample in ds["train"]:
 Part of the FineVideo-VLA project. If you use this data, please cite:
 
 ```bibtex
-@misc{finevideo2024,
+@misc{Farré2024FineVideo,
   title={FineVideo},
-  author={HuggingFace},
+  author={Farré, Miquel and Marafioti, Andi and Tunstall, Lewis and Von Werra, Leandro and Wolf, Thomas},
   year={2024},
-  url={https://huggingface.co/datasets/HuggingFaceFV/finevideo}
+  howpublished={\url{https://huggingface.co/datasets/HuggingFaceFV/finevideo}},
 }
 ```
 
