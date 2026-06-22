@@ -679,7 +679,118 @@ The model correctly generated:
 
 ---
 
-## 13. Repository
+## 13. Improvement Plan (June 2026)
+
+### Problem Diagnosis
+
+The second model (vla-1.7b-pab-spline-adaptive) validates the architecture and tokenization — it can complete 17-joint agent blocks with correct grammar, joint ordering, and decodable 3D poses. However, it cannot perform modality transitions (seed2 → cosmos → avclm → agent) autonomously. Three root causes:
+
+1. **Data starvation**: 2.84B tokens for 1.91B params (~1.5× Chinchilla ratio). Optimal is ~20× (38B tokens). The model saw each training sample only ~3 times — enough to memorize local patterns but not enough to learn the higher-level sequencing of modality blocks.
+
+2. **No rich language context**: Text is just Title/Context/Keywords. No captions describe what's happening visually at each timestamp. Without language anchors at modality transitions, the model has no signal for "what comes next." Huu: "we need more language through captions. Otherwise the model won't be easily steerable."
+
+3. **Over-aggressive modality dropout**: 99% avclm drop + 90% cosmos drop means most training samples lack the full transition chain. The model rarely sees seed2 → cosmos → avclm → agent in sequence.
+
+### Phase 1: Data Inventory & Pie Chart
+
+**Goal**: Count tokens across ALL available multimodal datasets. Create a pie chart and table showing token counts by modality, number of records, and size in GB.
+
+**Datasets to inventory**:
+
+| Dataset | Source | Token types present |
+|---------|--------|---------------------|
+| FineVideo-Phase7-Flattened | `EmpathicRobotics/FineVideo-Phase7-Flattened` | seed2, cosmos, avclm, agent, text |
+| MixtureVitae-Omni | `mixture-vitae/MixtureVitae-Omni` | image tokens, snac, seed2, text — **no cosmos/avclm/agent** |
+| MixtureVitae-Backup (stack_images) | `mixture-vitae-backup/MixtureVitae-Backup` | stack exchange images + text (raw, needs tokenizing) |
+| MixtureVitae-Backup (valid_with_seed) | `mixture-vitae-backup/MixtureVitae-Backup` | seed2 tokens + text |
+| SenseNova-SI-8M | `sensenova/SenseNova-SI-8M` | 8M image-text pairs (raw) |
+| stera-10m | `fpvlabs/stera-10m` | 10M video clips (license concern) |
+| OmniAction | `OpenMOSS-Team/OmniAction` | action-labeled video data |
+
+**Output**: Pie chart + table with: token count by modality, number of records, GB of text, GB total.
+
+**Can do during JUPITER downtime**: Yes — use HF streaming API on JUSUF.
+
+### Phase 2: Video Captioning for FineVideo
+
+**Goal**: Generate natural language captions for each video segment and interleave them with tokens. This is the highest-impact improvement.
+
+Current format:
+```
+### Context: Person chops vegetables
+<seed2_6750> <seed2_680> ... <cosmos_N> ... <avclm_N> ... <agent> <fps_30> <pelvis> ...
+```
+
+With captions:
+```
+### Context: Person chops vegetables
+A woman in a blue apron stands at a kitchen counter. She picks up a knife with her right hand.
+<seed2_6750> <seed2_680> ...
+She brings the knife down in a smooth chopping motion on a red bell pepper.
+<cosmos_N> ... <avclm_N> ... <agent> <fps_30> <pelvis> ...
+```
+
+**How**:
+- Use timestamps from `chunk_timing` (already in Phase 5/6 output) to locate keyframes
+- Extract keyframe images at each seed2 timestamp (1 FPS)
+- Run a vision-language captioner (SmolVLM2, Qwen2.5-VL, or Moondream2) on each keyframe
+- Interleave captions into the token sequence at matching timestamps
+- This is the "rich augmentation pipeline" from the FineVideo VLA Pipeline spec (`process_finevideo.py` + `decode_and_caption.py`)
+
+**Impact**: Gives the model language anchors at modality transitions. With perspective framing (robot/human/cinematic views), produces 4× more records with richer language context.
+
+**Blocked by**: Needs GPU for captioning model. Code can be written during downtime.
+
+### Phase 3: Integrate External Datasets
+
+**Important**: MV-Omni, stack exchange, SenseNova have text + image tokens but **NOT** cosmos/avclm/agent. They help the model maintain language understanding and learn seed2/snac patterns, but only FineVideo has the full multimodal chain.
+
+**Strategy**: Mix external data as a "language+image backbone":
+- **FineVideo VLA** (~30% of training mix): teaches the full multimodal chain with agent tokens
+- **MV-Omni + stack exchange + etc.** (~70% of mix): teaches general language and image understanding
+
+This way the model sees each FineVideo sample ~10× while getting diverse text+image training.
+
+**Vocab impact**: Need to add snac tokens to the tokenizer for MV-Omni. Current vocab has seed2/cosmos/avclm/agent but not snac.
+
+### Phase 4: Adjust Modality Dropout
+
+**Current vs proposed dropout rates**:
+
+| Modality | Current drop | Proposed drop | Rationale |
+|----------|-------------|---------------|-----------|
+| AVC-LM | 99% | 80–90% | Keep 10–20% so model sees avclm regularly |
+| Cosmos | 90% | 50–70% | Keep 30–50% so cosmos appears in most records |
+| Seed2 | 0% | 0% | Already balanced |
+| Agent | 0% | 0% | Already balanced |
+
+**Trade-off**: More tokens per record → fewer records fit in context (seq_len=4096). May need to increase seq_len to 8192.
+
+**Impact**: Model sees real modality transitions in training. Cheapest fix available.
+
+### Phase 5: Re-training Strategy
+
+| Version | Data | Est. tokens | Key change |
+|---------|------|-------------|------------|
+| v0.2 (quick) | FineVideo VLA + adjusted dropout + captions | ~5–10B | Dropout fix + captions, same 1.7B model |
+| v0.3 (scaled) | FineVideo VLA + MV-Omni + stack exchange | ~20–40B | Mixed dataset, possibly larger model |
+| v1.0 (full) | All sources + Isaac Sim + cyclic PAB-Spline | ~100B+ | Full spec implementation |
+
+### Priority Table
+
+| Priority | Task | During downtime? | Impact on model |
+|----------|------|------------------|-----------------|
+| 1 | Data inventory + pie chart | Yes | Huu's explicit request, guides all other decisions |
+| 2 | Write captioning pipeline code | Yes (code only) | Prep for highest-impact improvement |
+| 3 | Adjust dropout + re-flatten | Partially (code + test) | Cheapest fix for modality transitions |
+| 4 | Download + explore MV-Omni | Yes (streaming) | Understand data landscape |
+| 5 | Vocab expansion for snac tokens | Yes (code) | Needed for MV-Omni integration |
+| 6 | Re-training v0.2 | No (needs JUPITER) | First real model improvement |
+| 7 | Full captioning run on GPUs | No (needs JUPITER) | Major data quality boost |
+
+---
+
+## 14. Repository
 
 **GitHub:** [TieuDaoChanNhan/3D-Human-Pose-VLA](https://github.com/TieuDaoChanNhan/3D-Human-Pose-VLA)
 
