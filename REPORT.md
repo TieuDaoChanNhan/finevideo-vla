@@ -707,7 +707,23 @@ The second model (vla-1.7b-pab-spline-adaptive) validates the architecture and t
 | stera-10m | `fpvlabs/stera-10m` | 10M video clips (license concern) |
 | OmniAction | `OpenMOSS-Team/OmniAction` | action-labeled video data |
 
-**Output**: Pie chart + table with: token count by modality, number of records, GB of text, GB total.
+**Output**: Two pie charts (by modality + by dataset) + summary table.
+
+**Script**: `tools/data_inventory.py` — downloads 1 shard samples, counts token types, extrapolates, generates charts.
+
+**Preliminary results** (FineVideo exact, MV-Omni sampled):
+
+| Dataset | Records | Size | seed2 | cosmos | avclm | agent | snac | text | Total |
+|---------|---------|------|-------|--------|-------|-------|------|------|-------|
+| FineVideo-VLA | 69,844 | 19.2 GB | 89.9M | 210.2M | 474.4M | 637.9M | — | 362.5M | 1.77B |
+| MV-Omni | ~181K | 36 GB gz | 5.8M | — | — | — | 106.8M | 55.1M | 0.17B |
+| MV-Backup valid_with_seed | large | 1,233 GB gz | est. ~30B | — | — | — | — | est. ~138B | ~168B |
+
+Key findings:
+- **valid_with_seed is dominant** (~168B tokens, mostly text+seed2). Even 10% of it would give ~17B tokens.
+- **Only FineVideo has agent tokens** (638M). External datasets add language/image diversity but not action data.
+- **MV-Omni uses `<seed_N>` not `<seed2_N>`** — needs vocab mapping or rename during data conversion.
+- **SNAC tokens** (~107M in MV-Omni) are not in our current vocab — need expansion.
 
 **Can do during JUPITER downtime**: Yes — use HF streaming API on JUSUF.
 
