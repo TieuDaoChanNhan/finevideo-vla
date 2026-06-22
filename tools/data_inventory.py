@@ -123,47 +123,63 @@ def count_finevideo():
 
 
 def count_mv_omni():
-    """Count tokens in MixtureVitae-Omni by sampling."""
+    """Count tokens in MixtureVitae-Omni by streaming (no partial-gzip download)."""
     print("\n=== Sampling MixtureVitae-Omni ===")
+    import urllib.request
     from huggingface_hub import HfApi
 
-    api = HfApi()
+    token = os.environ.get("HF_TOKEN", "")
+    api = HfApi(token=token or None)
     siblings = list(api.list_repo_tree(
         "mixture-vitae/MixtureVitae-Omni", path_in_repo="data/data", repo_type="dataset"
     ))
-    total_compressed = sum(s.size for s in siblings if hasattr(s, "size"))
-    print(f"  Total compressed size: {total_compressed/1e9:.2f} GB, {len(siblings)} files")
+    data_files = [s for s in siblings if hasattr(s, "size") and s.size > 0]
+    total_compressed = sum(s.size for s in data_files)
+    print(f"  Total compressed size: {total_compressed/1e9:.2f} GB, {len(data_files)} files")
 
-    import urllib.request
-    import io
+    # Pick the first file and stream-decompress it — avoids downloading a partial gzip
+    # which is undecompressable (gzip requires the end-of-stream marker).
+    first_file = data_files[0]
+    sample_file_size = first_file.size
+    url = (
+        f"https://huggingface.co/datasets/mixture-vitae/MixtureVitae-Omni"
+        f"/resolve/main/{first_file.path}"
+    )
+    MAX_RECORDS = 5000
+    print(f"  Streaming up to {MAX_RECORDS} records from {first_file.path} ...")
 
-    url = "https://huggingface.co/datasets/mixture-vitae/MixtureVitae-Omni/resolve/main/data/data/snac_emo_seed_0.jsonl.gz"
-    sample_file = os.path.join(TMP_DIR, "mv_omni_sample.jsonl.gz")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    req = urllib.request.Request(url, headers=headers)
 
-    print("  Downloading 200MB sample...")
-    req = urllib.request.Request(url, headers={"Range": "bytes=0-200000000"})
-    resp = urllib.request.urlopen(req, timeout=120)
-    with open(sample_file, "wb") as f:
-        f.write(resp.read())
-
-    sample_compressed_bytes = os.path.getsize(sample_file)
     counts = {"seed": 0, "snac": 0, "text_chars": 0}
     n_records = 0
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            with gzip.open(resp, "rt", encoding="utf-8", errors="replace") as gz:
+                for line in gz:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    text = d.get("text", "")
+                    counts["seed"] += len(SEED_PAT.findall(text))
+                    counts["snac"] += len(SNAC_PAT.findall(text))
+                    clean = ALL_VLA_PAT.sub("", text)
+                    counts["text_chars"] += len(clean.strip())
+                    n_records += 1
+                    if n_records >= MAX_RECORDS:
+                        break
+    except Exception as e:
+        if n_records == 0:
+            raise
+        print(f"  Stream ended early after {n_records} records: {e}")
 
-    with gzip.open(sample_file, "rt") as f:
-        for line in f:
-            d = json.loads(line)
-            text = d.get("text", "")
-            counts["seed"] += len(SEED_PAT.findall(text))
-            counts["snac"] += len(SNAC_PAT.findall(text))
-            clean = ALL_VLA_PAT.sub("", text)
-            counts["text_chars"] += len(clean.strip())
-            n_records += 1
-
-    os.unlink(sample_file)
-
-    scale = total_compressed / sample_compressed_bytes
-    print(f"  Sampled {n_records:,} records, scale factor: {scale:.1f}x")
+    # Scale from one sampled file to all files by compressed-size ratio
+    scale = total_compressed / sample_file_size
+    print(f"  Sampled {n_records:,} records from 1 file, scale factor: {scale:.1f}x")
 
     return {
         "records": int(n_records * scale),
@@ -174,16 +190,20 @@ def count_mv_omni():
         "agent": 0,
         "snac": int(counts["snac"] * scale),
         "text_tokens": int(counts["text_chars"] / 4 * scale),
-        "note": "sampled + extrapolated",
+        "note": f"streamed {n_records} records from 1 file, scaled {scale:.1f}x",
     }
 
 
 def count_valid_with_seed():
     """Count tokens in valid_with_seed by downloading and sampling 1 shard."""
     print("\n=== Sampling valid_with_seed (1 shard of 64) ===")
+    import shutil
     from huggingface_hub import hf_hub_download, HfApi
 
-    api = HfApi()
+    token = os.environ.get("HF_TOKEN", "")
+    api = HfApi(token=token or None)
+    hf_kwargs = {"token": token} if token else {}
+
     siblings = list(api.list_repo_tree(
         "mixture-vitae-backup/MixtureVitae-Backup",
         path_in_repo="data/valid_with_seed",
@@ -202,37 +222,115 @@ def count_valid_with_seed():
         filename=shard_name,
         repo_type="dataset",
         cache_dir=TMP_DIR,
+        **hf_kwargs,
     )
 
-    counts = {"seed": 0, "seed2": 0, "snac": 0, "cosmos": 0, "text_chars": 0}
-    n_records = 0
+    # The structure is doubly-nested:
+    #   valid_with_seed_shard_00000.tar.gz
+    #   └── shard_NNNNN.tar.gz  (×9, ~2 GB each)
+    #       └── *.jsonl  (actual data)
+    # We handle arbitrary nesting by recursing with streaming (r|gz) inner tars.
 
-    print("  Counting tokens in shard...")
+    TEXT_KEYS = ("text", "content", "caption", "instruction", "output", "input")
+    MAX_RECORDS = 5000
+
+    counts = {"seed": 0, "seed2": 0, "snac": 0, "cosmos": 0, "text_chars": 0}
+    n_records = [0]  # list so nested functions can mutate it
+
+    def _count_text(text):
+        counts["seed"] += len(SEED_PAT.findall(text))
+        counts["seed2"] += len(SEED2_PAT.findall(text))
+        counts["snac"] += len(SNAC_PAT.findall(text))
+        counts["cosmos"] += len(COSMOS_PAT.findall(text))
+        clean = ALL_VLA_PAT.sub("", text)
+        counts["text_chars"] += len(clean.strip())
+
+    def _extract_text(d):
+        """Pull a text string out of a parsed JSON object."""
+        if not isinstance(d, dict):
+            return ""
+        for key in TEXT_KEYS:
+            val = d.get(key, "")
+            if isinstance(val, str) and val:
+                return val
+            if isinstance(val, list):
+                return " ".join(
+                    (item.get("content", "") if isinstance(item, dict) else str(item))
+                    for item in val if item
+                )
+        return ""
+
+    def _process_fileobj(fobj, name_lower):
+        """Read a file-like object as JSONL/text and count tokens."""
+        try:
+            raw = fobj.read()
+            if name_lower.endswith(".gz") and not name_lower.endswith(".tar.gz"):
+                raw = gzip.decompress(raw)
+            text_data = raw.decode("utf-8", errors="replace")
+        except Exception:
+            return
+        for line in text_data.splitlines():
+            if n_records[0] >= MAX_RECORDS:
+                return
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+                text = _extract_text(d)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                text = line  # plain-text fallback
+            if text:
+                _count_text(text)
+            n_records[0] += 1
+            if n_records[0] % 2000 == 0:
+                print(f"    {n_records[0]:,} records ...", flush=True)
+
+    def _process_tar(fobj, mode):
+        """Recursively iterate a tar archive, diving into nested tar.gz members."""
+        if n_records[0] >= MAX_RECORDS:
+            return
+        try:
+            with tarfile.open(fileobj=fobj, mode=mode) as inner:
+                for member in inner:
+                    if n_records[0] >= MAX_RECORDS:
+                        return
+                    if not member.isfile() or member.size == 0:
+                        continue
+                    name_lower = member.name.lower()
+                    mfobj = inner.extractfile(member)
+                    if mfobj is None:
+                        continue
+                    if name_lower.endswith((".tar.gz", ".tgz")):
+                        # Nested tar — use streaming mode so we don't load 2GB into RAM
+                        _process_tar(mfobj, "r|gz")
+                    elif name_lower.endswith(".tar"):
+                        _process_tar(mfobj, "r|")
+                    else:
+                        _process_fileobj(mfobj, name_lower)
+        except Exception as e:
+            print(f"    tar error ({mode}): {e}")
+
+    print(f"  Counting tokens (up to {MAX_RECORDS} records, handles nested tars)...")
     t0 = time.time()
-    with tarfile.open(shard_path, "r:gz") as tar:
-        n_members = 0
-        for member in tar:
-            if not member.name.endswith(".jsonl") and not member.name.endswith(".json"):
+    with tarfile.open(shard_path, "r:gz") as outer:
+        for member in outer:
+            if n_records[0] >= MAX_RECORDS:
+                break
+            if not member.isfile() or member.size == 0:
                 continue
-            n_members += 1
-            f = tar.extractfile(member)
-            if f is None:
+            name_lower = member.name.lower()
+            fobj = outer.extractfile(member)
+            if fobj is None:
                 continue
-            for line in f:
-                try:
-                    text = json.loads(line).get("text", "")
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    continue
-                counts["seed"] += len(SEED_PAT.findall(text))
-                counts["seed2"] += len(SEED2_PAT.findall(text))
-                counts["snac"] += len(SNAC_PAT.findall(text))
-                counts["cosmos"] += len(COSMOS_PAT.findall(text))
-                clean = ALL_VLA_PAT.sub("", text)
-                counts["text_chars"] += len(clean.strip())
-                n_records += 1
-                if n_records % 5000 == 0:
-                    elapsed = time.time() - t0
-                    print(f"    {n_records:,} records from {n_members} files | {elapsed:.0f}s", flush=True)
+            if name_lower.endswith((".tar.gz", ".tgz")):
+                _process_tar(fobj, "r|gz")
+            elif name_lower.endswith(".tar"):
+                _process_tar(fobj, "r|")
+            else:
+                _process_fileobj(fobj, name_lower)
+
+    n_records = n_records[0]
 
     scale = total_compressed / shard_size
     print(f"  Sampled {n_records:,} records from 1 shard, scale factor: {scale:.1f}x")
@@ -242,11 +340,8 @@ def count_valid_with_seed():
     # Clean up downloaded shard
     try:
         os.unlink(shard_path)
-        cache_parent = os.path.dirname(shard_path)
-        if TMP_DIR in cache_parent:
-            import shutil
-            shutil.rmtree(os.path.join(TMP_DIR, "datasets--mixture-vitae-backup--MixtureVitae-Backup"),
-                         ignore_errors=True)
+        cache_parent = os.path.join(TMP_DIR, "datasets--mixture-vitae-backup--MixtureVitae-Backup")
+        shutil.rmtree(cache_parent, ignore_errors=True)
     except Exception:
         pass
 
@@ -265,63 +360,171 @@ def count_valid_with_seed():
 
 
 def make_charts(datasets, output_path):
-    """Generate two pie charts: by modality and by dataset."""
-    modalities = ["seed2", "cosmos", "avclm", "agent", "snac", "text_tokens"]
-    modality_labels = ["Seed2 (image)", "Cosmos (video)", "AVC-LM (audio)",
-                       "Agent (3D pose)", "SNAC (audio)", "Text"]
-    modality_colors = ["#4CAF50", "#2196F3", "#FF9800", "#E91E63", "#9C27B0", "#607D8B"]
+    """Generate a 4-panel dashboard: pie + stacked bar + per-dataset breakdown + coverage heatmap."""
+    MODALITIES   = ["seed2",        "cosmos",        "avclm",         "agent",          "snac",          "text_tokens"]
+    MOD_LABELS   = ["Seed2\n(image keyframe)", "Cosmos\n(video spatial)", "AVC-LM\n(H.264 BPE)",
+                    "Agent\n(3D pose)",  "SNAC\n(audio)",  "Text"]
+    MOD_COLORS   = ["#43A047", "#1E88E5", "#FB8C00", "#E53935", "#8E24AA", "#546E7A"]
+    DS_COLORS    = ["#FF5722", "#3F51B5", "#009688", "#FFC107", "#795548", "#607D8B"]
 
-    # Aggregate by modality
+    ds_names = list(datasets.keys())
+
+    # Aggregate by modality across all datasets
     modality_totals = defaultdict(int)
     for ds in datasets.values():
-        for m in modalities:
+        for m in MODALITIES:
             modality_totals[m] += ds.get(m, 0)
 
-    # Filter out zero modalities
-    nonzero = [(m, l, c) for m, l, c in zip(modalities, modality_labels, modality_colors)
-               if modality_totals[m] > 0]
-    mod_vals = [modality_totals[m] for m, _, _ in nonzero]
-    mod_labels = [f"{l}\n{modality_totals[m]/1e9:.2f}B" for m, l, _ in nonzero]
-    mod_colors = [c for _, _, c in nonzero]
+    # Per-dataset totals
+    ds_totals = [sum(datasets[n].get(m, 0) for m in MODALITIES) for n in ds_names]
+    grand_total = sum(ds_totals)
 
-    # Dataset totals
-    ds_names = list(datasets.keys())
-    ds_totals = []
-    for name in ds_names:
+    # Short dataset display names
+    short_names = []
+    for n in ds_names:
+        if "FineVideo" in n:
+            short_names.append("FineVideo-VLA")
+        elif "Omni" in n:
+            short_names.append("MV-Omni")
+        elif "valid_with_seed" in n:
+            short_names.append("MV-Backup\nvalid_with_seed")
+        else:
+            short_names.append(n[:20])
+
+    def fmt_b(v):
+        if v >= 1e12:
+            return f"{v/1e12:.1f}T"
+        if v >= 1e9:
+            return f"{v/1e9:.2f}B"
+        if v >= 1e6:
+            return f"{v/1e6:.1f}M"
+        return str(int(v))
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig = plt.figure(figsize=(22, 16))
+    fig.patch.set_facecolor("#F8F9FA")
+
+    gs = fig.add_gridspec(2, 2, hspace=0.38, wspace=0.32,
+                          left=0.07, right=0.97, top=0.91, bottom=0.07)
+    ax_pie   = fig.add_subplot(gs[0, 0])
+    ax_ds    = fig.add_subplot(gs[0, 1])
+    ax_stack = fig.add_subplot(gs[1, 0])
+    ax_cov   = fig.add_subplot(gs[1, 1])
+
+    fig.suptitle(
+        f"VLA Dataset Inventory  —  {fmt_b(grand_total)} tokens total",
+        fontsize=18, fontweight="bold", color="#212121", y=0.97
+    )
+
+    # ── Panel 1: Donut by modality ──────────────────────────────────────────
+    nonzero_idx = [i for i, m in enumerate(MODALITIES) if modality_totals[m] > 0]
+    pie_vals    = [modality_totals[MODALITIES[i]] for i in nonzero_idx]
+    pie_colors  = [MOD_COLORS[i]  for i in nonzero_idx]
+    pie_labels  = [MOD_LABELS[i]  for i in nonzero_idx]
+
+    wedges, _, autotexts = ax_pie.pie(
+        pie_vals, colors=pie_colors, autopct="%1.1f%%",
+        startangle=140, pctdistance=0.78,
+        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
+        textprops={"fontsize": 9},
+    )
+    for at in autotexts:
+        at.set_fontsize(8.5)
+        at.set_fontweight("bold")
+    # Centre hole → donut
+    centre = plt.Circle((0, 0), 0.52, color="#F8F9FA")
+    ax_pie.add_patch(centre)
+    ax_pie.text(0, 0.08, fmt_b(sum(pie_vals)), ha="center", va="center",
+                fontsize=14, fontweight="bold", color="#212121")
+    ax_pie.text(0, -0.14, "total tokens", ha="center", va="center",
+                fontsize=9, color="#616161")
+    ax_pie.legend(wedges, [f"{l.replace(chr(10),' ')}  {fmt_b(v)}"
+                            for l, v in zip(pie_labels, pie_vals)],
+                  loc="lower center", bbox_to_anchor=(0.5, -0.22),
+                  fontsize=8, ncol=2, frameon=False)
+    ax_pie.set_title("Token Mix by Modality", fontsize=12, fontweight="bold",
+                     pad=10, color="#212121")
+
+    # ── Panel 2: Horizontal bar by dataset ──────────────────────────────────
+    sorted_idx = sorted(range(len(ds_names)), key=lambda i: ds_totals[i])
+    bar_vals   = [ds_totals[i]  for i in sorted_idx]
+    bar_labels = [short_names[i] for i in sorted_idx]
+    bar_colors = [DS_COLORS[i % len(DS_COLORS)] for i in sorted_idx]
+    y_pos = range(len(bar_vals))
+
+    bars = ax_ds.barh(list(y_pos), bar_vals, color=bar_colors,
+                      edgecolor="white", linewidth=1.2, height=0.6)
+    for bar, val in zip(bars, bar_vals):
+        ax_ds.text(bar.get_width() * 1.01, bar.get_y() + bar.get_height() / 2,
+                   fmt_b(val), va="center", ha="left", fontsize=9, fontweight="bold",
+                   color="#212121")
+    ax_ds.set_yticks(list(y_pos))
+    ax_ds.set_yticklabels(bar_labels, fontsize=9)
+    ax_ds.set_xlabel("Tokens", fontsize=9)
+    ax_ds.xaxis.set_major_formatter(
+        plt.FuncFormatter(lambda x, _: fmt_b(x))
+    )
+    ax_ds.set_title("Tokens by Dataset", fontsize=12, fontweight="bold",
+                    pad=10, color="#212121")
+    ax_ds.spines[["top", "right"]].set_visible(False)
+    ax_ds.set_facecolor("#F8F9FA")
+
+    # ── Panel 3: Stacked bar (modality breakdown per dataset) ───────────────
+    x = np.arange(len(ds_names))
+    bar_w = 0.55
+    bottoms = np.zeros(len(ds_names))
+    for mi, (mod, color) in enumerate(zip(MODALITIES, MOD_COLORS)):
+        vals = np.array([datasets[n].get(mod, 0) for n in ds_names], dtype=float)
+        if vals.sum() == 0:
+            continue
+        ax_stack.bar(x, vals, bar_w, bottom=bottoms, color=color,
+                     label=MOD_LABELS[mi].replace("\n", " "), edgecolor="white", linewidth=0.8)
+        bottoms += vals
+
+    ax_stack.set_xticks(x)
+    ax_stack.set_xticklabels(short_names, fontsize=8.5)
+    ax_stack.set_ylabel("Tokens", fontsize=9)
+    ax_stack.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda y, _: fmt_b(y))
+    )
+    ax_stack.legend(loc="upper left", fontsize=7.5, frameon=True,
+                    framealpha=0.9, ncol=2)
+    ax_stack.set_title("Modality Breakdown per Dataset", fontsize=12,
+                       fontweight="bold", pad=10, color="#212121")
+    ax_stack.spines[["top", "right"]].set_visible(False)
+    ax_stack.set_facecolor("#F8F9FA")
+
+    # ── Panel 4: Coverage heatmap (% of each modality present per dataset) ──
+    present_mods = [m for m in MODALITIES if modality_totals[m] > 0]
+    present_labels = [MOD_LABELS[MODALITIES.index(m)].replace("\n", " ")
+                      for m in present_mods]
+    heat_data = np.zeros((len(ds_names), len(present_mods)))
+    for di, name in enumerate(ds_names):
         ds = datasets[name]
-        total = sum(ds.get(m, 0) for m in modalities)
-        ds_totals.append(total)
+        for mi, mod in enumerate(present_mods):
+            total_mod = modality_totals[mod]
+            if total_mod > 0:
+                heat_data[di, mi] = ds.get(mod, 0) / total_mod * 100
 
-    ds_colors = ["#FF5722", "#3F51B5", "#009688", "#FFC107", "#795548"]
-    ds_labels = [f"{name}\n{total/1e9:.2f}B" for name, total in zip(ds_names, ds_totals)]
+    im = ax_cov.imshow(heat_data, aspect="auto", cmap="YlOrRd", vmin=0, vmax=100)
+    ax_cov.set_xticks(range(len(present_mods)))
+    ax_cov.set_xticklabels(present_labels, rotation=30, ha="right", fontsize=8)
+    ax_cov.set_yticks(range(len(ds_names)))
+    ax_cov.set_yticklabels(short_names, fontsize=8.5)
+    for di in range(len(ds_names)):
+        for mi in range(len(present_mods)):
+            val = heat_data[di, mi]
+            color = "white" if val > 55 else "#212121"
+            ax_cov.text(mi, di, f"{val:.0f}%", ha="center", va="center",
+                        fontsize=8.5, fontweight="bold", color=color)
+    cbar = fig.colorbar(im, ax=ax_cov, fraction=0.035, pad=0.03)
+    cbar.set_label("% of modality total", fontsize=8)
+    cbar.ax.tick_params(labelsize=7)
+    ax_cov.set_title("Dataset Share per Modality (%)", fontsize=12,
+                     fontweight="bold", pad=10, color="#212121")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
-
-    # Chart 1: By modality
-    wedges1, texts1, autotexts1 = ax1.pie(
-        mod_vals, labels=mod_labels, colors=mod_colors,
-        autopct="%1.1f%%", startangle=90, pctdistance=0.75,
-        textprops={"fontsize": 10}
-    )
-    for t in autotexts1:
-        t.set_fontsize(9)
-    total_all = sum(mod_vals)
-    ax1.set_title(f"Token Distribution by Modality\nTotal: {total_all/1e9:.1f}B tokens",
-                  fontsize=14, fontweight="bold")
-
-    # Chart 2: By dataset
-    wedges2, texts2, autotexts2 = ax2.pie(
-        ds_totals, labels=ds_labels, colors=ds_colors[:len(ds_names)],
-        autopct="%1.1f%%", startangle=90, pctdistance=0.75,
-        textprops={"fontsize": 10}
-    )
-    for t in autotexts2:
-        t.set_fontsize(9)
-    ax2.set_title(f"Token Distribution by Dataset\nTotal: {sum(ds_totals)/1e9:.1f}B tokens",
-                  fontsize=14, fontweight="bold")
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
     print(f"\nCharts saved to: {output_path}")
 
 

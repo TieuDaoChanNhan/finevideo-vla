@@ -695,37 +695,38 @@ The second model (vla-1.7b-pab-spline-adaptive) validates the architecture and t
 
 **Goal**: Count tokens across ALL available multimodal datasets. Create a pie chart and table showing token counts by modality, number of records, and size in GB.
 
-**Datasets to inventory**:
+**Status**: COMPLETE (June 22, 2026). Script: `tools/data_inventory.py`. Charts: `tools/data_inventory_charts.png`.
 
-| Dataset | Source | Token types present |
-|---------|--------|---------------------|
-| FineVideo-Phase7-Flattened | `EmpathicRobotics/FineVideo-Phase7-Flattened` | seed2, cosmos, avclm, agent, text |
-| MixtureVitae-Omni | `mixture-vitae/MixtureVitae-Omni` | image tokens, snac, seed2, text — **no cosmos/avclm/agent** |
-| MixtureVitae-Backup (stack_images) | `mixture-vitae-backup/MixtureVitae-Backup` | stack exchange images + text (raw, needs tokenizing) |
-| MixtureVitae-Backup (valid_with_seed) | `mixture-vitae-backup/MixtureVitae-Backup` | seed2 tokens + text |
-| SenseNova-SI-8M | `sensenova/SenseNova-SI-8M` | 8M image-text pairs (raw) |
-| stera-10m | `fpvlabs/stera-10m` | 10M video clips (license concern) |
-| OmniAction | `OpenMOSS-Team/OmniAction` | action-labeled video data |
+**Datasets surveyed**:
 
-**Output**: Two pie charts (by modality + by dataset) + summary table.
+| Dataset | Source | Content | Status |
+|---------|--------|---------|--------|
+| FineVideo-Phase7-Flattened | `EmpathicRobotics/FineVideo-Phase7-Flattened` | Tokenized JSONL | Ready |
+| MixtureVitae-Omni | `mixture-vitae/MixtureVitae-Omni` | Tokenized JSONL (seed + snac) | Ready |
+| MixtureVitae-Backup (valid_with_seed) | `mixture-vitae-backup/MixtureVitae-Backup` | **Raw .png + .ogg files** | Needs Seed2 + SNAC tokenization |
+| MixtureVitae-Backup (stack_images3_gzip) | `mixture-vitae-backup/MixtureVitae-Backup` | Raw images | Needs Seed2 tokenization |
+| SenseNova-SI-8M | `sensenova/SenseNova-SI-8M` | 8M image-text pairs (raw) | Needs tokenization |
+| stera-10m | `fpvlabs/stera-10m` | 10M video clips | Restrictive license |
+| OmniAction | `OpenMOSS-Team/OmniAction` | Action-labeled video | CC-BY-NC-4.0 |
 
-**Script**: `tools/data_inventory.py` — downloads 1 shard samples, counts token types, extrapolates, generates charts.
-
-**Preliminary results** (FineVideo exact, MV-Omni sampled):
+**Actual results** (FineVideo exact, MV-Omni streamed 5K records × 7.7× scale):
 
 | Dataset | Records | Size | seed2 | cosmos | avclm | agent | snac | text | Total |
 |---------|---------|------|-------|--------|-------|-------|------|------|-------|
-| FineVideo-VLA | 69,844 | 19.2 GB | 89.9M | 210.2M | 474.4M | 637.9M | — | 362.5M | 1.77B |
-| MV-Omni | ~181K | 36 GB gz | 5.8M | — | — | — | 106.8M | 55.1M | 0.17B |
-| MV-Backup valid_with_seed | large | 1,233 GB gz | est. ~30B | — | — | — | — | est. ~138B | ~168B |
+| FineVideo-VLA | 69,844 | 19.2 GB | 89.9M | 210.2M | 474.4M | 637.9M | — | 362.5M | **1.77B** |
+| MV-Omni | ~38K | 36.2 GB | 1.2M | — | — | — | 19.7M | 11.3M | **0.03B** |
+| MV-Backup valid_with_seed | — | 1,233 GB | — | — | — | — | — | — | **0 (raw audio/images)** |
+| **TOTAL (tokenized)** | | | 91.1M | 210.2M | 474.4M | 637.9M | 19.7M | 376.6M | **1.81B** |
 
-Key findings:
-- **valid_with_seed is dominant** (~168B tokens, mostly text+seed2). Even 10% of it would give ~17B tokens.
-- **Only FineVideo has agent tokens** (638M). External datasets add language/image diversity but not action data.
-- **MV-Omni uses `<seed_N>` not `<seed2_N>`** — needs vocab mapping or rename during data conversion.
-- **SNAC tokens** (~107M in MV-Omni) are not in our current vocab — need expansion.
+**Key findings** (correcting earlier estimates):
 
-**Can do during JUPITER downtime**: Yes — use HF streaming API on JUSUF.
+- **valid_with_seed is NOT pre-tokenized.** Despite the name implying seed tokens, the archive contains raw `.png` keyframe images and `.ogg` audio clips (verified by streaming the actual tar contents). The 1,233 GB is raw source material — it is the upstream data that MixtureVitae-Omni was presumably derived from. Tokenizing it would require running Seed2 on the PNGs and SNAC on the OGGs. The earlier estimate of ~168B tokens was wrong.
+- **MV-Omni is much smaller than expected.** Real sampling gives ~0.03B tokens (vs. fallback estimate of 0.17B). It uses `<seed_N>` (not `<seed2_N>`) and SNAC tokens not in our current vocab.
+- **FineVideo-VLA is the only real multimodal source.** It contributes 98% of all available tokenized data and 100% of agent tokens.
+- **Only FineVideo has agent tokens** (638M). No external dataset adds 3D pose data.
+- **SNAC tokens** (~20M in MV-Omni) are not in our current vocab — need expansion to use MV-Omni.
+
+**Impact on improvement plan**: The Phase 3 strategy of mixing ~168B external tokens to let the model see each FineVideo sample ~10× collapses. The path to more data requires either (a) tokenizing the raw MV-Backup PNG/OGG archives with Seed2+SNAC, (b) tokenizing SenseNova-SI-8M, or (c) the rich captioning pipeline (Phase 2) which multiplies FineVideo's own value 4× without new data.
 
 ### Phase 2: Video Captioning for FineVideo
 
@@ -759,15 +760,23 @@ She brings the knife down in a smooth chopping motion on a red bell pepper.
 
 ### Phase 3: Integrate External Datasets
 
-**Important**: MV-Omni, stack exchange, SenseNova have text + image tokens but **NOT** cosmos/avclm/agent. They help the model maintain language understanding and learn seed2/snac patterns, but only FineVideo has the full multimodal chain.
+**Important**: MV-Omni is the only external dataset that is pre-tokenized. It has `<seed_N>` + SNAC tokens but **NOT** cosmos/avclm/agent. The original plan assumed ~168B tokens from MV-Backup valid_with_seed — this was wrong; that archive is raw PNG+OGG that needs tokenization first.
 
-**Strategy**: Mix external data as a "language+image backbone":
-- **FineVideo VLA** (~30% of training mix): teaches the full multimodal chain with agent tokens
-- **MV-Omni + stack exchange + etc.** (~70% of mix): teaches general language and image understanding
+**Revised strategy**:
 
-This way the model sees each FineVideo sample ~10× while getting diverse text+image training.
+| Source | Tokens available now | Tokens after tokenization |
+|--------|---------------------|--------------------------|
+| FineVideo-VLA | 1.77B | — |
+| MV-Omni | 0.03B | — |
+| MV-Backup valid_with_seed (PNG+OGG) | 0 | unknown, large — needs Seed2+SNAC |
+| SenseNova-SI-8M | 0 | unknown — needs Seed2 |
+| stack_images3_gzip | 0 | unknown — needs Seed2 |
 
-**Vocab impact**: Need to add snac tokens to the tokenizer for MV-Omni. Current vocab has seed2/cosmos/avclm/agent but not snac.
+**Short-term** (no new tokenization runs): Mix FineVideo (1.77B) + MV-Omni (0.03B). Only 1.8B total — not enough to change the data starvation problem meaningfully. The 70%/30% external/FineVideo split doesn't make sense at this scale.
+
+**Medium-term** (requires GPU runs on JUSUF or JUPITER): Tokenize MV-Backup PNG+OGG with Seed2+SNAC pipeline. This is the largest untapped source.
+
+**Vocab impact**: Need to add SNAC tokens to the tokenizer before MV-Omni or any tokenized audio can be used. Current vocab has seed2/cosmos/avclm/agent but not snac.
 
 ### Phase 4: Adjust Modality Dropout
 
