@@ -1,650 +1,775 @@
 #!/usr/bin/env python3
 """
-Data inventory: count tokens across all available multimodal datasets
-and generate pie charts for Huu's data overview request.
+data_inventory.py — Count tokens across all multimodal datasets.
 
-Usage (on JUPITER login node, aarch64):
-    module --force purge
-    module load Stages/2025 GCC/13.3.0 Python/3.12.3 SciPy-bundle/2024.05 matplotlib/3.9.2
-    python tools/data_inventory.py
+Datasets:
+  1. FineVideo-VLA flat JSONL (local)
+  2. valid_with_seed — VALID + seed2 (HF: 64 shards, download-process-delete)
+  3. stack_images3_gzip — StackExchange + seed2 (local tar.gz)
+  4. valid_snac — VALID + SNAC audio tokens (HF: MixtureVitae-Omni, 6 files)
 
-Or on JUSUF (x86_64), use env_tools:
-    module --force purge
-    module load Stages/2025 GCC/13.3.0 Python/3.12.3 CUDA/12
-    source /p/data1/mmlaion/nguyen38/env_tools/bin/activate
-    pip install matplotlib  # if not installed
-    python tools/data_inventory.py
+Checkpoint: inventory_checkpoint.json (resume after interruption)
+Charts:     data_inventory_charts.png
 
-Skipping steps:
-    python tools/data_inventory.py --skip-finevideo   # use hardcoded counts
-    python tools/data_inventory.py --skip-download     # skip HF downloads, use fallback estimates
-
-Output:
-    - Prints summary table to stdout
-    - Saves two pie charts to tools/data_inventory_charts.png
+Usage:
+  python data_inventory.py                      # full run
+  python data_inventory.py --skip-valid-with-seed --skip-valid-snac   # fast test
+  python data_inventory.py --only-shard 48      # test with cached shard 48
 """
 
 import argparse
-import json
+import collections
 import glob
 import gzip
+import json
 import os
 import re
 import sys
 import tarfile
 import time
-from collections import defaultdict
+from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
+import requests
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TMP_DIR = "/p/data1/mmlaion/nguyen38/.tmp"
-FINEVIDEO_DIR = "/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_adaptive"
+# ─── Paths ───────────────────────────────────────────────────────────────────
 
-SEED2_PAT = re.compile(r"<seed2_\d+>")
-SEED_PAT = re.compile(r"<seed_\d+>")
-COSMOS_PAT = re.compile(r"<cosmos_\d+>")
-AVCLM_PAT = re.compile(r"<avclm_\d+>")
-SNAC_PAT = re.compile(r"<snac_\d+>")
-AGENT_PAT = re.compile(
-    r"<(?:fps_\d+|(?:pelvis|r_hip|r_knee|r_ankle|l_hip|l_knee|l_ankle|"
-    r"spine|thorax|nose|head_top|l_shoulder|l_elbow|l_wrist|"
-    r"r_shoulder|r_elbow|r_wrist)(?:_[txyz]_\d+)?)>"
-    r"|</(?:pelvis|r_hip|r_knee|r_ankle|l_hip|l_knee|l_ankle|"
-    r"spine|thorax|nose|head_top|l_shoulder|l_elbow|l_wrist|"
-    r"r_shoulder|r_elbow|r_wrist)>"
-    r"|</?agent>"
-)
-ALL_VLA_PAT = re.compile(
-    r"</?(?:seed2?_\d+|cosmos_\d+|avclm_\d+|snac_\d+|fps_\d+|agent|"
-    r"seed2|cosmos|avc_lm|see|listen|speak|"
-    r"(?:pelvis|r_hip|r_knee|r_ankle|l_hip|l_knee|l_ankle|"
-    r"spine|thorax|nose|head_top|l_shoulder|l_elbow|l_wrist|"
-    r"r_shoulder|r_elbow|r_wrist)(?:_[txyz]_\d+)?)>"
-)
+FINEVIDEO_DIR   = "/p/data1/mmlaion/shared/vla/vla_adaptive"
+STACK_LOCAL_DIR = ("/p/data1/mmlaion/mixture-vitae/shared/"
+                   "mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip")
+CACHE_BASE      = "/p/data1/mmlaion/nguyen38/inventory_cache"
+TMP_DIR         = os.path.join(CACHE_BASE, "tmp")
+SNAC_CACHE_DIR  = os.path.join(CACHE_BASE, "hf_snac")
+# Already-downloaded shard from previous investigations
+HF_SHARD_CACHE  = os.path.join(CACHE_BASE, "hf_shards")
 
+SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
+CHECKPOINT_PATH = os.path.join(SCRIPT_DIR, "inventory_checkpoint.json")
+CHARTS_OUT      = os.path.join(SCRIPT_DIR, "data_inventory_charts.png")
 
-def count_finevideo():
-    """Count tokens in FineVideo-Phase7-Flattened (local files)."""
-    print("=== Counting FineVideo-Phase7-Flattened ===")
-    files = sorted(glob.glob(os.path.join(FINEVIDEO_DIR, "flat_*.jsonl")))
-    if not files:
-        print(f"  No files found in {FINEVIDEO_DIR}")
-        print("  Using hardcoded values from previous count")
-        return {
-            "records": 69844,
-            "size_gb": 19.20,
-            "seed2": 89_880_864,
-            "cosmos": 210_154_800,
-            "avclm": 474_362_547,
-            "agent": 637_924_374,
-            "snac": 0,
-            "text_tokens": 362_522_978,
-        }
+HF_BACKUP_REPO  = "mixture-vitae-backup/MixtureVitae-Backup"
+HF_OMNI_REPO    = "mixture-vitae/MixtureVitae-Omni"
+HF_BASE_URL     = "https://huggingface.co/datasets"
 
-    total_records = 0
-    total_bytes = 0
-    counts = {"seed2": 0, "cosmos": 0, "avclm": 0, "agent": 0, "snac": 0, "text_chars": 0}
+VWS_NUM_SHARDS  = 64
 
-    t0 = time.time()
-    for fi, fpath in enumerate(files):
-        total_bytes += os.path.getsize(fpath)
-        with open(fpath) as f:
-            for line in f:
-                total_records += 1
-                text = json.loads(line).get("text", "")
-                counts["seed2"] += len(SEED2_PAT.findall(text))
-                counts["cosmos"] += len(COSMOS_PAT.findall(text))
-                counts["avclm"] += len(AVCLM_PAT.findall(text))
-                counts["agent"] += len(AGENT_PAT.findall(text))
-                clean = ALL_VLA_PAT.sub("", text)
-                counts["text_chars"] += len(clean.strip())
-        if (fi + 1) % 10 == 0:
-            elapsed = time.time() - t0
-            rate = (fi + 1) / elapsed
-            eta = (len(files) - fi - 1) / rate
-            print(f"  [{fi+1}/{len(files)}] {total_records:,} records | "
-                  f"{elapsed:.0f}s elapsed, ~{eta:.0f}s remaining", flush=True)
+# ─── Token patterns ──────────────────────────────────────────────────────────
 
-    print(f"  Done: {total_records:,} records, {total_bytes/1e9:.2f} GB in {time.time()-t0:.0f}s")
-    return {
-        "records": total_records,
-        "size_gb": total_bytes / 1e9,
-        "seed2": counts["seed2"],
-        "cosmos": counts["cosmos"],
-        "avclm": counts["avclm"],
-        "agent": counts["agent"],
-        "snac": 0,
-        "text_tokens": int(counts["text_chars"] / 4),
-    }
+PATTERNS = {
+    'seed2':  re.compile(r'<seed2_\d+>'),
+    'seed':   re.compile(r'<seed_\d+>'),       # MV-Omni uses <seed_N>, not <seed2_N>
+    'cosmos': re.compile(r'<cosmos_\d+>'),
+    'avclm':  re.compile(r'<avclm_\d+>'),
+    'snac':   re.compile(r'<snac_\d+>'),
+    'agent':  re.compile(r'<fps_\d+>|<[a-z_]+_[txyz]_\d+>'),
+}
+TOKEN_TYPES = list(PATTERNS.keys()) + ['text']
+_ANGLE_RE = re.compile(r'^<[^>]+>$')
 
 
-def count_mv_omni():
-    """Count tokens in MixtureVitae-Omni by streaming (no partial-gzip download)."""
-    print("\n=== Sampling MixtureVitae-Omni ===")
-    import urllib.request
-    from huggingface_hub import HfApi
+def count_tokens(text: str) -> dict:
+    """Count all VLA token types + text words in one text string."""
+    c = {}
+    for k, pat in PATTERNS.items():
+        c[k] = len(pat.findall(text))
+    c['text'] = sum(1 for w in text.split() if w and not _ANGLE_RE.match(w))
+    return c
 
-    token = os.environ.get("HF_TOKEN", "")
-    api = HfApi(token=token or None)
-    siblings = list(api.list_repo_tree(
-        "mixture-vitae/MixtureVitae-Omni", path_in_repo="data/data", repo_type="dataset"
-    ))
-    data_files = [s for s in siblings if hasattr(s, "size") and s.size > 0]
-    total_compressed = sum(s.size for s in data_files)
-    print(f"  Total compressed size: {total_compressed/1e9:.2f} GB, {len(data_files)} files")
 
-    # Pick the first file and stream-decompress it — avoids downloading a partial gzip
-    # which is undecompressable (gzip requires the end-of-stream marker).
-    first_file = data_files[0]
-    sample_file_size = first_file.size
-    url = (
-        f"https://huggingface.co/datasets/mixture-vitae/MixtureVitae-Omni"
-        f"/resolve/main/{first_file.path}"
-    )
-    MAX_RECORDS = 5000
-    print(f"  Streaming up to {MAX_RECORDS} records from {first_file.path} ...")
+def add_counts(dst: dict, src: dict):
+    for k, v in src.items():
+        if isinstance(v, (int, float)):
+            dst[k] = dst.get(k, 0) + v
 
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-    req = urllib.request.Request(url, headers=headers)
 
-    counts = {"seed": 0, "snac": 0, "text_chars": 0}
-    n_records = 0
+def zero_counts() -> dict:
+    return {k: 0 for k in TOKEN_TYPES}
+
+
+def fmt(n: int) -> str:
+    if n == 0:  return "—"
+    if n >= 1e9: return f"{n/1e9:.2f}B"
+    if n >= 1e6: return f"{n/1e6:.1f}M"
+    if n >= 1e3: return f"{n/1e3:.1f}K"
+    return str(n)
+
+
+def elapsed(t0: float) -> str:
+    s = int(time.time() - t0)
+    if s >= 3600:
+        return f"{s//3600}h{(s%3600)//60:02d}m{s%60:02d}s"
+    return f"{s//60}m{s%60:02d}s"
+
+
+# ─── Checkpoint ──────────────────────────────────────────────────────────────
+
+def load_checkpoint(path: str) -> dict:
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                data = json.load(f)
+            n = len(data.get('completed', {}))
+            print(f"Loaded checkpoint ({n} completed files): {path}")
+            return data
+        except Exception as e:
+            print(f"Warning: checkpoint unreadable ({e}), starting fresh")
+    return {'completed': {}}
+
+
+def save_checkpoint(path: str, state: dict):
+    import datetime
+    state['last_updated'] = datetime.datetime.now().isoformat()
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp, path)
+
+
+# ─── HuggingFace download ─────────────────────────────────────────────────────
+
+def _hf_token() -> str:
+    tok = os.environ.get('HF_TOKEN', '')
+    if not tok:
+        for candidate in [os.path.expanduser('~/.huggingface/token'),
+                          os.path.expanduser('~/.cache/huggingface/token')]:
+            if os.path.exists(candidate):
+                tok = open(candidate).read().strip()
+                break
+    return tok
+
+
+def hf_url(repo: str, path: str) -> str:
+    return f"{HF_BASE_URL}/{repo}/resolve/main/{path}?download=true"
+
+
+def download_with_progress(url: str, dest: str) -> bool:
+    """Download url to dest, print progress every ~256 MB. Returns True on success."""
+    os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
+    token = _hf_token()
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            with gzip.open(resp, "rt", encoding="utf-8", errors="replace") as gz:
-                for line in gz:
+        r = requests.get(url, stream=True, headers=headers, timeout=120)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"  DOWNLOAD FAILED {url}: {e}", flush=True)
+        return False
+
+    total = int(r.headers.get('content-length', 0))
+    downloaded = 0
+    t0 = time.time()
+    chunk_size = 1 << 17        # 128 KB
+    report_every = 1 << 28     # 256 MB
+    next_report = report_every
+
+    try:
+        with open(dest + '.tmp', 'wb') as f:
+            for chunk in r.iter_content(chunk_size):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                downloaded += len(chunk)
+                if downloaded >= next_report:
+                    spd = downloaded / max(time.time() - t0, 0.01) / 1e6
+                    pct = downloaded / total * 100 if total else 0
+                    eta = (total - downloaded) / max(spd * 1e6, 1) if total else 0
+                    print(f"  ↓ {downloaded/1e9:.2f}/{total/1e9:.2f} GB  "
+                          f"({pct:.0f}%)  {spd:.1f} MB/s  ETA {eta:.0f}s", flush=True)
+                    next_report = downloaded + report_every
+    except Exception as e:
+        print(f"  DOWNLOAD ERROR: {e}", flush=True)
+        try:
+            os.remove(dest + '.tmp')
+        except OSError:
+            pass
+        return False
+
+    os.replace(dest + '.tmp', dest)
+    spd = downloaded / max(time.time() - t0, 0.01) / 1e6
+    print(f"  ↓ done: {downloaded/1e9:.2f} GB  {spd:.1f} MB/s", flush=True)
+    return True
+
+
+# ─── Tar scanner ─────────────────────────────────────────────────────────────
+
+def _process_seed2_jsonl_bytes(raw: bytes) -> dict:
+    """Parse JSONL bytes and count seed2 tokens."""
+    c = zero_counts()
+    try:
+        text_content = raw.decode('utf-8', errors='replace')
+    except Exception:
+        return c
+    for line in text_content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(rec, list):
+            c['seed2'] = c.get('seed2', 0) + len(rec)
+        elif isinstance(rec, dict):
+            text = rec.get('text', rec.get('seed2_text', ''))
+            if text:
+                add_counts(c, count_tokens(text))
+    return c
+
+
+def scan_tar_for_seed2(path: str, label: str = '') -> dict:
+    """
+    Stream a tar.gz archive, find *_seed2.jsonl members, count tokens.
+    Recursively handles inner tar.gz archives (one level deep).
+    Skips .png, .ogg, and all other non-JSONL members without reading their bytes.
+    Returns count dict with extra keys: _seed2_files, _total_members.
+    """
+    counts = zero_counts()
+    counts['_seed2_files'] = 0
+    counts['_total_members'] = 0
+    t0 = time.time()
+
+    def _scan(tar_obj: tarfile.TarFile, depth: int):
+        for member in tar_obj:
+            counts['_total_members'] += 1
+            if not member.isfile() or member.size == 0:
+                continue
+            name = member.name
+
+            if name.endswith('_seed2.jsonl'):
+                counts['_seed2_files'] += 1
+                try:
+                    fobj = tar_obj.extractfile(member)
+                    if fobj is not None:
+                        add_counts(counts, _process_seed2_jsonl_bytes(fobj.read()))
+                except Exception as e:
+                    print(f"    SKIP member {name}: {e}", flush=True)
+
+                if counts['_seed2_files'] % 500 == 0:
+                    print(f"    {label}members: {counts['_total_members']:,}  "
+                          f"seed2_files: {counts['_seed2_files']:,}  "
+                          f"seed2_tokens: {fmt(counts['seed2'])}  "
+                          f"elapsed: {elapsed(t0)}", flush=True)
+
+            elif depth == 0 and name.endswith(('.tar.gz', '.tgz', '.tar')):
+                mode = 'r|gz' if name.endswith(('.tar.gz', '.tgz')) else 'r|'
+                try:
+                    fobj = tar_obj.extractfile(member)
+                    if fobj is not None:
+                        with tarfile.open(fileobj=fobj, mode=mode) as inner:
+                            _scan(inner, depth=1)
+                except Exception as e:
+                    print(f"    SKIP inner tar {name}: {e}", flush=True)
+            # .png, .ogg, etc. — advance without reading data
+
+    try:
+        with tarfile.open(path, 'r:gz') as tar:
+            _scan(tar, depth=0)
+    except Exception as e:
+        print(f"  SKIP broken archive {path}: {e}", flush=True)
+
+    return counts
+
+
+# ─── Gzip JSONL scanner ──────────────────────────────────────────────────────
+
+def scan_gzip_jsonl(path: str, label: str = '') -> dict:
+    """Count all token types in a gzip-compressed JSONL file."""
+    counts = zero_counts()
+    counts['_records'] = 0
+    t0 = time.time()
+    report_every = 50_000
+
+    try:
+        with gzip.open(path, 'rt', errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                text = rec.get('text', '')
+                if text:
+                    add_counts(counts, count_tokens(text))
+                counts['_records'] += 1
+                if counts['_records'] % report_every == 0:
+                    print(f"    {label}records: {counts['_records']:,}  "
+                          f"snac: {fmt(counts['snac'])}  seed: {fmt(counts['seed'])}  "
+                          f"elapsed: {elapsed(t0)}", flush=True)
+    except EOFError:
+        print(f"  WARNING: truncated gzip {path} — "
+              f"processed {counts.get('_records',0):,} records")
+    except Exception as e:
+        print(f"  SKIP broken gzip {path}: {e}")
+
+    return counts
+
+
+# ─── Section A: FineVideo ─────────────────────────────────────────────────────
+
+def process_finevideo(state: dict, checkpoint_path: str) -> dict:
+    print('\n' + '='*72)
+    print('SECTION A: FineVideo-VLA flat JSONL (local)')
+    print('='*72, flush=True)
+
+    files = sorted(glob.glob(os.path.join(FINEVIDEO_DIR, 'flat_*.jsonl')))
+    if not files:
+        print(f'  No flat_*.jsonl files in {FINEVIDEO_DIR}')
+        return zero_counts()
+    print(f'  {len(files)} files in {FINEVIDEO_DIR}')
+
+    total = zero_counts()
+    t0 = time.time()
+    n = len(files)
+
+    for i, fpath in enumerate(files, 1):
+        key = 'fv:' + os.path.basename(fpath)
+        if key in state['completed']:
+            add_counts(total, state['completed'][key])
+            print(f'  [{i:3d}/{n}] SKIP {os.path.basename(fpath)} (done)', flush=True)
+            continue
+
+        counts = zero_counts()
+        counts['_records'] = 0
+        ft0 = time.time()
+        try:
+            with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                for line in f:
                     line = line.strip()
                     if not line:
                         continue
                     try:
-                        d = json.loads(line)
+                        rec = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    text = d.get("text", "")
-                    counts["seed"] += len(SEED_PAT.findall(text))
-                    counts["snac"] += len(SNAC_PAT.findall(text))
-                    clean = ALL_VLA_PAT.sub("", text)
-                    counts["text_chars"] += len(clean.strip())
-                    n_records += 1
-                    if n_records >= MAX_RECORDS:
-                        break
-    except Exception as e:
-        if n_records == 0:
-            raise
-        print(f"  Stream ended early after {n_records} records: {e}")
-
-    # Scale from one sampled file to all files by compressed-size ratio
-    scale = total_compressed / sample_file_size
-    print(f"  Sampled {n_records:,} records from 1 file, scale factor: {scale:.1f}x")
-
-    return {
-        "records": int(n_records * scale),
-        "size_gb": total_compressed / 1e9,
-        "seed2": int(counts["seed"] * scale),
-        "cosmos": 0,
-        "avclm": 0,
-        "agent": 0,
-        "snac": int(counts["snac"] * scale),
-        "text_tokens": int(counts["text_chars"] / 4 * scale),
-        "note": f"streamed {n_records} records from 1 file, scaled {scale:.1f}x",
-    }
-
-
-def count_valid_with_seed():
-    """Count tokens in valid_with_seed by downloading and sampling 1 shard."""
-    print("\n=== Sampling valid_with_seed (1 shard of 64) ===")
-    import shutil
-    from huggingface_hub import hf_hub_download, HfApi
-
-    token = os.environ.get("HF_TOKEN", "")
-    api = HfApi(token=token or None)
-    hf_kwargs = {"token": token} if token else {}
-
-    siblings = list(api.list_repo_tree(
-        "mixture-vitae-backup/MixtureVitae-Backup",
-        path_in_repo="data/valid_with_seed",
-        repo_type="dataset",
-    ))
-    total_compressed = sum(s.size for s in siblings if hasattr(s, "size"))
-    n_shards = len([s for s in siblings if hasattr(s, "size") and s.size > 0])
-    print(f"  {n_shards} shards, total compressed: {total_compressed/1e9:.2f} GB")
-
-    shard_name = "data/valid_with_seed/valid_with_seed_shard_00000.tar.gz"
-    shard_size = next(s.size for s in siblings if s.path == shard_name)
-    print(f"  Downloading shard 0 ({shard_size/1e9:.2f} GB)... this may take a while")
-
-    shard_path = hf_hub_download(
-        "mixture-vitae-backup/MixtureVitae-Backup",
-        filename=shard_name,
-        repo_type="dataset",
-        cache_dir=TMP_DIR,
-        **hf_kwargs,
-    )
-
-    # The structure is doubly-nested:
-    #   valid_with_seed_shard_00000.tar.gz
-    #   └── shard_NNNNN.tar.gz  (×9, ~2 GB each)
-    #       └── *.jsonl  (actual data)
-    # We handle arbitrary nesting by recursing with streaming (r|gz) inner tars.
-
-    TEXT_KEYS = ("text", "content", "caption", "instruction", "output", "input")
-    MAX_RECORDS = 5000
-
-    counts = {"seed": 0, "seed2": 0, "snac": 0, "cosmos": 0, "text_chars": 0}
-    n_records = [0]  # list so nested functions can mutate it
-
-    def _count_text(text):
-        counts["seed"] += len(SEED_PAT.findall(text))
-        counts["seed2"] += len(SEED2_PAT.findall(text))
-        counts["snac"] += len(SNAC_PAT.findall(text))
-        counts["cosmos"] += len(COSMOS_PAT.findall(text))
-        clean = ALL_VLA_PAT.sub("", text)
-        counts["text_chars"] += len(clean.strip())
-
-    def _extract_text(d):
-        """Pull a text string out of a parsed JSON object."""
-        if not isinstance(d, dict):
-            return ""
-        for key in TEXT_KEYS:
-            val = d.get(key, "")
-            if isinstance(val, str) and val:
-                return val
-            if isinstance(val, list):
-                return " ".join(
-                    (item.get("content", "") if isinstance(item, dict) else str(item))
-                    for item in val if item
-                )
-        return ""
-
-    def _process_fileobj(fobj, name_lower):
-        """Read a file-like object as JSONL/text and count tokens."""
-        try:
-            raw = fobj.read()
-            if name_lower.endswith(".gz") and not name_lower.endswith(".tar.gz"):
-                raw = gzip.decompress(raw)
-            text_data = raw.decode("utf-8", errors="replace")
-        except Exception:
-            return
-        for line in text_data.splitlines():
-            if n_records[0] >= MAX_RECORDS:
-                return
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                d = json.loads(line)
-                text = _extract_text(d)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                text = line  # plain-text fallback
-            if text:
-                _count_text(text)
-            n_records[0] += 1
-            if n_records[0] % 2000 == 0:
-                print(f"    {n_records[0]:,} records ...", flush=True)
-
-    def _process_tar(fobj, mode):
-        """Recursively iterate a tar archive, diving into nested tar.gz members."""
-        if n_records[0] >= MAX_RECORDS:
-            return
-        try:
-            with tarfile.open(fileobj=fobj, mode=mode) as inner:
-                for member in inner:
-                    if n_records[0] >= MAX_RECORDS:
-                        return
-                    if not member.isfile() or member.size == 0:
-                        continue
-                    name_lower = member.name.lower()
-                    mfobj = inner.extractfile(member)
-                    if mfobj is None:
-                        continue
-                    if name_lower.endswith((".tar.gz", ".tgz")):
-                        # Nested tar — use streaming mode so we don't load 2GB into RAM
-                        _process_tar(mfobj, "r|gz")
-                    elif name_lower.endswith(".tar"):
-                        _process_tar(mfobj, "r|")
-                    else:
-                        _process_fileobj(mfobj, name_lower)
+                    text = rec.get('text', '')
+                    if text:
+                        add_counts(counts, count_tokens(text))
+                    counts['_records'] += 1
         except Exception as e:
-            print(f"    tar error ({mode}): {e}")
+            print(f'  SKIP broken file {fpath}: {e}')
 
-    print(f"  Counting tokens (up to {MAX_RECORDS} records, handles nested tars)...")
+        row = {k: counts[k] for k in TOKEN_TYPES}
+        add_counts(total, row)
+        state['completed'][key] = row
+        save_checkpoint(checkpoint_path, state)
+
+        recs = counts.get('_records', 0)
+        print(f'  [{i:3d}/{n}] {os.path.basename(fpath)}  '
+              f'records: {recs:,}  seed2: {fmt(counts["seed2"])}  '
+              f'cosmos: {fmt(counts["cosmos"])}  avclm: {fmt(counts["avclm"])}  '
+              f'agent: {fmt(counts["agent"])}  text: {fmt(counts["text"])}  '
+              f'file: {time.time()-ft0:.0f}s  total: {elapsed(t0)}', flush=True)
+
+    _print_section_total('FineVideo-VLA', total)
+    return total
+
+
+# ─── Section B: valid_with_seed ───────────────────────────────────────────────
+
+def process_valid_with_seed(state: dict, checkpoint_path: str,
+                             only_shard: int = None) -> dict:
+    print('\n' + '='*72)
+    print(f'SECTION B: valid_with_seed ({VWS_NUM_SHARDS} HF shards, '
+          'download → scan → keep)')
+    print(f'  Saving shards to: {HF_SHARD_CACHE}')
+    print('='*72, flush=True)
+
+    os.makedirs(HF_SHARD_CACHE, exist_ok=True)
+
+    if only_shard is not None:
+        indices = [only_shard]
+        print(f'  Test mode: only shard {only_shard}')
+    else:
+        indices = list(range(VWS_NUM_SHARDS))
+
+    total = zero_counts()
     t0 = time.time()
-    with tarfile.open(shard_path, "r:gz") as outer:
-        for member in outer:
-            if n_records[0] >= MAX_RECORDS:
-                break
-            if not member.isfile() or member.size == 0:
-                continue
-            name_lower = member.name.lower()
-            fobj = outer.extractfile(member)
-            if fobj is None:
-                continue
-            if name_lower.endswith((".tar.gz", ".tgz")):
-                _process_tar(fobj, "r|gz")
-            elif name_lower.endswith(".tar"):
-                _process_tar(fobj, "r|")
-            else:
-                _process_fileobj(fobj, name_lower)
 
-    n_records = n_records[0]
+    for i in indices:
+        shard_name = f'valid_with_seed_shard_{i:05d}.tar.gz'
+        hf_path    = f'data/valid_with_seed/{shard_name}'
+        key        = 'vws:' + shard_name
 
-    scale = total_compressed / shard_size
-    print(f"  Sampled {n_records:,} records from 1 shard, scale factor: {scale:.1f}x")
-    print(f"  Token types found: seed={counts['seed']:,}, seed2={counts['seed2']:,}, "
-          f"snac={counts['snac']:,}, cosmos={counts['cosmos']:,}")
-
-    # Clean up downloaded shard
-    try:
-        os.unlink(shard_path)
-        cache_parent = os.path.join(TMP_DIR, "datasets--mixture-vitae-backup--MixtureVitae-Backup")
-        shutil.rmtree(cache_parent, ignore_errors=True)
-    except Exception:
-        pass
-
-    total_seed = counts["seed"] + counts["seed2"]
-    return {
-        "records": int(n_records * scale),
-        "size_gb": total_compressed / 1e9,
-        "seed2": int(total_seed * scale),
-        "cosmos": int(counts["cosmos"] * scale),
-        "avclm": 0,
-        "agent": 0,
-        "snac": int(counts["snac"] * scale),
-        "text_tokens": int(counts["text_chars"] / 4 * scale),
-        "note": f"sampled 1/{n_shards} shards + extrapolated",
-    }
-
-
-def make_charts(datasets, output_path):
-    """Generate a 4-panel dashboard: pie + stacked bar + per-dataset breakdown + coverage heatmap."""
-    MODALITIES   = ["seed2",        "cosmos",        "avclm",         "agent",          "snac",          "text_tokens"]
-    MOD_LABELS   = ["Seed2\n(image keyframe)", "Cosmos\n(video spatial)", "AVC-LM\n(H.264 BPE)",
-                    "Agent\n(3D pose)",  "SNAC\n(audio)",  "Text"]
-    MOD_COLORS   = ["#43A047", "#1E88E5", "#FB8C00", "#E53935", "#8E24AA", "#546E7A"]
-    DS_COLORS    = ["#FF5722", "#3F51B5", "#009688", "#FFC107", "#795548", "#607D8B"]
-
-    ds_names = list(datasets.keys())
-
-    # Aggregate by modality across all datasets
-    modality_totals = defaultdict(int)
-    for ds in datasets.values():
-        for m in MODALITIES:
-            modality_totals[m] += ds.get(m, 0)
-
-    # Per-dataset totals
-    ds_totals = [sum(datasets[n].get(m, 0) for m in MODALITIES) for n in ds_names]
-    grand_total = sum(ds_totals)
-
-    # Short dataset display names
-    short_names = []
-    for n in ds_names:
-        if "FineVideo" in n:
-            short_names.append("FineVideo-VLA")
-        elif "Omni" in n:
-            short_names.append("MV-Omni")
-        elif "valid_with_seed" in n:
-            short_names.append("MV-Backup\nvalid_with_seed")
-        else:
-            short_names.append(n[:20])
-
-    def fmt_b(v):
-        if v >= 1e12:
-            return f"{v/1e12:.1f}T"
-        if v >= 1e9:
-            return f"{v/1e9:.2f}B"
-        if v >= 1e6:
-            return f"{v/1e6:.1f}M"
-        return str(int(v))
-
-    plt.style.use("seaborn-v0_8-whitegrid")
-    fig = plt.figure(figsize=(22, 16))
-    fig.patch.set_facecolor("#F8F9FA")
-
-    gs = fig.add_gridspec(2, 2, hspace=0.38, wspace=0.32,
-                          left=0.07, right=0.97, top=0.91, bottom=0.07)
-    ax_pie   = fig.add_subplot(gs[0, 0])
-    ax_ds    = fig.add_subplot(gs[0, 1])
-    ax_stack = fig.add_subplot(gs[1, 0])
-    ax_cov   = fig.add_subplot(gs[1, 1])
-
-    fig.suptitle(
-        f"VLA Dataset Inventory  —  {fmt_b(grand_total)} tokens total",
-        fontsize=18, fontweight="bold", color="#212121", y=0.97
-    )
-
-    # ── Panel 1: Donut by modality ──────────────────────────────────────────
-    nonzero_idx = [i for i, m in enumerate(MODALITIES) if modality_totals[m] > 0]
-    pie_vals    = [modality_totals[MODALITIES[i]] for i in nonzero_idx]
-    pie_colors  = [MOD_COLORS[i]  for i in nonzero_idx]
-    pie_labels  = [MOD_LABELS[i]  for i in nonzero_idx]
-
-    wedges, _, autotexts = ax_pie.pie(
-        pie_vals, colors=pie_colors, autopct="%1.1f%%",
-        startangle=140, pctdistance=0.78,
-        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
-        textprops={"fontsize": 9},
-    )
-    for at in autotexts:
-        at.set_fontsize(8.5)
-        at.set_fontweight("bold")
-    # Centre hole → donut
-    centre = plt.Circle((0, 0), 0.52, color="#F8F9FA")
-    ax_pie.add_patch(centre)
-    ax_pie.text(0, 0.08, fmt_b(sum(pie_vals)), ha="center", va="center",
-                fontsize=14, fontweight="bold", color="#212121")
-    ax_pie.text(0, -0.14, "total tokens", ha="center", va="center",
-                fontsize=9, color="#616161")
-    ax_pie.legend(wedges, [f"{l.replace(chr(10),' ')}  {fmt_b(v)}"
-                            for l, v in zip(pie_labels, pie_vals)],
-                  loc="lower center", bbox_to_anchor=(0.5, -0.22),
-                  fontsize=8, ncol=2, frameon=False)
-    ax_pie.set_title("Token Mix by Modality", fontsize=12, fontweight="bold",
-                     pad=10, color="#212121")
-
-    # ── Panel 2: Horizontal bar by dataset ──────────────────────────────────
-    sorted_idx = sorted(range(len(ds_names)), key=lambda i: ds_totals[i])
-    bar_vals   = [ds_totals[i]  for i in sorted_idx]
-    bar_labels = [short_names[i] for i in sorted_idx]
-    bar_colors = [DS_COLORS[i % len(DS_COLORS)] for i in sorted_idx]
-    y_pos = range(len(bar_vals))
-
-    bars = ax_ds.barh(list(y_pos), bar_vals, color=bar_colors,
-                      edgecolor="white", linewidth=1.2, height=0.6)
-    for bar, val in zip(bars, bar_vals):
-        ax_ds.text(bar.get_width() * 1.01, bar.get_y() + bar.get_height() / 2,
-                   fmt_b(val), va="center", ha="left", fontsize=9, fontweight="bold",
-                   color="#212121")
-    ax_ds.set_yticks(list(y_pos))
-    ax_ds.set_yticklabels(bar_labels, fontsize=9)
-    ax_ds.set_xlabel("Tokens", fontsize=9)
-    ax_ds.xaxis.set_major_formatter(
-        plt.FuncFormatter(lambda x, _: fmt_b(x))
-    )
-    ax_ds.set_title("Tokens by Dataset", fontsize=12, fontweight="bold",
-                    pad=10, color="#212121")
-    ax_ds.spines[["top", "right"]].set_visible(False)
-    ax_ds.set_facecolor("#F8F9FA")
-
-    # ── Panel 3: Stacked bar (modality breakdown per dataset) ───────────────
-    x = np.arange(len(ds_names))
-    bar_w = 0.55
-    bottoms = np.zeros(len(ds_names))
-    for mi, (mod, color) in enumerate(zip(MODALITIES, MOD_COLORS)):
-        vals = np.array([datasets[n].get(mod, 0) for n in ds_names], dtype=float)
-        if vals.sum() == 0:
+        if key in state['completed']:
+            add_counts(total, state['completed'][key])
+            print(f'  [{i+1:2d}/{VWS_NUM_SHARDS}] SKIP {shard_name} (done)', flush=True)
             continue
-        ax_stack.bar(x, vals, bar_w, bottom=bottoms, color=color,
-                     label=MOD_LABELS[mi].replace("\n", " "), edgecolor="white", linewidth=0.8)
-        bottoms += vals
 
-    ax_stack.set_xticks(x)
-    ax_stack.set_xticklabels(short_names, fontsize=8.5)
-    ax_stack.set_ylabel("Tokens", fontsize=9)
-    ax_stack.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda y, _: fmt_b(y))
-    )
-    ax_stack.legend(loc="upper left", fontsize=7.5, frameon=True,
-                    framealpha=0.9, ncol=2)
-    ax_stack.set_title("Modality Breakdown per Dataset", fontsize=12,
-                       fontweight="bold", pad=10, color="#212121")
-    ax_stack.spines[["top", "right"]].set_visible(False)
-    ax_stack.set_facecolor("#F8F9FA")
+        # All shards saved permanently to HF_SHARD_CACHE
+        dest = os.path.join(HF_SHARD_CACHE, shard_name)
+        if os.path.exists(dest):
+            print(f'  [{i+1:2d}/{VWS_NUM_SHARDS}] Using cached: {dest}', flush=True)
+        else:
+            url = hf_url(HF_BACKUP_REPO, hf_path)
+            print(f'  [{i+1:2d}/{VWS_NUM_SHARDS}] Downloading {shard_name} '
+                  f'to {HF_SHARD_CACHE} ...', flush=True)
+            if not download_with_progress(url, dest):
+                print(f'  SKIP {shard_name}: download failed')
+                continue
 
-    # ── Panel 4: Coverage heatmap (% of each modality present per dataset) ──
-    present_mods = [m for m in MODALITIES if modality_totals[m] > 0]
-    present_labels = [MOD_LABELS[MODALITIES.index(m)].replace("\n", " ")
-                      for m in present_mods]
-    heat_data = np.zeros((len(ds_names), len(present_mods)))
-    for di, name in enumerate(ds_names):
-        ds = datasets[name]
-        for mi, mod in enumerate(present_mods):
-            total_mod = modality_totals[mod]
-            if total_mod > 0:
-                heat_data[di, mi] = ds.get(mod, 0) / total_mod * 100
+        print(f'  [{i+1:2d}/{VWS_NUM_SHARDS}] Scanning {shard_name} ...', flush=True)
+        ft0 = time.time()
+        counts = scan_tar_for_seed2(dest, label=f'shard {i:05d}: ')
 
-    im = ax_cov.imshow(heat_data, aspect="auto", cmap="YlOrRd", vmin=0, vmax=100)
-    ax_cov.set_xticks(range(len(present_mods)))
-    ax_cov.set_xticklabels(present_labels, rotation=30, ha="right", fontsize=8)
-    ax_cov.set_yticks(range(len(ds_names)))
-    ax_cov.set_yticklabels(short_names, fontsize=8.5)
-    for di in range(len(ds_names)):
-        for mi in range(len(present_mods)):
-            val = heat_data[di, mi]
-            color = "white" if val > 55 else "#212121"
-            ax_cov.text(mi, di, f"{val:.0f}%", ha="center", va="center",
-                        fontsize=8.5, fontweight="bold", color=color)
-    cbar = fig.colorbar(im, ax=ax_cov, fraction=0.035, pad=0.03)
-    cbar.set_label("% of modality total", fontsize=8)
-    cbar.ax.tick_params(labelsize=7)
-    ax_cov.set_title("Dataset Share per Modality (%)", fontsize=12,
-                     fontweight="bold", pad=10, color="#212121")
+        row = {k: counts[k] for k in TOKEN_TYPES}
+        add_counts(total, row)
+        state['completed'][key] = row
+        save_checkpoint(checkpoint_path, state)
 
-    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
-    plt.close(fig)
-    print(f"\nCharts saved to: {output_path}")
+        sf = counts.get('_seed2_files', 0)
+        print(f'  [{i+1:2d}/{VWS_NUM_SHARDS}] {shard_name} DONE  '
+              f'seed2_files: {sf:,}  seed2: {fmt(counts["seed2"])}  '
+              f'scan: {time.time()-ft0:.0f}s  total: {elapsed(t0)}', flush=True)
+
+    _print_section_total('valid_with_seed', total)
+    return total
 
 
-def print_summary(datasets):
-    """Print a summary table."""
-    modalities = ["seed2", "cosmos", "avclm", "agent", "snac", "text_tokens"]
+# ─── Section C: stack_images3_gzip ───────────────────────────────────────────
 
-    print("\n" + "=" * 100)
-    print("DATA INVENTORY SUMMARY")
-    print("=" * 100)
+def process_stack_images3(state: dict, checkpoint_path: str) -> dict:
+    print('\n' + '='*72)
+    print('SECTION C: stack_images3_gzip (local tar.gz archives)')
+    print('='*72, flush=True)
 
-    header = f"{'Dataset':<30} {'Records':>12} {'Size':>8} {'Seed2':>10} {'Cosmos':>10} {'AVC-LM':>10} {'Agent':>10} {'SNAC':>10} {'Text':>10} {'Total':>12}"
+    archives = sorted(glob.glob(os.path.join(STACK_LOCAL_DIR, '*.tar.gz')))
+    if not archives:
+        print(f'  No *.tar.gz files in {STACK_LOCAL_DIR}')
+        return zero_counts()
+    print(f'  {len(archives)} archives found')
+
+    total = zero_counts()
+    t0 = time.time()
+    n = len(archives)
+
+    for i, apath in enumerate(archives, 1):
+        key = 'stack:' + os.path.basename(apath)
+        if key in state['completed']:
+            add_counts(total, state['completed'][key])
+            print(f'  [{i:2d}/{n}] SKIP {os.path.basename(apath)} (done)', flush=True)
+            continue
+
+        size_gb = os.path.getsize(apath) / 1e9
+        print(f'  [{i:2d}/{n}] {os.path.basename(apath)} ({size_gb:.1f} GB) ...',
+              flush=True)
+        ft0 = time.time()
+        counts = scan_tar_for_seed2(apath, label=f'{os.path.basename(apath)}: ')
+
+        row = {k: counts[k] for k in TOKEN_TYPES}
+        add_counts(total, row)
+        state['completed'][key] = row
+        save_checkpoint(checkpoint_path, state)
+
+        sf = counts.get('_seed2_files', 0)
+        print(f'  [{i:2d}/{n}] {os.path.basename(apath)} DONE  '
+              f'seed2_files: {sf:,}  seed2: {fmt(counts["seed2"])}  '
+              f'scan: {time.time()-ft0:.0f}s  total: {elapsed(t0)}', flush=True)
+
+    _print_section_total('stack_images3_gzip', total)
+    return total
+
+
+# ─── Section D: valid_snac ────────────────────────────────────────────────────
+
+def process_valid_snac(state: dict, checkpoint_path: str) -> dict:
+    print('\n' + '='*72)
+    print('SECTION D: valid_snac — MixtureVitae-Omni HF download')
+    print('='*72, flush=True)
+
+    os.makedirs(SNAC_CACHE_DIR, exist_ok=True)
+    snac_files = [f'data/data/valid_snac_{i}.jsonl.gz' for i in range(6)]
+    total = zero_counts()
+    t0 = time.time()
+    n = len(snac_files)
+
+    for i, hf_path in enumerate(snac_files, 1):
+        fname = os.path.basename(hf_path)
+        key   = 'snac:' + fname
+        dest  = os.path.join(SNAC_CACHE_DIR, fname)
+
+        if key in state['completed']:
+            add_counts(total, state['completed'][key])
+            print(f'  [{i}/{n}] SKIP {fname} (done)', flush=True)
+            continue
+
+        if not os.path.exists(dest):
+            url = hf_url(HF_OMNI_REPO, hf_path)
+            print(f'  [{i}/{n}] Downloading {fname} ...', flush=True)
+            if not download_with_progress(url, dest):
+                print(f'  SKIP {fname}: download failed')
+                continue
+        else:
+            size_gb = os.path.getsize(dest) / 1e9
+            print(f'  [{i}/{n}] Cached {fname} ({size_gb:.1f} GB)', flush=True)
+
+        print(f'  [{i}/{n}] Scanning {fname} ...', flush=True)
+        ft0 = time.time()
+        counts = scan_gzip_jsonl(dest, label=f'{fname}: ')
+
+        row = {k: counts[k] for k in TOKEN_TYPES}
+        add_counts(total, row)
+        state['completed'][key] = row
+        save_checkpoint(checkpoint_path, state)
+
+        recs = counts.get('_records', 0)
+        print(f'  [{i}/{n}] {fname} DONE  '
+              f'records: {recs:,}  snac: {fmt(counts["snac"])}  '
+              f'seed: {fmt(counts["seed"])}  text: {fmt(counts["text"])}  '
+              f'scan: {time.time()-ft0:.0f}s  total: {elapsed(t0)}', flush=True)
+
+    _print_section_total('valid_snac', total)
+    return total
+
+
+# ─── Summary & charts ─────────────────────────────────────────────────────────
+
+def _print_section_total(label: str, counts: dict):
+    parts = [f'{k}={fmt(counts[k])}' for k in TOKEN_TYPES if counts.get(k, 0) > 0]
+    print(f'\n  {label} TOTAL: {", ".join(parts) if parts else "(empty)"}')
+
+
+DATASET_META = [
+    ('finevideo',       'FineVideo-VLA',               'fv:'),
+    ('valid_with_seed', 'valid_with_seed (64 HF shards)', 'vws:'),
+    ('stack_images3',   'stack_images3_gzip',           'stack:'),
+    ('valid_snac',      'valid_snac (MV-Omni)',         'snac:'),
+]
+
+# Display types: seed + seed2 are the same family — merged under 'seed2' in all charts/summaries
+DISPLAY_TYPES = ['seed2', 'cosmos', 'avclm', 'snac', 'agent', 'text']
+
+TOKEN_COLORS = {
+    'seed2':  '#4e79a7',
+    'cosmos': '#f28e2b',
+    'avclm':  '#e15759',
+    'snac':   '#59a14f',
+    'agent':  '#b07aa1',
+    'text':   '#9c755f',
+}
+
+
+def _merge_seed(c: dict) -> dict:
+    """Collapse 'seed' (<seed_N> from MV-Omni) into 'seed2' for display/charting."""
+    out = {k: c.get(k, 0) for k in DISPLAY_TYPES}
+    out['seed2'] += c.get('seed', 0)
+    return out
+
+
+def totals_from_checkpoint(state: dict) -> dict:
+    """Rebuild per-dataset totals from checkpoint data (works even for skipped sections)."""
+    result = {ds: zero_counts() for ds, _, _ in DATASET_META}
+    for key, row in state.get('completed', {}).items():
+        for ds, _, prefix in DATASET_META:
+            if key.startswith(prefix):
+                add_counts(result[ds], row)
+                break
+    return result
+
+
+def print_summary(totals: dict):
+    print('\n' + '='*110)
+    print('DATA INVENTORY SUMMARY  (seed + seed2 merged as seed2)')
+    print('='*110)
+    cols = DISPLAY_TYPES
+    header = f"  {'Dataset':<38s}" + ''.join(f"{c:>9s}" for c in cols) + f"  {'TOTAL':>10s}"
     print(header)
-    print("-" * len(header))
+    print('-'*110)
 
-    grand_total = defaultdict(int)
-    for name, ds in datasets.items():
-        total = sum(ds.get(m, 0) for m in modalities)
-        fmt = lambda v: f"{v/1e6:.1f}M" if v > 0 else "—"
-        print(f"{name:<30} {ds['records']:>12,} {ds['size_gb']:>7.1f}G "
-              f"{fmt(ds.get('seed2',0)):>10} {fmt(ds.get('cosmos',0)):>10} "
-              f"{fmt(ds.get('avclm',0)):>10} {fmt(ds.get('agent',0)):>10} "
-              f"{fmt(ds.get('snac',0)):>10} {fmt(ds.get('text_tokens',0)):>10} "
-              f"{total/1e9:>11.2f}B")
-        for m in modalities:
-            grand_total[m] += ds.get(m, 0)
+    grand = {k: 0 for k in cols}
+    for ds, label, _ in DATASET_META:
+        c = _merge_seed(totals.get(ds, zero_counts()))
+        row_total = sum(c.get(k, 0) for k in cols)
+        print(f"  {label:<38s}" + ''.join(f"{fmt(c.get(k,0)):>9s}" for k in cols)
+              + f"  {fmt(row_total):>10s}")
+        for k in cols:
+            grand[k] += c.get(k, 0)
 
-    print("-" * len(header))
-    gt = sum(grand_total.values())
-    fmt = lambda v: f"{v/1e6:.1f}M" if v < 1e9 else f"{v/1e9:.2f}B"
-    print(f"{'TOTAL':<30} {'':>12} {'':>8} "
-          f"{fmt(grand_total['seed2']):>10} {fmt(grand_total['cosmos']):>10} "
-          f"{fmt(grand_total['avclm']):>10} {fmt(grand_total['agent']):>10} "
-          f"{fmt(grand_total['snac']):>10} {fmt(grand_total['text_tokens']):>10} "
-          f"{gt/1e9:>11.2f}B")
+    print('-'*110)
+    grand_total = sum(grand.values())
+    print(f"  {'TOTAL':<38s}" + ''.join(f"{fmt(grand.get(k,0)):>9s}" for k in cols)
+          + f"  {fmt(grand_total):>10s}")
+    print('='*110)
 
-    print("\n--- Not yet tokenized (excluded from charts) ---")
-    print("  MV-Backup stack_images3_gzip:  200 GB compressed, raw images, needs seed2/cosmos tokenization")
-    print("  SenseNova-SI-8M:               8M image-text pairs, Apache 2.0, needs tokenization")
-    print("  stera-10m:                     10M egocentric video clips, restrictive license")
-    print("  OmniAction:                    action-labeled video, CC-BY-NC-4.0")
 
+def save_charts(totals: dict):
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+        import matplotlib.colors as mcolors
+    except Exception as e:
+        print(f'WARNING: matplotlib unavailable, skipping charts: {e}')
+        return
+
+    # Merge seed → seed2 for all datasets
+    display = {ds: _merge_seed(totals.get(ds, zero_counts())) for ds, _, _ in DATASET_META}
+
+    # Active display types (have data anywhere)
+    active = [k for k in DISPLAY_TYPES
+              if any(display[ds].get(k, 0) > 0 for ds, _, _ in DATASET_META)]
+
+    # Grand totals
+    overall = {k: sum(display[ds].get(k, 0) for ds, _, _ in DATASET_META) for k in active}
+    grand_total = sum(overall.values())
+
+    # ── Layout: left = overall pie, right = summary table ────────────────────────
+    fig = plt.figure(figsize=(20, 9))
+    fig.patch.set_facecolor('#ffffff')
+    gs = GridSpec(1, 2, figure=fig, wspace=0.08, width_ratios=[1, 1.6])
+
+    # ── Left: overall pie ─────────────────────────────────────────────────────────
+    ax_pie = fig.add_subplot(gs[0, 0])
+    pie_vals = [overall[k] for k in active]
+    pct_lbls = [f'{overall[k]/grand_total*100:.1f}%\n{fmt(overall[k])}' for k in active]
+    pie_cols = [TOKEN_COLORS.get(k, '#aaa') for k in active]
+    wedges, _, autotexts = ax_pie.pie(
+        pie_vals,
+        colors=pie_cols,
+        autopct='',          # we use custom labels instead
+        startangle=140,
+        wedgeprops={'linewidth': 1.2, 'edgecolor': 'white'},
+        pctdistance=0.78,
+    )
+    # Legend with token type + count
+    legend_labels = [f'{k}  —  {fmt(overall[k])}  ({overall[k]/grand_total*100:.1f}%)'
+                     for k in active]
+    ax_pie.legend(wedges, legend_labels, loc='lower center',
+                  bbox_to_anchor=(0.5, -0.18), fontsize=9.5,
+                  frameon=False, ncol=1)
+    ax_pie.set_title(f'All Datasets Combined\n{fmt(grand_total)} tokens total',
+                     fontsize=13, fontweight='bold', pad=12)
+
+    # ── Right: per-dataset table ──────────────────────────────────────────────────
+    ax_tbl = fig.add_subplot(gs[0, 1])
+    ax_tbl.axis('off')
+
+    # Build table data
+    col_headers = active + ['TOTAL']
+    row_labels   = [label for _, label, _ in DATASET_META] + ['TOTAL']
+
+    grand_row = {k: overall[k] for k in active}
+
+    cell_text = []
+    cell_colors = []
+
+    for ds, label, _ in DATASET_META:
+        c = display[ds]
+        ds_total = sum(c.get(k, 0) for k in active)
+        row_vals = [fmt(c.get(k, 0)) for k in active] + [fmt(ds_total)]
+        cell_text.append(row_vals)
+
+        # Color each cell: light tint of the token color; grey for zero; last col white
+        row_colors = []
+        for k in active:
+            v = c.get(k, 0)
+            if v == 0:
+                row_colors.append('#f0f0f0')
+            else:
+                base = mcolors.to_rgb(TOKEN_COLORS.get(k, '#aaa'))
+                # blend toward white: 0.25 saturation
+                tint = tuple(0.25 * b + 0.75 for b in base)
+                row_colors.append(tint)
+        row_colors.append('#e8e8e8')   # TOTAL column
+        cell_colors.append(row_colors)
+
+    # TOTAL row
+    total_vals = [fmt(overall[k]) for k in active] + [fmt(grand_total)]
+    cell_text.append(total_vals)
+    total_colors = []
+    for k in active:
+        base = mcolors.to_rgb(TOKEN_COLORS.get(k, '#aaa'))
+        tint = tuple(0.4 * b + 0.6 for b in base)   # slightly deeper for total row
+        total_colors.append(tint)
+    total_colors.append('#c8c8c8')
+    cell_colors.append(total_colors)
+
+    tbl = ax_tbl.table(
+        cellText=cell_text,
+        rowLabels=row_labels,
+        colLabels=col_headers,
+        cellColours=cell_colors,
+        loc='center',
+        cellLoc='center',
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1.0, 2.0)   # taller rows
+
+    # Bold header row and row-label column
+    for (r, c_), cell in tbl.get_celld().items():
+        cell.set_edgecolor('#bbbbbb')
+        if r == 0 or c_ == -1:
+            cell.set_text_props(fontweight='bold')
+        # TOTAL row (last data row)
+        if r == len(DATASET_META) + 1:
+            cell.set_text_props(fontweight='bold')
+
+    ax_tbl.set_title('Token counts by dataset and type\n(seed and seed2 merged as seed2)',
+                     fontsize=11, fontweight='bold', pad=14)
+
+    fig.suptitle('Data Inventory — Multimodal Token Distribution',
+                 fontsize=15, fontweight='bold', y=1.02)
+
+    try:
+        plt.savefig(CHARTS_OUT, dpi=150, bbox_inches='tight')
+        print(f'\nChart saved → {CHARTS_OUT}')
+    except Exception as e:
+        print(f'WARNING: could not save chart: {e}')
+    plt.close(fig)
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Data inventory: count tokens and generate pie charts")
-    parser.add_argument("--skip-finevideo", action="store_true",
-                        help="Use hardcoded FineVideo counts instead of re-scanning")
-    parser.add_argument("--skip-download", action="store_true",
-                        help="Skip HF downloads, use fallback estimates for MV-Omni and valid_with_seed")
-    parser.add_argument("--output", default=os.path.join(SCRIPT_DIR, "data_inventory_charts.png"),
-                        help="Output path for pie chart PNG")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(
+        description='Count tokens across all multimodal datasets.')
+    p.add_argument('--skip-finevideo',       action='store_true',
+                   help='Skip FineVideo section')
+    p.add_argument('--skip-valid-with-seed', action='store_true',
+                   help='Skip valid_with_seed section (64 HF shards)')
+    p.add_argument('--skip-stack',           action='store_true',
+                   help='Skip stack_images3_gzip section')
+    p.add_argument('--skip-valid-snac',      action='store_true',
+                   help='Skip valid_snac section')
+    p.add_argument('--only-shard',           type=int, default=None,
+                   help='valid_with_seed: process only this shard index (0–63). '
+                        'Implies --skip-finevideo --skip-stack --skip-valid-snac '
+                        'unless those are explicitly requested.')
+    p.add_argument('--checkpoint', default=CHECKPOINT_PATH,
+                   help=f'Checkpoint file (default: {CHECKPOINT_PATH})')
+    args = p.parse_args()
 
-    os.makedirs(TMP_DIR, exist_ok=True)
-    datasets = {}
-    total_start = time.time()
+    t_start = time.time()
+    state = load_checkpoint(args.checkpoint)
 
-    # 1. FineVideo
-    if args.skip_finevideo:
-        print("=== FineVideo-Phase7-Flattened (using hardcoded counts) ===")
-        datasets["FineVideo-VLA"] = {
-            "records": 69844, "size_gb": 19.20,
-            "seed2": 89_880_864, "cosmos": 210_154_800,
-            "avclm": 474_362_547, "agent": 637_924_374,
-            "snac": 0, "text_tokens": 362_522_978,
-        }
-    else:
-        datasets["FineVideo-VLA"] = count_finevideo()
+    session_totals = {}  # only what ran this session
 
-    # 2. MixtureVitae-Omni
-    if args.skip_download:
-        print("\n=== MV-Omni (using fallback estimate) ===")
-        datasets["MV-Omni"] = {
-            "records": 180_850, "size_gb": 36.2,
-            "seed2": 5_787_200, "cosmos": 0, "avclm": 0, "agent": 0,
-            "snac": 106_837_860, "text_tokens": 55_120_457,
-            "note": "fallback estimate",
-        }
-    else:
-        try:
-            datasets["MV-Omni"] = count_mv_omni()
-        except Exception as e:
-            print(f"  Error sampling MV-Omni: {e}")
-            datasets["MV-Omni"] = {
-                "records": 180_850, "size_gb": 36.2,
-                "seed2": 5_787_200, "cosmos": 0, "avclm": 0, "agent": 0,
-                "snac": 106_837_860, "text_tokens": 55_120_457,
-                "note": "fallback estimate",
-            }
+    if not args.skip_finevideo:
+        session_totals['finevideo'] = process_finevideo(state, args.checkpoint)
 
-    # 3. valid_with_seed
-    if args.skip_download:
-        print("\n=== valid_with_seed (using fallback estimate) ===")
-        datasets["MV-Backup valid_with_seed"] = {
-            "records": 0, "size_gb": 1233.0,
-            "seed2": 30_000_000_000, "cosmos": 0, "avclm": 0, "agent": 0,
-            "snac": 0, "text_tokens": 137_700_000_000,
-            "note": "chat estimate, unverified",
-        }
-    else:
-        try:
-            datasets["MV-Backup valid_with_seed"] = count_valid_with_seed()
-        except Exception as e:
-            print(f"  Error sampling valid_with_seed: {e}")
-            print("  Using chat estimate (~167.7B tokens)")
-            datasets["MV-Backup valid_with_seed"] = {
-                "records": 0, "size_gb": 1233.0,
-                "seed2": 30_000_000_000, "cosmos": 0, "avclm": 0, "agent": 0,
-                "snac": 0, "text_tokens": 137_700_000_000,
-                "note": "chat estimate, unverified",
-            }
+    if not args.skip_valid_with_seed:
+        session_totals['valid_with_seed'] = process_valid_with_seed(
+            state, args.checkpoint, args.only_shard)
 
-    # Print summary
-    print_summary(datasets)
+    if not args.skip_stack:
+        session_totals['stack_images3'] = process_stack_images3(state, args.checkpoint)
 
-    # Generate charts
-    make_charts(datasets, args.output)
+    if not args.skip_valid_snac:
+        session_totals['valid_snac'] = process_valid_snac(state, args.checkpoint)
 
-    print(f"\nTotal runtime: {time.time() - total_start:.0f}s")
+    # Always rebuild totals from the full checkpoint so the summary includes
+    # sections processed in previous runs (even if skipped this session).
+    all_totals = totals_from_checkpoint(state)
+
+    print_summary(all_totals)
+    save_charts(all_totals)
+
+    print(f'\nTotal wall time: {elapsed(t_start)}')
+    print(f'Checkpoint: {args.checkpoint}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

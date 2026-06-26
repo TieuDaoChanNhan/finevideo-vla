@@ -1,0 +1,734 @@
+Loaded checkpoint (200 completed files): tools/inventory_checkpoint_v2.json
+
+========================================================================
+SECTION A: FineVideo-VLA flat JSONL (local)
+========================================================================
+  160 files in /p/data1/mmlaion/shared/vla/vla_adaptive
+  [  1/160] SKIP flat_final_vla_adaptive_rank_0.jsonl (done)
+  [  2/160] SKIP flat_final_vla_adaptive_rank_1.jsonl (done)
+  [  3/160] SKIP flat_final_vla_adaptive_rank_10.jsonl (done)
+  [  4/160] SKIP flat_final_vla_adaptive_rank_100.jsonl (done)
+  [  5/160] SKIP flat_final_vla_adaptive_rank_101.jsonl (done)
+  [  6/160] SKIP flat_final_vla_adaptive_rank_102.jsonl (done)
+  [  7/160] SKIP flat_final_vla_adaptive_rank_103.jsonl (done)
+  [  8/160] SKIP flat_final_vla_adaptive_rank_104.jsonl (done)
+  [  9/160] SKIP flat_final_vla_adaptive_rank_105.jsonl (done)
+  [ 10/160] SKIP flat_final_vla_adaptive_rank_106.jsonl (done)
+  [ 11/160] SKIP flat_final_vla_adaptive_rank_107.jsonl (done)
+  [ 12/160] SKIP flat_final_vla_adaptive_rank_108.jsonl (done)
+  [ 13/160] SKIP flat_final_vla_adaptive_rank_109.jsonl (done)
+  [ 14/160] SKIP flat_final_vla_adaptive_rank_11.jsonl (done)
+  [ 15/160] SKIP flat_final_vla_adaptive_rank_110.jsonl (done)
+  [ 16/160] SKIP flat_final_vla_adaptive_rank_111.jsonl (done)
+  [ 17/160] SKIP flat_final_vla_adaptive_rank_112.jsonl (done)
+  [ 18/160] SKIP flat_final_vla_adaptive_rank_113.jsonl (done)
+  [ 19/160] SKIP flat_final_vla_adaptive_rank_114.jsonl (done)
+  [ 20/160] SKIP flat_final_vla_adaptive_rank_115.jsonl (done)
+  [ 21/160] SKIP flat_final_vla_adaptive_rank_116.jsonl (done)
+  [ 22/160] SKIP flat_final_vla_adaptive_rank_117.jsonl (done)
+  [ 23/160] SKIP flat_final_vla_adaptive_rank_118.jsonl (done)
+  [ 24/160] SKIP flat_final_vla_adaptive_rank_119.jsonl (done)
+  [ 25/160] SKIP flat_final_vla_adaptive_rank_12.jsonl (done)
+  [ 26/160] SKIP flat_final_vla_adaptive_rank_120.jsonl (done)
+  [ 27/160] SKIP flat_final_vla_adaptive_rank_121.jsonl (done)
+  [ 28/160] SKIP flat_final_vla_adaptive_rank_122.jsonl (done)
+  [ 29/160] SKIP flat_final_vla_adaptive_rank_123.jsonl (done)
+  [ 30/160] SKIP flat_final_vla_adaptive_rank_124.jsonl (done)
+  [ 31/160] SKIP flat_final_vla_adaptive_rank_125.jsonl (done)
+  [ 32/160] SKIP flat_final_vla_adaptive_rank_126.jsonl (done)
+  [ 33/160] SKIP flat_final_vla_adaptive_rank_127.jsonl (done)
+  [ 34/160] SKIP flat_final_vla_adaptive_rank_128.jsonl (done)
+  [ 35/160] SKIP flat_final_vla_adaptive_rank_129.jsonl (done)
+  [ 36/160] SKIP flat_final_vla_adaptive_rank_13.jsonl (done)
+  [ 37/160] SKIP flat_final_vla_adaptive_rank_130.jsonl (done)
+  [ 38/160] SKIP flat_final_vla_adaptive_rank_131.jsonl (done)
+  [ 39/160] SKIP flat_final_vla_adaptive_rank_132.jsonl (done)
+  [ 40/160] SKIP flat_final_vla_adaptive_rank_133.jsonl (done)
+  [ 41/160] SKIP flat_final_vla_adaptive_rank_134.jsonl (done)
+  [ 42/160] SKIP flat_final_vla_adaptive_rank_135.jsonl (done)
+  [ 43/160] SKIP flat_final_vla_adaptive_rank_136.jsonl (done)
+  [ 44/160] SKIP flat_final_vla_adaptive_rank_137.jsonl (done)
+  [ 45/160] SKIP flat_final_vla_adaptive_rank_138.jsonl (done)
+  [ 46/160] SKIP flat_final_vla_adaptive_rank_139.jsonl (done)
+  [ 47/160] SKIP flat_final_vla_adaptive_rank_14.jsonl (done)
+  [ 48/160] SKIP flat_final_vla_adaptive_rank_140.jsonl (done)
+  [ 49/160] SKIP flat_final_vla_adaptive_rank_141.jsonl (done)
+  [ 50/160] SKIP flat_final_vla_adaptive_rank_142.jsonl (done)
+  [ 51/160] SKIP flat_final_vla_adaptive_rank_143.jsonl (done)
+  [ 52/160] SKIP flat_final_vla_adaptive_rank_144.jsonl (done)
+  [ 53/160] SKIP flat_final_vla_adaptive_rank_145.jsonl (done)
+  [ 54/160] SKIP flat_final_vla_adaptive_rank_146.jsonl (done)
+  [ 55/160] SKIP flat_final_vla_adaptive_rank_147.jsonl (done)
+  [ 56/160] SKIP flat_final_vla_adaptive_rank_148.jsonl (done)
+  [ 57/160] SKIP flat_final_vla_adaptive_rank_149.jsonl (done)
+  [ 58/160] SKIP flat_final_vla_adaptive_rank_15.jsonl (done)
+  [ 59/160] SKIP flat_final_vla_adaptive_rank_150.jsonl (done)
+  [ 60/160] SKIP flat_final_vla_adaptive_rank_151.jsonl (done)
+  [ 61/160] SKIP flat_final_vla_adaptive_rank_152.jsonl (done)
+  [ 62/160] SKIP flat_final_vla_adaptive_rank_153.jsonl (done)
+  [ 63/160] SKIP flat_final_vla_adaptive_rank_154.jsonl (done)
+  [ 64/160] SKIP flat_final_vla_adaptive_rank_155.jsonl (done)
+  [ 65/160] SKIP flat_final_vla_adaptive_rank_156.jsonl (done)
+  [ 66/160] SKIP flat_final_vla_adaptive_rank_157.jsonl (done)
+  [ 67/160] SKIP flat_final_vla_adaptive_rank_158.jsonl (done)
+  [ 68/160] SKIP flat_final_vla_adaptive_rank_159.jsonl (done)
+  [ 69/160] SKIP flat_final_vla_adaptive_rank_16.jsonl (done)
+  [ 70/160] SKIP flat_final_vla_adaptive_rank_17.jsonl (done)
+  [ 71/160] SKIP flat_final_vla_adaptive_rank_18.jsonl (done)
+  [ 72/160] SKIP flat_final_vla_adaptive_rank_19.jsonl (done)
+  [ 73/160] SKIP flat_final_vla_adaptive_rank_2.jsonl (done)
+  [ 74/160] SKIP flat_final_vla_adaptive_rank_20.jsonl (done)
+  [ 75/160] SKIP flat_final_vla_adaptive_rank_21.jsonl (done)
+  [ 76/160] SKIP flat_final_vla_adaptive_rank_22.jsonl (done)
+  [ 77/160] SKIP flat_final_vla_adaptive_rank_23.jsonl (done)
+  [ 78/160] SKIP flat_final_vla_adaptive_rank_24.jsonl (done)
+  [ 79/160] SKIP flat_final_vla_adaptive_rank_25.jsonl (done)
+  [ 80/160] SKIP flat_final_vla_adaptive_rank_26.jsonl (done)
+  [ 81/160] SKIP flat_final_vla_adaptive_rank_27.jsonl (done)
+  [ 82/160] SKIP flat_final_vla_adaptive_rank_28.jsonl (done)
+  [ 83/160] SKIP flat_final_vla_adaptive_rank_29.jsonl (done)
+  [ 84/160] SKIP flat_final_vla_adaptive_rank_3.jsonl (done)
+  [ 85/160] SKIP flat_final_vla_adaptive_rank_30.jsonl (done)
+  [ 86/160] SKIP flat_final_vla_adaptive_rank_31.jsonl (done)
+  [ 87/160] SKIP flat_final_vla_adaptive_rank_32.jsonl (done)
+  [ 88/160] SKIP flat_final_vla_adaptive_rank_33.jsonl (done)
+  [ 89/160] SKIP flat_final_vla_adaptive_rank_34.jsonl (done)
+  [ 90/160] SKIP flat_final_vla_adaptive_rank_35.jsonl (done)
+  [ 91/160] SKIP flat_final_vla_adaptive_rank_36.jsonl (done)
+  [ 92/160] SKIP flat_final_vla_adaptive_rank_37.jsonl (done)
+  [ 93/160] SKIP flat_final_vla_adaptive_rank_38.jsonl (done)
+  [ 94/160] SKIP flat_final_vla_adaptive_rank_39.jsonl (done)
+  [ 95/160] SKIP flat_final_vla_adaptive_rank_4.jsonl (done)
+  [ 96/160] SKIP flat_final_vla_adaptive_rank_40.jsonl (done)
+  [ 97/160] SKIP flat_final_vla_adaptive_rank_41.jsonl (done)
+  [ 98/160] SKIP flat_final_vla_adaptive_rank_42.jsonl (done)
+  [ 99/160] SKIP flat_final_vla_adaptive_rank_43.jsonl (done)
+  [100/160] SKIP flat_final_vla_adaptive_rank_44.jsonl (done)
+  [101/160] SKIP flat_final_vla_adaptive_rank_45.jsonl (done)
+  [102/160] SKIP flat_final_vla_adaptive_rank_46.jsonl (done)
+  [103/160] SKIP flat_final_vla_adaptive_rank_47.jsonl (done)
+  [104/160] SKIP flat_final_vla_adaptive_rank_48.jsonl (done)
+  [105/160] SKIP flat_final_vla_adaptive_rank_49.jsonl (done)
+  [106/160] SKIP flat_final_vla_adaptive_rank_5.jsonl (done)
+  [107/160] SKIP flat_final_vla_adaptive_rank_50.jsonl (done)
+  [108/160] SKIP flat_final_vla_adaptive_rank_51.jsonl (done)
+  [109/160] SKIP flat_final_vla_adaptive_rank_52.jsonl (done)
+  [110/160] SKIP flat_final_vla_adaptive_rank_53.jsonl (done)
+  [111/160] SKIP flat_final_vla_adaptive_rank_54.jsonl (done)
+  [112/160] SKIP flat_final_vla_adaptive_rank_55.jsonl (done)
+  [113/160] SKIP flat_final_vla_adaptive_rank_56.jsonl (done)
+  [114/160] SKIP flat_final_vla_adaptive_rank_57.jsonl (done)
+  [115/160] SKIP flat_final_vla_adaptive_rank_58.jsonl (done)
+  [116/160] SKIP flat_final_vla_adaptive_rank_59.jsonl (done)
+  [117/160] SKIP flat_final_vla_adaptive_rank_6.jsonl (done)
+  [118/160] SKIP flat_final_vla_adaptive_rank_60.jsonl (done)
+  [119/160] SKIP flat_final_vla_adaptive_rank_61.jsonl (done)
+  [120/160] SKIP flat_final_vla_adaptive_rank_62.jsonl (done)
+  [121/160] SKIP flat_final_vla_adaptive_rank_63.jsonl (done)
+  [122/160] SKIP flat_final_vla_adaptive_rank_64.jsonl (done)
+  [123/160] SKIP flat_final_vla_adaptive_rank_65.jsonl (done)
+  [124/160] SKIP flat_final_vla_adaptive_rank_66.jsonl (done)
+  [125/160] SKIP flat_final_vla_adaptive_rank_67.jsonl (done)
+  [126/160] SKIP flat_final_vla_adaptive_rank_68.jsonl (done)
+  [127/160] SKIP flat_final_vla_adaptive_rank_69.jsonl (done)
+  [128/160] SKIP flat_final_vla_adaptive_rank_7.jsonl (done)
+  [129/160] SKIP flat_final_vla_adaptive_rank_70.jsonl (done)
+  [130/160] SKIP flat_final_vla_adaptive_rank_71.jsonl (done)
+  [131/160] SKIP flat_final_vla_adaptive_rank_72.jsonl (done)
+  [132/160] SKIP flat_final_vla_adaptive_rank_73.jsonl (done)
+  [133/160] SKIP flat_final_vla_adaptive_rank_74.jsonl (done)
+  [134/160] SKIP flat_final_vla_adaptive_rank_75.jsonl (done)
+  [135/160] SKIP flat_final_vla_adaptive_rank_76.jsonl (done)
+  [136/160] SKIP flat_final_vla_adaptive_rank_77.jsonl (done)
+  [137/160] SKIP flat_final_vla_adaptive_rank_78.jsonl (done)
+  [138/160] SKIP flat_final_vla_adaptive_rank_79.jsonl (done)
+  [139/160] SKIP flat_final_vla_adaptive_rank_8.jsonl (done)
+  [140/160] SKIP flat_final_vla_adaptive_rank_80.jsonl (done)
+  [141/160] SKIP flat_final_vla_adaptive_rank_81.jsonl (done)
+  [142/160] SKIP flat_final_vla_adaptive_rank_82.jsonl (done)
+  [143/160] SKIP flat_final_vla_adaptive_rank_83.jsonl (done)
+  [144/160] SKIP flat_final_vla_adaptive_rank_84.jsonl (done)
+  [145/160] SKIP flat_final_vla_adaptive_rank_85.jsonl (done)
+  [146/160] SKIP flat_final_vla_adaptive_rank_86.jsonl (done)
+  [147/160] SKIP flat_final_vla_adaptive_rank_87.jsonl (done)
+  [148/160] SKIP flat_final_vla_adaptive_rank_88.jsonl (done)
+  [149/160] SKIP flat_final_vla_adaptive_rank_89.jsonl (done)
+  [150/160] SKIP flat_final_vla_adaptive_rank_9.jsonl (done)
+  [151/160] SKIP flat_final_vla_adaptive_rank_90.jsonl (done)
+  [152/160] SKIP flat_final_vla_adaptive_rank_91.jsonl (done)
+  [153/160] SKIP flat_final_vla_adaptive_rank_92.jsonl (done)
+  [154/160] SKIP flat_final_vla_adaptive_rank_93.jsonl (done)
+  [155/160] SKIP flat_final_vla_adaptive_rank_94.jsonl (done)
+  [156/160] SKIP flat_final_vla_adaptive_rank_95.jsonl (done)
+  [157/160] SKIP flat_final_vla_adaptive_rank_96.jsonl (done)
+  [158/160] SKIP flat_final_vla_adaptive_rank_97.jsonl (done)
+  [159/160] SKIP flat_final_vla_adaptive_rank_98.jsonl (done)
+  [160/160] SKIP flat_final_vla_adaptive_rank_99.jsonl (done)
+
+  FineVideo-VLA TOTAL: seed2=89.9M, cosmos=210.2M, avclm=474.4M, agent=564.9M, text=11.4M
+
+========================================================================
+SECTION B: valid_with_seed (64 HF shards, download → scan → keep)
+  Saving shards to: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards
+========================================================================
+  [ 1/64] SKIP valid_with_seed_shard_00000.tar.gz (done)
+  [ 2/64] SKIP valid_with_seed_shard_00001.tar.gz (done)
+  [ 3/64] SKIP valid_with_seed_shard_00002.tar.gz (done)
+  [ 4/64] SKIP valid_with_seed_shard_00003.tar.gz (done)
+  [ 5/64] SKIP valid_with_seed_shard_00004.tar.gz (done)
+  [ 6/64] SKIP valid_with_seed_shard_00005.tar.gz (done)
+  [ 7/64] SKIP valid_with_seed_shard_00006.tar.gz (done)
+  [ 8/64] SKIP valid_with_seed_shard_00007.tar.gz (done)
+  [ 9/64] SKIP valid_with_seed_shard_00008.tar.gz (done)
+  [10/64] SKIP valid_with_seed_shard_00009.tar.gz (done)
+  [11/64] SKIP valid_with_seed_shard_00010.tar.gz (done)
+  [12/64] SKIP valid_with_seed_shard_00011.tar.gz (done)
+  [13/64] SKIP valid_with_seed_shard_00012.tar.gz (done)
+  [14/64] SKIP valid_with_seed_shard_00013.tar.gz (done)
+  [15/64] SKIP valid_with_seed_shard_00014.tar.gz (done)
+  [16/64] SKIP valid_with_seed_shard_00015.tar.gz (done)
+  [17/64] SKIP valid_with_seed_shard_00016.tar.gz (done)
+  [18/64] SKIP valid_with_seed_shard_00017.tar.gz (done)
+  [19/64] SKIP valid_with_seed_shard_00018.tar.gz (done)
+  [20/64] SKIP valid_with_seed_shard_00019.tar.gz (done)
+  [21/64] SKIP valid_with_seed_shard_00020.tar.gz (done)
+  [22/64] SKIP valid_with_seed_shard_00021.tar.gz (done)
+  [23/64] SKIP valid_with_seed_shard_00022.tar.gz (done)
+  [24/64] SKIP valid_with_seed_shard_00023.tar.gz (done)
+  [25/64] SKIP valid_with_seed_shard_00024.tar.gz (done)
+  [26/64] SKIP valid_with_seed_shard_00025.tar.gz (done)
+  [27/64] SKIP valid_with_seed_shard_00026.tar.gz (done)
+  [28/64] SKIP valid_with_seed_shard_00027.tar.gz (done)
+  [29/64] SKIP valid_with_seed_shard_00028.tar.gz (done)
+  [30/64] SKIP valid_with_seed_shard_00029.tar.gz (done)
+  [31/64] SKIP valid_with_seed_shard_00030.tar.gz (done)
+  [32/64] SKIP valid_with_seed_shard_00031.tar.gz (done)
+  [33/64] SKIP valid_with_seed_shard_00032.tar.gz (done)
+  [34/64] SKIP valid_with_seed_shard_00033.tar.gz (done)
+  [35/64] SKIP valid_with_seed_shard_00034.tar.gz (done)
+  [36/64] SKIP valid_with_seed_shard_00035.tar.gz (done)
+  [37/64] SKIP valid_with_seed_shard_00036.tar.gz (done)
+  [38/64] SKIP valid_with_seed_shard_00037.tar.gz (done)
+  [39/64] SKIP valid_with_seed_shard_00038.tar.gz (done)
+  [40/64] SKIP valid_with_seed_shard_00039.tar.gz (done)
+  [41/64] Downloading valid_with_seed_shard_00040.tar.gz to /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards ...
+  ↓ 0.27/17.29 GB  (2%)  8.8 MB/s  ETA 1935s
+  ↓ 0.54/17.29 GB  (3%)  8.2 MB/s  ETA 2034s
+  ↓ 0.81/17.29 GB  (5%)  8.3 MB/s  ETA 1978s
+  ↓ 1.07/17.29 GB  (6%)  8.1 MB/s  ETA 2012s
+  ↓ 1.34/17.29 GB  (8%)  7.6 MB/s  ETA 2106s
+  ↓ 1.61/17.29 GB  (9%)  7.9 MB/s  ETA 1993s
+  ↓ 1.88/17.29 GB  (11%)  8.5 MB/s  ETA 1821s
+  ↓ 2.15/17.29 GB  (12%)  8.3 MB/s  ETA 1828s
+  ↓ 2.42/17.29 GB  (14%)  8.2 MB/s  ETA 1804s
+  ↓ 2.68/17.29 GB  (16%)  8.1 MB/s  ETA 1809s
+  ↓ 2.95/17.29 GB  (17%)  8.0 MB/s  ETA 1783s
+  ↓ 3.22/17.29 GB  (19%)  8.4 MB/s  ETA 1679s
+  ↓ 3.49/17.29 GB  (20%)  8.5 MB/s  ETA 1631s
+  ↓ 3.76/17.29 GB  (22%)  8.5 MB/s  ETA 1592s
+  ↓ 4.03/17.29 GB  (23%)  8.5 MB/s  ETA 1553s
+  ↓ 4.29/17.29 GB  (25%)  8.6 MB/s  ETA 1515s
+  ↓ 4.56/17.29 GB  (26%)  8.6 MB/s  ETA 1473s
+  ↓ 4.83/17.29 GB  (28%)  9.0 MB/s  ETA 1377s
+  ↓ 5.10/17.29 GB  (30%)  9.5 MB/s  ETA 1288s
+  ↓ 5.37/17.29 GB  (31%)  9.9 MB/s  ETA 1209s
+  ↓ 5.64/17.29 GB  (33%)  10.2 MB/s  ETA 1141s
+  ↓ 5.91/17.29 GB  (34%)  10.2 MB/s  ETA 1111s
+  ↓ 6.17/17.29 GB  (36%)  10.2 MB/s  ETA 1093s
+  ↓ 6.44/17.29 GB  (37%)  10.1 MB/s  ETA 1074s
+  ↓ 6.71/17.29 GB  (39%)  10.1 MB/s  ETA 1050s
+  ↓ 6.98/17.29 GB  (40%)  10.1 MB/s  ETA 1017s
+  ↓ 7.25/17.29 GB  (42%)  10.5 MB/s  ETA 960s
+  ↓ 7.52/17.29 GB  (43%)  10.7 MB/s  ETA 909s
+  ↓ 7.78/17.29 GB  (45%)  11.1 MB/s  ETA 860s
+  ↓ 8.05/17.29 GB  (47%)  11.3 MB/s  ETA 814s
+  ↓ 8.32/17.29 GB  (48%)  11.6 MB/s  ETA 770s
+  ↓ 8.59/17.29 GB  (50%)  11.9 MB/s  ETA 728s
+  ↓ 8.86/17.29 GB  (51%)  12.2 MB/s  ETA 689s
+  ↓ 9.13/17.29 GB  (53%)  12.2 MB/s  ETA 669s
+  ↓ 9.40/17.29 GB  (54%)  12.2 MB/s  ETA 649s
+  ↓ 9.66/17.29 GB  (56%)  12.0 MB/s  ETA 635s
+  ↓ 9.93/17.29 GB  (57%)  12.0 MB/s  ETA 615s
+  ↓ 10.20/17.29 GB  (59%)  11.9 MB/s  ETA 594s
+  ↓ 10.47/17.29 GB  (61%)  12.1 MB/s  ETA 565s
+  ↓ 10.74/17.29 GB  (62%)  12.3 MB/s  ETA 532s
+  ↓ 11.01/17.29 GB  (64%)  12.5 MB/s  ETA 503s
+  ↓ 11.27/17.29 GB  (65%)  12.4 MB/s  ETA 484s
+  ↓ 11.54/17.29 GB  (67%)  12.3 MB/s  ETA 465s
+  ↓ 11.81/17.29 GB  (68%)  12.3 MB/s  ETA 445s
+  ↓ 12.08/17.29 GB  (70%)  12.2 MB/s  ETA 426s
+  ↓ 12.35/17.29 GB  (71%)  12.2 MB/s  ETA 403s
+  ↓ 12.62/17.29 GB  (73%)  12.4 MB/s  ETA 375s
+  ↓ 12.88/17.29 GB  (75%)  12.6 MB/s  ETA 349s
+  ↓ 13.15/17.29 GB  (76%)  12.5 MB/s  ETA 330s
+  ↓ 13.42/17.29 GB  (78%)  12.4 MB/s  ETA 312s
+  ↓ 13.69/17.29 GB  (79%)  12.3 MB/s  ETA 292s
+  ↓ 13.96/17.29 GB  (81%)  12.3 MB/s  ETA 270s
+  ↓ 14.23/17.29 GB  (82%)  12.5 MB/s  ETA 245s
+  ↓ 14.50/17.29 GB  (84%)  12.4 MB/s  ETA 225s
+  ↓ 14.76/17.29 GB  (85%)  12.3 MB/s  ETA 205s
+  ↓ 15.03/17.29 GB  (87%)  12.2 MB/s  ETA 184s
+  ↓ 15.30/17.29 GB  (89%)  12.2 MB/s  ETA 162s
+  ↓ 15.57/17.29 GB  (90%)  12.3 MB/s  ETA 140s
+  ↓ 15.84/17.29 GB  (92%)  12.2 MB/s  ETA 119s
+  ↓ 16.11/17.29 GB  (93%)  12.1 MB/s  ETA 97s
+  ↓ 16.37/17.29 GB  (95%)  12.1 MB/s  ETA 75s
+  ↓ 16.64/17.29 GB  (96%)  12.1 MB/s  ETA 53s
+  ↓ 16.91/17.29 GB  (98%)  12.3 MB/s  ETA 31s
+  ↓ 17.18/17.29 GB  (99%)  12.4 MB/s  ETA 9s
+  ↓ done: 17.29 GB  12.5 MB/s
+  [41/64] Scanning valid_with_seed_shard_00040.tar.gz ...
+    shard 00040: members: 11,412  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m39s
+    shard 00040: members: 13,470  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m44s
+    shard 00040: members: 18,108  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m58s
+    shard 00040: members: 20,451  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m03s
+    shard 00040: members: 25,911  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m19s
+    shard 00040: members: 31,141  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m35s
+    shard 00040: members: 35,719  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m47s
+    shard 00040: members: 43,774  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m09s
+  [41/64] valid_with_seed_shard_00040.tar.gz DONE  seed2_files: 4,294  seed2: 137.4K  scan: 133s  total: 25m20s
+  [42/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00041.tar.gz
+  [42/64] Scanning valid_with_seed_shard_00041.tar.gz ...
+    shard 00041: members: 6,486  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m18s
+    shard 00041: members: 14,081  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m44s
+    shard 00041: members: 20,802  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m08s
+    shard 00041: members: 23,074  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m15s
+    shard 00041: members: 27,871  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m29s
+    shard 00041: members: 30,209  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m35s
+    shard 00041: members: 35,980  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m51s
+    shard 00041: members: 38,227  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m57s
+    shard 00041: members: 43,194  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m14s
+    shard 00041: members: 45,321  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m19s
+    shard 00041: members: 47,450  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m25s
+  [42/64] valid_with_seed_shard_00041.tar.gz DONE  seed2_files: 5,972  seed2: 191.1K  scan: 151s  total: 27m51s
+  [43/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00042.tar.gz
+  [43/64] Scanning valid_with_seed_shard_00042.tar.gz ...
+    shard 00042: members: 2,126  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m05s
+    shard 00042: members: 4,324  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m10s
+    shard 00042: members: 6,508  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m16s
+    shard 00042: members: 8,806  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m21s
+    shard 00042: members: 10,985  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m27s
+    shard 00042: members: 13,227  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 0m32s
+    shard 00042: members: 15,351  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 0m38s
+    shard 00042: members: 22,296  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m05s
+    shard 00042: members: 27,155  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m19s
+    shard 00042: members: 32,532  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 1m38s
+    shard 00042: members: 34,742  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 1m43s
+    shard 00042: members: 39,779  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 2m00s
+  [43/64] valid_with_seed_shard_00042.tar.gz DONE  seed2_files: 6,457  seed2: 206.6K  scan: 142s  total: 30m13s
+  [44/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00043.tar.gz
+  [44/64] Scanning valid_with_seed_shard_00043.tar.gz ...
+    shard 00043: members: 2,189  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m04s
+    shard 00043: members: 4,369  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m09s
+    shard 00043: members: 14,177  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m36s
+    shard 00043: members: 19,141  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m48s
+    shard 00043: members: 27,275  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m12s
+    shard 00043: members: 31,670  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m23s
+    shard 00043: members: 33,857  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m28s
+    shard 00043: members: 39,062  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m43s
+    shard 00043: members: 44,356  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m00s
+    shard 00043: members: 50,554  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m16s
+    shard 00043: members: 52,749  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m20s
+  [44/64] valid_with_seed_shard_00043.tar.gz DONE  seed2_files: 5,613  seed2: 179.6K  scan: 142s  total: 32m36s
+  [45/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00044.tar.gz
+  [45/64] Scanning valid_with_seed_shard_00044.tar.gz ...
+    shard 00044: members: 2,272  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m05s
+    shard 00044: members: 4,357  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m09s
+    shard 00044: members: 12,572  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m38s
+    shard 00044: members: 18,394  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m55s
+    shard 00044: members: 23,686  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m11s
+    shard 00044: members: 28,814  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m29s
+    shard 00044: members: 31,080  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m34s
+    shard 00044: members: 36,091  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m50s
+    shard 00044: members: 38,311  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m55s
+    shard 00044: members: 40,566  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m00s
+    shard 00044: members: 46,071  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m17s
+  [45/64] valid_with_seed_shard_00044.tar.gz DONE  seed2_files: 5,696  seed2: 182.3K  scan: 140s  total: 34m55s
+  [46/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00045.tar.gz
+  [46/64] Scanning valid_with_seed_shard_00045.tar.gz ...
+    shard 00045: members: 12,908  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m39s
+    shard 00045: members: 21,261  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 1m07s
+    shard 00045: members: 25,277  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m19s
+    shard 00045: members: 33,118  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m45s
+    shard 00045: members: 35,238  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m49s
+    shard 00045: members: 37,466  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m54s
+    shard 00045: members: 42,352  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m11s
+    shard 00045: members: 44,663  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m16s
+    shard 00045: members: 46,824  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m21s
+  [46/64] valid_with_seed_shard_00045.tar.gz DONE  seed2_files: 4,958  seed2: 158.7K  scan: 146s  total: 37m21s
+  [47/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00046.tar.gz
+  [47/64] Scanning valid_with_seed_shard_00046.tar.gz ...
+    shard 00046: members: 4,930  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m14s
+    shard 00046: members: 10,680  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m32s
+    shard 00046: members: 22,732  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m08s
+    shard 00046: members: 25,016  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m14s
+    shard 00046: members: 29,112  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m25s
+    shard 00046: members: 37,610  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m48s
+    shard 00046: members: 44,690  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m02s
+    shard 00046: members: 46,833  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m07s
+  [47/64] valid_with_seed_shard_00046.tar.gz DONE  seed2_files: 4,259  seed2: 136.3K  scan: 140s  total: 39m41s
+  [48/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00047.tar.gz
+  [48/64] Scanning valid_with_seed_shard_00047.tar.gz ...
+    shard 00047: members: 6,795  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m19s
+    shard 00047: members: 11,408  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m30s
+    shard 00047: members: 19,861  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m58s
+    shard 00047: members: 22,012  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m02s
+    shard 00047: members: 25,907  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m13s
+    shard 00047: members: 28,207  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m18s
+    shard 00047: members: 30,398  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m23s
+    shard 00047: members: 35,563  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m37s
+    shard 00047: members: 44,504  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m05s
+    shard 00047: members: 46,607  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m10s
+  [48/64] valid_with_seed_shard_00047.tar.gz DONE  seed2_files: 5,359  seed2: 171.5K  scan: 142s  total: 42m03s
+  [49/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00048.tar.gz
+  [49/64] Scanning valid_with_seed_shard_00048.tar.gz ...
+    shard 00048: members: 5,299  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m16s
+    shard 00048: members: 14,478  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m41s
+    shard 00048: members: 16,714  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m46s
+    shard 00048: members: 21,334  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m00s
+    shard 00048: members: 23,473  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m05s
+    shard 00048: members: 28,169  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m18s
+    shard 00048: members: 32,554  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m30s
+    shard 00048: members: 34,802  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m35s
+    shard 00048: members: 37,012  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m40s
+    shard 00048: members: 39,121  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 1m44s
+    shard 00048: members: 43,468  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 1m57s
+    shard 00048: members: 45,754  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 2m03s
+  [49/64] valid_with_seed_shard_00048.tar.gz DONE  seed2_files: 6,482  seed2: 207.4K  scan: 128s  total: 44m11s
+  [50/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00049.tar.gz
+  [50/64] Scanning valid_with_seed_shard_00049.tar.gz ...
+    shard 00049: members: 10,255  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m29s
+    shard 00049: members: 12,505  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m35s
+    shard 00049: members: 14,714  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m40s
+    shard 00049: members: 16,905  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m45s
+    shard 00049: members: 19,169  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m50s
+    shard 00049: members: 25,037  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m05s
+    shard 00049: members: 30,575  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m17s
+    shard 00049: members: 32,734  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m22s
+    shard 00049: members: 34,720  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m26s
+    shard 00049: members: 36,860  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 1m31s
+    shard 00049: members: 42,308  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 1m48s
+    shard 00049: members: 44,483  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 1m53s
+  [50/64] valid_with_seed_shard_00049.tar.gz DONE  seed2_files: 6,158  seed2: 197.1K  scan: 129s  total: 46m21s
+  [51/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00050.tar.gz
+  [51/64] Scanning valid_with_seed_shard_00050.tar.gz ...
+    shard 00050: members: 19,396  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m57s
+    shard 00050: members: 23,449  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 1m08s
+    shard 00050: members: 29,969  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m29s
+    shard 00050: members: 34,700  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m44s
+    shard 00050: members: 36,937  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m49s
+    shard 00050: members: 45,955  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 2m19s
+    shard 00050: members: 48,268  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m24s
+  [51/64] valid_with_seed_shard_00050.tar.gz DONE  seed2_files: 3,815  seed2: 122.1K  scan: 148s  total: 48m48s
+  [52/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00051.tar.gz
+  [52/64] Scanning valid_with_seed_shard_00051.tar.gz ...
+    shard 00051: members: 5,806  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m18s
+    shard 00051: members: 19,050  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m55s
+    shard 00051: members: 28,122  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m24s
+    shard 00051: members: 32,881  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m39s
+    shard 00051: members: 34,964  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m43s
+    shard 00051: members: 39,512  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m56s
+    shard 00051: members: 41,638  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m01s
+    shard 00051: members: 43,787  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m05s
+    shard 00051: members: 48,620  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m19s
+  [52/64] valid_with_seed_shard_00051.tar.gz DONE  seed2_files: 4,758  seed2: 152.3K  scan: 141s  total: 51m10s
+  [53/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00052.tar.gz
+  [53/64] Scanning valid_with_seed_shard_00052.tar.gz ...
+    shard 00052: members: 5,204  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m16s
+    shard 00052: members: 25,632  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 1m23s
+    shard 00052: members: 27,900  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m28s
+    shard 00052: members: 29,954  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m32s
+    shard 00052: members: 32,228  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m37s
+    shard 00052: members: 41,182  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 2m00s
+    shard 00052: members: 45,780  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m14s
+    shard 00052: members: 51,111  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m27s
+  [53/64] valid_with_seed_shard_00052.tar.gz DONE  seed2_files: 4,020  seed2: 128.6K  scan: 147s  total: 53m37s
+  [54/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00053.tar.gz
+  [54/64] Scanning valid_with_seed_shard_00053.tar.gz ...
+    shard 00053: members: 4,635  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m13s
+    shard 00053: members: 10,327  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m27s
+    shard 00053: members: 12,497  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m32s
+    shard 00053: members: 14,721  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m37s
+    shard 00053: members: 16,812  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m41s
+    shard 00053: members: 21,714  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 0m56s
+    shard 00053: members: 26,611  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m11s
+    shard 00053: members: 28,806  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m16s
+    shard 00053: members: 33,934  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m30s
+    shard 00053: members: 39,837  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 1m48s
+    shard 00053: members: 44,782  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m01s
+  [54/64] valid_with_seed_shard_00053.tar.gz DONE  seed2_files: 5,857  seed2: 187.4K  scan: 135s  total: 55m52s
+  [55/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00054.tar.gz
+  [55/64] Scanning valid_with_seed_shard_00054.tar.gz ...
+    shard 00054: members: 4,928  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m13s
+    shard 00054: members: 9,326  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m26s
+    shard 00054: members: 11,445  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m31s
+    shard 00054: members: 16,533  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m45s
+    shard 00054: members: 21,472  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m59s
+    shard 00054: members: 23,777  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m04s
+    shard 00054: members: 29,191  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m20s
+    shard 00054: members: 31,229  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m25s
+    shard 00054: members: 39,287  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m50s
+    shard 00054: members: 48,681  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m15s
+    shard 00054: members: 50,584  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m20s
+  [55/64] valid_with_seed_shard_00054.tar.gz DONE  seed2_files: 5,647  seed2: 180.7K  scan: 142s  total: 58m14s
+  [56/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00055.tar.gz
+  [56/64] Scanning valid_with_seed_shard_00055.tar.gz ...
+    shard 00055: members: 7,576  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m25s
+    shard 00055: members: 13,395  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m39s
+    shard 00055: members: 19,209  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m58s
+    shard 00055: members: 24,232  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m12s
+    shard 00055: members: 29,633  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m26s
+    shard 00055: members: 31,835  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m31s
+    shard 00055: members: 40,539  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 2m00s
+    shard 00055: members: 45,960  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m14s
+    shard 00055: members: 50,172  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m25s
+  [56/64] valid_with_seed_shard_00055.tar.gz DONE  seed2_files: 4,513  seed2: 144.4K  scan: 146s  total: 1h00m40s
+  [57/64] Downloading valid_with_seed_shard_00056.tar.gz to /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards ...
+  ↓ 0.27/18.62 GB  (1%)  10.1 MB/s  ETA 1824s
+  ↓ 0.54/18.62 GB  (3%)  10.0 MB/s  ETA 1806s
+  ↓ 0.81/18.62 GB  (4%)  10.0 MB/s  ETA 1781s
+  ↓ 1.07/18.62 GB  (6%)  10.2 MB/s  ETA 1715s
+  ↓ 1.34/18.62 GB  (7%)  10.2 MB/s  ETA 1699s
+  ↓ 1.61/18.62 GB  (9%)  11.0 MB/s  ETA 1550s
+  ↓ 1.88/18.62 GB  (10%)  12.4 MB/s  ETA 1356s
+  ↓ 2.15/18.62 GB  (12%)  13.5 MB/s  ETA 1218s
+  ↓ 2.42/18.62 GB  (13%)  14.8 MB/s  ETA 1097s
+  ↓ 2.68/18.62 GB  (14%)  14.6 MB/s  ETA 1093s
+  ↓ 2.95/18.62 GB  (16%)  14.0 MB/s  ETA 1121s
+  ↓ 3.22/18.62 GB  (17%)  13.4 MB/s  ETA 1152s
+  ↓ 3.49/18.62 GB  (19%)  13.1 MB/s  ETA 1158s
+  ↓ 3.76/18.62 GB  (20%)  12.7 MB/s  ETA 1170s
+  ↓ 4.03/18.62 GB  (22%)  12.4 MB/s  ETA 1175s
+  ↓ 4.29/18.62 GB  (23%)  12.5 MB/s  ETA 1149s
+  ↓ 4.56/18.62 GB  (25%)  13.1 MB/s  ETA 1076s
+  ↓ 4.83/18.62 GB  (26%)  13.6 MB/s  ETA 1012s
+  ↓ 5.10/18.62 GB  (27%)  13.7 MB/s  ETA 987s
+  ↓ 5.37/18.62 GB  (29%)  13.4 MB/s  ETA 986s
+  ↓ 5.64/18.62 GB  (30%)  13.2 MB/s  ETA 987s
+  ↓ 5.91/18.62 GB  (32%)  12.8 MB/s  ETA 990s
+  ↓ 6.17/18.62 GB  (33%)  12.6 MB/s  ETA 986s
+  ↓ 6.44/18.62 GB  (35%)  12.9 MB/s  ETA 947s
+  ↓ 6.71/18.62 GB  (36%)  12.9 MB/s  ETA 925s
+  ↓ 6.98/18.62 GB  (37%)  12.7 MB/s  ETA 915s
+  ↓ 7.25/18.62 GB  (39%)  12.6 MB/s  ETA 906s
+  ↓ 7.52/18.62 GB  (40%)  12.5 MB/s  ETA 890s
+  ↓ 7.78/18.62 GB  (42%)  12.8 MB/s  ETA 846s
+  ↓ 8.05/18.62 GB  (43%)  12.9 MB/s  ETA 818s
+  ↓ 8.32/18.62 GB  (45%)  12.8 MB/s  ETA 804s
+  ↓ 8.59/18.62 GB  (46%)  12.7 MB/s  ETA 790s
+  ↓ 8.86/18.62 GB  (48%)  12.6 MB/s  ETA 776s
+  ↓ 9.13/18.62 GB  (49%)  12.5 MB/s  ETA 760s
+  ↓ 9.40/18.62 GB  (50%)  12.4 MB/s  ETA 743s
+  ↓ 9.66/18.62 GB  (52%)  12.7 MB/s  ETA 706s
+  ↓ 9.93/18.62 GB  (53%)  13.0 MB/s  ETA 671s
+  ↓ 10.20/18.62 GB  (55%)  13.2 MB/s  ETA 637s
+  ↓ 10.47/18.62 GB  (56%)  13.3 MB/s  ETA 611s
+  ↓ 10.74/18.62 GB  (58%)  13.3 MB/s  ETA 593s
+  ↓ 11.01/18.62 GB  (59%)  13.1 MB/s  ETA 580s
+  ↓ 11.27/18.62 GB  (61%)  13.2 MB/s  ETA 557s
+  ↓ 11.54/18.62 GB  (62%)  13.4 MB/s  ETA 527s
+  ↓ 11.81/18.62 GB  (63%)  13.7 MB/s  ETA 498s
+  ↓ 12.08/18.62 GB  (65%)  13.6 MB/s  ETA 482s
+  ↓ 12.35/18.62 GB  (66%)  13.5 MB/s  ETA 467s
+  ↓ 12.62/18.62 GB  (68%)  13.7 MB/s  ETA 440s
+  ↓ 12.88/18.62 GB  (69%)  13.9 MB/s  ETA 414s
+  ↓ 13.15/18.62 GB  (71%)  13.9 MB/s  ETA 395s
+  ↓ 13.42/18.62 GB  (72%)  13.8 MB/s  ETA 378s
+  ↓ 13.69/18.62 GB  (74%)  13.7 MB/s  ETA 359s
+  ↓ 13.96/18.62 GB  (75%)  13.7 MB/s  ETA 342s
+  ↓ 14.23/18.62 GB  (76%)  13.6 MB/s  ETA 324s
+  ↓ 14.50/18.62 GB  (78%)  13.8 MB/s  ETA 300s
+  ↓ 14.76/18.62 GB  (79%)  13.9 MB/s  ETA 277s
+  ↓ 15.03/18.62 GB  (81%)  14.1 MB/s  ETA 254s
+  ↓ 15.30/18.62 GB  (82%)  14.3 MB/s  ETA 232s
+  ↓ 15.57/18.62 GB  (84%)  14.1 MB/s  ETA 216s
+  ↓ 15.84/18.62 GB  (85%)  14.0 MB/s  ETA 199s
+  ↓ 16.11/18.62 GB  (86%)  13.9 MB/s  ETA 181s
+  ↓ 16.37/18.62 GB  (88%)  13.8 MB/s  ETA 163s
+  ↓ 16.64/18.62 GB  (89%)  13.9 MB/s  ETA 142s
+  ↓ 16.91/18.62 GB  (91%)  13.9 MB/s  ETA 123s
+  ↓ 17.18/18.62 GB  (92%)  13.9 MB/s  ETA 104s
+  ↓ 17.45/18.62 GB  (94%)  13.8 MB/s  ETA 85s
+  ↓ 17.72/18.62 GB  (95%)  13.7 MB/s  ETA 66s
+  ↓ 17.99/18.62 GB  (97%)  13.7 MB/s  ETA 47s
+  ↓ 18.25/18.62 GB  (98%)  13.6 MB/s  ETA 27s
+  ↓ 18.52/18.62 GB  (99%)  13.5 MB/s  ETA 8s
+  ↓ done: 18.62 GB  13.6 MB/s
+  [57/64] Scanning valid_with_seed_shard_00056.tar.gz ...
+    shard 00056: members: 5,189  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m16s
+    shard 00056: members: 11,079  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m34s
+    shard 00056: members: 17,206  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m50s
+    shard 00056: members: 25,619  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m13s
+    shard 00056: members: 27,869  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m18s
+    shard 00056: members: 32,889  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m29s
+    shard 00056: members: 40,173  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m50s
+    shard 00056: members: 42,422  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m54s
+    shard 00056: members: 51,794  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m22s
+  [57/64] valid_with_seed_shard_00056.tar.gz DONE  seed2_files: 4,523  seed2: 144.7K  scan: 143s  total: 1h25m56s
+  [58/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00057.tar.gz
+  [58/64] Scanning valid_with_seed_shard_00057.tar.gz ...
+    shard 00057: members: 11,459  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m35s
+    shard 00057: members: 13,848  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m41s
+    shard 00057: members: 18,835  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m56s
+    shard 00057: members: 23,931  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m08s
+    shard 00057: members: 31,408  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m30s
+    shard 00057: members: 38,591  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m50s
+    shard 00057: members: 40,860  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m55s
+    shard 00057: members: 42,979  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m00s
+    shard 00057: members: 47,763  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m14s
+    shard 00057: members: 49,891  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m18s
+  [58/64] valid_with_seed_shard_00057.tar.gz DONE  seed2_files: 5,264  seed2: 168.4K  scan: 141s  total: 1h28m17s
+  [59/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00058.tar.gz
+  [59/64] Scanning valid_with_seed_shard_00058.tar.gz ...
+    shard 00058: members: 2,238  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m04s
+    shard 00058: members: 4,423  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m09s
+    shard 00058: members: 6,648  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m14s
+    shard 00058: members: 8,826  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m19s
+    shard 00058: members: 11,012  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m24s
+    shard 00058: members: 16,388  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 0m36s
+    shard 00058: members: 18,590  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 0m41s
+    shard 00058: members: 20,754  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 0m46s
+    shard 00058: members: 22,936  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 0m51s
+    shard 00058: members: 25,147  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 0m55s
+    shard 00058: members: 31,780  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 1m17s
+    shard 00058: members: 40,730  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 1m45s
+    shard 00058: members: 42,923  seed2_files: 6,500  seed2_tokens: 208.0K  elapsed: 1m50s
+    shard 00058: members: 45,163  seed2_files: 7,000  seed2_tokens: 224.0K  elapsed: 1m55s
+    shard 00058: members: 47,364  seed2_files: 7,500  seed2_tokens: 240.0K  elapsed: 2m00s
+  [59/64] valid_with_seed_shard_00058.tar.gz DONE  seed2_files: 7,597  seed2: 243.1K  scan: 121s  total: 1h30m18s
+  [60/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00059.tar.gz
+  [60/64] Scanning valid_with_seed_shard_00059.tar.gz ...
+    shard 00059: members: 7,888  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m28s
+    shard 00059: members: 12,990  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m44s
+    shard 00059: members: 15,066  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m48s
+    shard 00059: members: 20,582  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m02s
+    shard 00059: members: 22,814  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m08s
+    shard 00059: members: 25,002  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m12s
+    shard 00059: members: 27,329  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m17s
+    shard 00059: members: 29,660  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m22s
+    shard 00059: members: 32,008  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m28s
+    shard 00059: members: 34,256  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 1m33s
+    shard 00059: members: 43,842  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m01s
+  [60/64] valid_with_seed_shard_00059.tar.gz DONE  seed2_files: 5,939  seed2: 190.0K  scan: 132s  total: 1h32m30s
+  [61/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00060.tar.gz
+  [61/64] Scanning valid_with_seed_shard_00060.tar.gz ...
+    shard 00060: members: 11,828  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m33s
+    shard 00060: members: 20,032  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m57s
+    shard 00060: members: 26,436  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 1m14s
+    shard 00060: members: 35,086  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m40s
+    shard 00060: members: 37,333  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m45s
+    shard 00060: members: 39,454  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m50s
+    shard 00060: members: 41,516  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m54s
+    shard 00060: members: 45,904  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 2m07s
+    shard 00060: members: 50,672  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m17s
+  [61/64] valid_with_seed_shard_00060.tar.gz DONE  seed2_files: 4,689  seed2: 150.0K  scan: 140s  total: 1h34m49s
+  [62/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00061.tar.gz
+  [62/64] Scanning valid_with_seed_shard_00061.tar.gz ...
+    shard 00061: members: 7,458  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m23s
+    shard 00061: members: 12,445  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m38s
+    shard 00061: members: 14,765  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m44s
+    shard 00061: members: 16,952  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m49s
+    shard 00061: members: 21,870  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m01s
+    shard 00061: members: 26,722  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m14s
+    shard 00061: members: 29,022  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m20s
+    shard 00061: members: 34,753  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m33s
+    shard 00061: members: 43,227  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 2m02s
+    shard 00061: members: 45,504  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m07s
+  [62/64] valid_with_seed_shard_00061.tar.gz DONE  seed2_files: 5,177  seed2: 165.7K  scan: 140s  total: 1h37m09s
+  [63/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00062.tar.gz
+  [63/64] Scanning valid_with_seed_shard_00062.tar.gz ...
+    shard 00062: members: 5,114  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m19s
+    shard 00062: members: 9,537  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m30s
+    shard 00062: members: 18,034  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m56s
+    shard 00062: members: 20,205  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 1m01s
+    shard 00062: members: 25,843  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 1m15s
+    shard 00062: members: 27,992  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m20s
+    shard 00062: members: 33,180  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m36s
+    shard 00062: members: 35,439  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m41s
+    shard 00062: members: 37,634  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m45s
+    shard 00062: members: 43,168  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m00s
+    shard 00062: members: 45,285  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m05s
+    shard 00062: members: 47,250  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 2m09s
+  [63/64] valid_with_seed_shard_00062.tar.gz DONE  seed2_files: 6,172  seed2: 197.5K  scan: 138s  total: 1h39m27s
+  [64/64] Using cached: /p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/valid_with_seed_shard_00063.tar.gz
+  [64/64] Scanning valid_with_seed_shard_00063.tar.gz ...
+    shard 00063: members: 5,788  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m16s
+    shard 00063: members: 7,872  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m21s
+    shard 00063: members: 10,129  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m26s
+    shard 00063: members: 18,705  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m50s
+    shard 00063: members: 20,861  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m55s
+    shard 00063: members: 23,061  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 1m00s
+    shard 00063: members: 25,282  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 1m05s
+    shard 00063: members: 37,465  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 1m41s
+    shard 00063: members: 39,720  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 1m46s
+    shard 00063: members: 46,146  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 2m08s
+    shard 00063: members: 48,238  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 2m12s
+  [64/64] valid_with_seed_shard_00063.tar.gz DONE  seed2_files: 5,541  seed2: 177.3K  scan: 133s  total: 1h41m40s
+
+  valid_with_seed TOTAL: seed2=5.6M
+
+========================================================================
+SECTION C: stack_images3_gzip (local tar.gz archives)
+========================================================================
+  12 archives found
+  [ 1/12] apple.stackexchange.com.tar.gz (10.2 GB) ...
+    apple.stackexchange.com.tar.gz: members: 64,231  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 1m02s
+  [ 1/12] apple.stackexchange.com.tar.gz DONE  seed2_files: 503  seed2: 16.1K  scan: 63s  total: 1m03s
+  [ 2/12] askubuntu.com.tar.gz (18.4 GB) ...
+  [ 2/12] askubuntu.com.tar.gz DONE  seed2_files: 469  seed2: 15.0K  scan: 118s  total: 3m01s
+  [ 3/12] blender.stackexchange.com.tar.gz (59.7 GB) ...
+    blender.stackexchange.com.tar.gz: members: 243,810  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 5m49s
+  [ 3/12] blender.stackexchange.com.tar.gz DONE  seed2_files: 505  seed2: 16.2K  scan: 351s  total: 8m52s
+  [ 4/12] diy.stackexchange.com.tar.gz (24.8 GB) ...
+    diy.stackexchange.com.tar.gz: members: 80,108  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 1m47s
+  [ 4/12] diy.stackexchange.com.tar.gz DONE  seed2_files: 557  seed2: 17.8K  scan: 117s  total: 10m49s
+  [ 5/12] electronics.stackexchange.com.tar.gz (27.7 GB) ...
+  [ 5/12] electronics.stackexchange.com.tar.gz DONE  seed2_files: 1  seed2: 32  scan: 167s  total: 13m36s
+  [ 6/12] es.stackoverflow.com.tar.gz (6.4 GB) ...
+    es.stackoverflow.com.tar.gz: members: 7,802  seed2_files: 500  seed2_tokens: 16.0K  elapsed: 0m03s
+    es.stackoverflow.com.tar.gz: members: 14,521  seed2_files: 1,000  seed2_tokens: 32.0K  elapsed: 0m05s
+    es.stackoverflow.com.tar.gz: members: 21,525  seed2_files: 1,500  seed2_tokens: 48.0K  elapsed: 0m09s
+    es.stackoverflow.com.tar.gz: members: 28,686  seed2_files: 2,000  seed2_tokens: 64.0K  elapsed: 0m16s
+    es.stackoverflow.com.tar.gz: members: 36,042  seed2_files: 2,500  seed2_tokens: 80.0K  elapsed: 0m26s
+    es.stackoverflow.com.tar.gz: members: 43,066  seed2_files: 3,000  seed2_tokens: 96.0K  elapsed: 0m29s
+    es.stackoverflow.com.tar.gz: members: 50,013  seed2_files: 3,500  seed2_tokens: 112.0K  elapsed: 0m31s
+    es.stackoverflow.com.tar.gz: members: 57,441  seed2_files: 4,000  seed2_tokens: 128.0K  elapsed: 0m34s
+    es.stackoverflow.com.tar.gz: members: 64,802  seed2_files: 4,500  seed2_tokens: 144.0K  elapsed: 0m37s
+    es.stackoverflow.com.tar.gz: members: 72,104  seed2_files: 5,000  seed2_tokens: 160.0K  elapsed: 0m41s
+    es.stackoverflow.com.tar.gz: members: 78,733  seed2_files: 5,500  seed2_tokens: 176.0K  elapsed: 0m44s
+    es.stackoverflow.com.tar.gz: members: 86,135  seed2_files: 6,000  seed2_tokens: 192.0K  elapsed: 0m47s
+  [ 6/12] es.stackoverflow.com.tar.gz DONE  seed2_files: 6,419  seed2: 205.4K  scan: 50s  total: 14m26s
+  [ 7/12] gis.stackexchange.com.tar.gz (14.8 GB) ...
+  [ 7/12] gis.stackexchange.com.tar.gz DONE  seed2_files: 3  seed2: 96  scan: 93s  total: 15m59s
+  [ 8/12] math.stackexchange.com.tar.gz (7.5 GB) ...
+  SKIP broken archive /p/data1/mmlaion/mixture-vitae/shared/mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip/math.stackexchange.com.tar.gz: unexpected end of data
+  [ 8/12] math.stackexchange.com.tar.gz DONE  seed2_files: 113  seed2: 3.6K  scan: 66s  total: 17m04s
+  [ 9/12] mathematica.stackexchange.com.tar.gz (10.2 GB) ...
+  [ 9/12] mathematica.stackexchange.com.tar.gz DONE  seed2_files: 454  seed2: 14.5K  scan: 70s  total: 18m14s
+  [10/12] physics.stackexchange.com.tar.gz (8.5 GB) ...
+  SKIP broken archive /p/data1/mmlaion/mixture-vitae/shared/mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip/physics.stackexchange.com.tar.gz: unexpected end of data
+  [10/12] physics.stackexchange.com.tar.gz DONE  seed2_files: 451  seed2: 14.4K  scan: 59s  total: 19m14s
+  [11/12] ru.stackoverflow.com.tar.gz (7.4 GB) ...
+  SKIP broken archive /p/data1/mmlaion/mixture-vitae/shared/mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip/ru.stackoverflow.com.tar.gz: unexpected end of data
+  [11/12] ru.stackoverflow.com.tar.gz DONE  seed2_files: 220  seed2: 7.0K  scan: 60s  total: 20m14s
+  [12/12] tex.stackexchange.com.tar.gz (4.3 GB) ...
+  SKIP broken archive /p/data1/mmlaion/mixture-vitae/shared/mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip/tex.stackexchange.com.tar.gz: unexpected end of data
+  [12/12] tex.stackexchange.com.tar.gz DONE  seed2_files: 86  seed2: 2.8K  scan: 30s  total: 20m45s
+
+  stack_images3_gzip TOTAL: seed2=313.0K
+
+========================================================================
+SECTION D: valid_snac — MixtureVitae-Omni HF download
+========================================================================
+  [1/6] Cached valid_snac_0.jsonl.gz (5.8 GB)
+  [1/6] Scanning valid_snac_0.jsonl.gz ...
+    valid_snac_0.jsonl.gz: records: 50,000  snac: 151.7M  seed: 596.2K  elapsed: 1m32s
+    valid_snac_0.jsonl.gz: records: 100,000  snac: 301.6M  seed: 1.4M  elapsed: 3m07s
+    valid_snac_0.jsonl.gz: records: 150,000  snac: 453.9M  seed: 2.0M  elapsed: 4m45s
+    valid_snac_0.jsonl.gz: records: 200,000  snac: 609.7M  seed: 2.6M  elapsed: 6m26s
+    valid_snac_0.jsonl.gz: records: 250,000  snac: 763.3M  seed: 3.2M  elapsed: 8m04s
+  [1/6] valid_snac_0.jsonl.gz DONE  records: 296,651  snac: 907.9M  seed: 3.8M  text: 371.3M  scan: 576s  total: 9m36s
+  [2/6] Cached valid_snac_1.jsonl.gz (5.8 GB)
+  [2/6] Scanning valid_snac_1.jsonl.gz ...
+    valid_snac_1.jsonl.gz: records: 50,000  snac: 156.1M  seed: 632.9K  elapsed: 1m40s
+    valid_snac_1.jsonl.gz: records: 100,000  snac: 307.3M  seed: 1.3M  elapsed: 3m16s

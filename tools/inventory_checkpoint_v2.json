@@ -1,0 +1,2183 @@
+{
+  "completed": {
+    "fv:flat_final_vla_adaptive_rank_0.jsonl": {
+      "seed2": 517376,
+      "seed": 0,
+      "cosmos": 1211800,
+      "avclm": 2845887,
+      "snac": 0,
+      "agent": 3374993,
+      "text": 70568
+    },
+    "fv:flat_final_vla_adaptive_rank_1.jsonl": {
+      "seed2": 588416,
+      "seed": 0,
+      "cosmos": 1414400,
+      "avclm": 2794545,
+      "snac": 0,
+      "agent": 4311765,
+      "text": 76355
+    },
+    "fv:flat_final_vla_adaptive_rank_10.jsonl": {
+      "seed2": 526080,
+      "seed": 0,
+      "cosmos": 1221400,
+      "avclm": 2777562,
+      "snac": 0,
+      "agent": 3236555,
+      "text": 73397
+    },
+    "fv:flat_final_vla_adaptive_rank_100.jsonl": {
+      "seed2": 506976,
+      "seed": 0,
+      "cosmos": 1171200,
+      "avclm": 2356111,
+      "snac": 0,
+      "agent": 3470337,
+      "text": 62417
+    },
+    "fv:flat_final_vla_adaptive_rank_101.jsonl": {
+      "seed2": 490656,
+      "seed": 0,
+      "cosmos": 1122600,
+      "avclm": 2730371,
+      "snac": 0,
+      "agent": 2967604,
+      "text": 59351
+    },
+    "fv:flat_final_vla_adaptive_rank_102.jsonl": {
+      "seed2": 752000,
+      "seed": 0,
+      "cosmos": 1747400,
+      "avclm": 3900806,
+      "snac": 0,
+      "agent": 5692678,
+      "text": 88428
+    },
+    "fv:flat_final_vla_adaptive_rank_103.jsonl": {
+      "seed2": 562016,
+      "seed": 0,
+      "cosmos": 1279800,
+      "avclm": 2849597,
+      "snac": 0,
+      "agent": 3619698,
+      "text": 72001
+    },
+    "fv:flat_final_vla_adaptive_rank_104.jsonl": {
+      "seed2": 649600,
+      "seed": 0,
+      "cosmos": 1509200,
+      "avclm": 3152413,
+      "snac": 0,
+      "agent": 4578499,
+      "text": 83497
+    },
+    "fv:flat_final_vla_adaptive_rank_105.jsonl": {
+      "seed2": 450496,
+      "seed": 0,
+      "cosmos": 1069600,
+      "avclm": 2582907,
+      "snac": 0,
+      "agent": 3359034,
+      "text": 66371
+    },
+    "fv:flat_final_vla_adaptive_rank_106.jsonl": {
+      "seed2": 689600,
+      "seed": 0,
+      "cosmos": 1621400,
+      "avclm": 3691132,
+      "snac": 0,
+      "agent": 5119228,
+      "text": 86925
+    },
+    "fv:flat_final_vla_adaptive_rank_107.jsonl": {
+      "seed2": 498112,
+      "seed": 0,
+      "cosmos": 1145800,
+      "avclm": 2722960,
+      "snac": 0,
+      "agent": 2735319,
+      "text": 60637
+    },
+    "fv:flat_final_vla_adaptive_rank_108.jsonl": {
+      "seed2": 458080,
+      "seed": 0,
+      "cosmos": 1080400,
+      "avclm": 2192678,
+      "snac": 0,
+      "agent": 2379871,
+      "text": 58799
+    },
+    "fv:flat_final_vla_adaptive_rank_109.jsonl": {
+      "seed2": 585216,
+      "seed": 0,
+      "cosmos": 1377200,
+      "avclm": 2979605,
+      "snac": 0,
+      "agent": 2978936,
+      "text": 78151
+    },
+    "fv:flat_final_vla_adaptive_rank_11.jsonl": {
+      "seed2": 536352,
+      "seed": 0,
+      "cosmos": 1256000,
+      "avclm": 3058094,
+      "snac": 0,
+      "agent": 3124511,
+      "text": 63784
+    },
+    "fv:flat_final_vla_adaptive_rank_110.jsonl": {
+      "seed2": 603616,
+      "seed": 0,
+      "cosmos": 1392600,
+      "avclm": 3216168,
+      "snac": 0,
+      "agent": 2919963,
+      "text": 73385
+    },
+    "fv:flat_final_vla_adaptive_rank_111.jsonl": {
+      "seed2": 557216,
+      "seed": 0,
+      "cosmos": 1274600,
+      "avclm": 2805204,
+      "snac": 0,
+      "agent": 3530401,
+      "text": 73505
+    },
+    "fv:flat_final_vla_adaptive_rank_112.jsonl": {
+      "seed2": 468992,
+      "seed": 0,
+      "cosmos": 1082400,
+      "avclm": 2697882,
+      "snac": 0,
+      "agent": 3054128,
+      "text": 65416
+    },
+    "fv:flat_final_vla_adaptive_rank_113.jsonl": {
+      "seed2": 700576,
+      "seed": 0,
+      "cosmos": 1634400,
+      "avclm": 3616062,
+      "snac": 0,
+      "agent": 5192613,
+      "text": 91914
+    },
+    "fv:flat_final_vla_adaptive_rank_114.jsonl": {
+      "seed2": 756320,
+      "seed": 0,
+      "cosmos": 1793600,
+      "avclm": 3927280,
+      "snac": 0,
+      "agent": 4574562,
+      "text": 84973
+    },
+    "fv:flat_final_vla_adaptive_rank_115.jsonl": {
+      "seed2": 492256,
+      "seed": 0,
+      "cosmos": 1189600,
+      "avclm": 2625648,
+      "snac": 0,
+      "agent": 2907065,
+      "text": 64177
+    },
+    "fv:flat_final_vla_adaptive_rank_116.jsonl": {
+      "seed2": 596416,
+      "seed": 0,
+      "cosmos": 1396000,
+      "avclm": 3389654,
+      "snac": 0,
+      "agent": 3821938,
+      "text": 73247
+    },
+    "fv:flat_final_vla_adaptive_rank_117.jsonl": {
+      "seed2": 539200,
+      "seed": 0,
+      "cosmos": 1262800,
+      "avclm": 2989635,
+      "snac": 0,
+      "agent": 3486813,
+      "text": 69757
+    },
+    "fv:flat_final_vla_adaptive_rank_118.jsonl": {
+      "seed2": 587040,
+      "seed": 0,
+      "cosmos": 1374800,
+      "avclm": 2966960,
+      "snac": 0,
+      "agent": 4629919,
+      "text": 75437
+    },
+    "fv:flat_final_vla_adaptive_rank_119.jsonl": {
+      "seed2": 491776,
+      "seed": 0,
+      "cosmos": 1140800,
+      "avclm": 2403665,
+      "snac": 0,
+      "agent": 3127566,
+      "text": 63733
+    },
+    "fv:flat_final_vla_adaptive_rank_12.jsonl": {
+      "seed2": 641600,
+      "seed": 0,
+      "cosmos": 1526800,
+      "avclm": 3266143,
+      "snac": 0,
+      "agent": 4239442,
+      "text": 84733
+    },
+    "fv:flat_final_vla_adaptive_rank_120.jsonl": {
+      "seed2": 540160,
+      "seed": 0,
+      "cosmos": 1269200,
+      "avclm": 3130766,
+      "snac": 0,
+      "agent": 3743417,
+      "text": 67543
+    },
+    "fv:flat_final_vla_adaptive_rank_121.jsonl": {
+      "seed2": 539648,
+      "seed": 0,
+      "cosmos": 1276800,
+      "avclm": 3136575,
+      "snac": 0,
+      "agent": 3370700,
+      "text": 72449
+    },
+    "fv:flat_final_vla_adaptive_rank_122.jsonl": {
+      "seed2": 652928,
+      "seed": 0,
+      "cosmos": 1511000,
+      "avclm": 3270487,
+      "snac": 0,
+      "agent": 4147219,
+      "text": 79130
+    },
+    "fv:flat_final_vla_adaptive_rank_123.jsonl": {
+      "seed2": 468960,
+      "seed": 0,
+      "cosmos": 1078000,
+      "avclm": 2340554,
+      "snac": 0,
+      "agent": 3464024,
+      "text": 63122
+    },
+    "fv:flat_final_vla_adaptive_rank_124.jsonl": {
+      "seed2": 446304,
+      "seed": 0,
+      "cosmos": 1039800,
+      "avclm": 2251679,
+      "snac": 0,
+      "agent": 2824577,
+      "text": 58642
+    },
+    "fv:flat_final_vla_adaptive_rank_125.jsonl": {
+      "seed2": 620800,
+      "seed": 0,
+      "cosmos": 1463600,
+      "avclm": 3512163,
+      "snac": 0,
+      "agent": 3059985,
+      "text": 76753
+    },
+    "fv:flat_final_vla_adaptive_rank_126.jsonl": {
+      "seed2": 596000,
+      "seed": 0,
+      "cosmos": 1371200,
+      "avclm": 2840793,
+      "snac": 0,
+      "agent": 3030169,
+      "text": 76586
+    },
+    "fv:flat_final_vla_adaptive_rank_127.jsonl": {
+      "seed2": 563904,
+      "seed": 0,
+      "cosmos": 1334400,
+      "avclm": 2804682,
+      "snac": 0,
+      "agent": 4040650,
+      "text": 72215
+    },
+    "fv:flat_final_vla_adaptive_rank_128.jsonl": {
+      "seed2": 729344,
+      "seed": 0,
+      "cosmos": 1726800,
+      "avclm": 3582224,
+      "snac": 0,
+      "agent": 5313564,
+      "text": 89590
+    },
+    "fv:flat_final_vla_adaptive_rank_129.jsonl": {
+      "seed2": 652192,
+      "seed": 0,
+      "cosmos": 1543000,
+      "avclm": 3405239,
+      "snac": 0,
+      "agent": 3224067,
+      "text": 74896
+    },
+    "fv:flat_final_vla_adaptive_rank_13.jsonl": {
+      "seed2": 474112,
+      "seed": 0,
+      "cosmos": 1126400,
+      "avclm": 2501672,
+      "snac": 0,
+      "agent": 2590949,
+      "text": 60321
+    },
+    "fv:flat_final_vla_adaptive_rank_130.jsonl": {
+      "seed2": 610944,
+      "seed": 0,
+      "cosmos": 1437400,
+      "avclm": 3215866,
+      "snac": 0,
+      "agent": 3580049,
+      "text": 85497
+    },
+    "fv:flat_final_vla_adaptive_rank_131.jsonl": {
+      "seed2": 482592,
+      "seed": 0,
+      "cosmos": 1150800,
+      "avclm": 2650371,
+      "snac": 0,
+      "agent": 2288923,
+      "text": 63981
+    },
+    "fv:flat_final_vla_adaptive_rank_132.jsonl": {
+      "seed2": 569408,
+      "seed": 0,
+      "cosmos": 1327600,
+      "avclm": 3218535,
+      "snac": 0,
+      "agent": 4354118,
+      "text": 71280
+    },
+    "fv:flat_final_vla_adaptive_rank_133.jsonl": {
+      "seed2": 697248,
+      "seed": 0,
+      "cosmos": 1614800,
+      "avclm": 3857778,
+      "snac": 0,
+      "agent": 3634501,
+      "text": 86928
+    },
+    "fv:flat_final_vla_adaptive_rank_134.jsonl": {
+      "seed2": 437152,
+      "seed": 0,
+      "cosmos": 1032400,
+      "avclm": 2434917,
+      "snac": 0,
+      "agent": 2462894,
+      "text": 55298
+    },
+    "fv:flat_final_vla_adaptive_rank_135.jsonl": {
+      "seed2": 510080,
+      "seed": 0,
+      "cosmos": 1213800,
+      "avclm": 2449123,
+      "snac": 0,
+      "agent": 2677919,
+      "text": 68221
+    },
+    "fv:flat_final_vla_adaptive_rank_136.jsonl": {
+      "seed2": 471328,
+      "seed": 0,
+      "cosmos": 1089400,
+      "avclm": 2349885,
+      "snac": 0,
+      "agent": 2815425,
+      "text": 64944
+    },
+    "fv:flat_final_vla_adaptive_rank_137.jsonl": {
+      "seed2": 721024,
+      "seed": 0,
+      "cosmos": 1702400,
+      "avclm": 3815169,
+      "snac": 0,
+      "agent": 5363980,
+      "text": 82412
+    },
+    "fv:flat_final_vla_adaptive_rank_138.jsonl": {
+      "seed2": 588608,
+      "seed": 0,
+      "cosmos": 1380000,
+      "avclm": 2913012,
+      "snac": 0,
+      "agent": 3249321,
+      "text": 71562
+    },
+    "fv:flat_final_vla_adaptive_rank_139.jsonl": {
+      "seed2": 411136,
+      "seed": 0,
+      "cosmos": 951400,
+      "avclm": 2247909,
+      "snac": 0,
+      "agent": 2416685,
+      "text": 55230
+    },
+    "fv:flat_final_vla_adaptive_rank_14.jsonl": {
+      "seed2": 629248,
+      "seed": 0,
+      "cosmos": 1484600,
+      "avclm": 3277247,
+      "snac": 0,
+      "agent": 3189240,
+      "text": 88851
+    },
+    "fv:flat_final_vla_adaptive_rank_140.jsonl": {
+      "seed2": 475424,
+      "seed": 0,
+      "cosmos": 1125000,
+      "avclm": 2666551,
+      "snac": 0,
+      "agent": 2555547,
+      "text": 62374
+    },
+    "fv:flat_final_vla_adaptive_rank_141.jsonl": {
+      "seed2": 589696,
+      "seed": 0,
+      "cosmos": 1382600,
+      "avclm": 3414284,
+      "snac": 0,
+      "agent": 3166355,
+      "text": 70657
+    },
+    "fv:flat_final_vla_adaptive_rank_142.jsonl": {
+      "seed2": 575424,
+      "seed": 0,
+      "cosmos": 1374800,
+      "avclm": 2989752,
+      "snac": 0,
+      "agent": 3326708,
+      "text": 74658
+    },
+    "fv:flat_final_vla_adaptive_rank_143.jsonl": {
+      "seed2": 527520,
+      "seed": 0,
+      "cosmos": 1241200,
+      "avclm": 2962436,
+      "snac": 0,
+      "agent": 4227348,
+      "text": 73176
+    },
+    "fv:flat_final_vla_adaptive_rank_144.jsonl": {
+      "seed2": 525312,
+      "seed": 0,
+      "cosmos": 1225600,
+      "avclm": 2597559,
+      "snac": 0,
+      "agent": 3553391,
+      "text": 66776
+    },
+    "fv:flat_final_vla_adaptive_rank_145.jsonl": {
+      "seed2": 562784,
+      "seed": 0,
+      "cosmos": 1313000,
+      "avclm": 3023029,
+      "snac": 0,
+      "agent": 3090509,
+      "text": 70773
+    },
+    "fv:flat_final_vla_adaptive_rank_146.jsonl": {
+      "seed2": 528192,
+      "seed": 0,
+      "cosmos": 1220000,
+      "avclm": 2905018,
+      "snac": 0,
+      "agent": 3618321,
+      "text": 62585
+    },
+    "fv:flat_final_vla_adaptive_rank_147.jsonl": {
+      "seed2": 572768,
+      "seed": 0,
+      "cosmos": 1345200,
+      "avclm": 2932049,
+      "snac": 0,
+      "agent": 3871655,
+      "text": 75303
+    },
+    "fv:flat_final_vla_adaptive_rank_148.jsonl": {
+      "seed2": 466912,
+      "seed": 0,
+      "cosmos": 1090600,
+      "avclm": 2428916,
+      "snac": 0,
+      "agent": 2279001,
+      "text": 64581
+    },
+    "fv:flat_final_vla_adaptive_rank_149.jsonl": {
+      "seed2": 419392,
+      "seed": 0,
+      "cosmos": 981800,
+      "avclm": 2138493,
+      "snac": 0,
+      "agent": 2659416,
+      "text": 56879
+    },
+    "fv:flat_final_vla_adaptive_rank_15.jsonl": {
+      "seed2": 518272,
+      "seed": 0,
+      "cosmos": 1209600,
+      "avclm": 2874831,
+      "snac": 0,
+      "agent": 3170104,
+      "text": 68849
+    },
+    "fv:flat_final_vla_adaptive_rank_150.jsonl": {
+      "seed2": 620736,
+      "seed": 0,
+      "cosmos": 1474800,
+      "avclm": 3440595,
+      "snac": 0,
+      "agent": 4215895,
+      "text": 73214
+    },
+    "fv:flat_final_vla_adaptive_rank_151.jsonl": {
+      "seed2": 556832,
+      "seed": 0,
+      "cosmos": 1332400,
+      "avclm": 2877169,
+      "snac": 0,
+      "agent": 4081736,
+      "text": 75381
+    },
+    "fv:flat_final_vla_adaptive_rank_152.jsonl": {
+      "seed2": 663552,
+      "seed": 0,
+      "cosmos": 1547400,
+      "avclm": 3150421,
+      "snac": 0,
+      "agent": 4283558,
+      "text": 86160
+    },
+    "fv:flat_final_vla_adaptive_rank_153.jsonl": {
+      "seed2": 601248,
+      "seed": 0,
+      "cosmos": 1384400,
+      "avclm": 3286168,
+      "snac": 0,
+      "agent": 3999741,
+      "text": 73951
+    },
+    "fv:flat_final_vla_adaptive_rank_154.jsonl": {
+      "seed2": 586976,
+      "seed": 0,
+      "cosmos": 1370400,
+      "avclm": 3046492,
+      "snac": 0,
+      "agent": 3477368,
+      "text": 73341
+    },
+    "fv:flat_final_vla_adaptive_rank_155.jsonl": {
+      "seed2": 510848,
+      "seed": 0,
+      "cosmos": 1192600,
+      "avclm": 2481050,
+      "snac": 0,
+      "agent": 3273357,
+      "text": 66905
+    },
+    "fv:flat_final_vla_adaptive_rank_156.jsonl": {
+      "seed2": 577056,
+      "seed": 0,
+      "cosmos": 1349200,
+      "avclm": 2935029,
+      "snac": 0,
+      "agent": 4461936,
+      "text": 70047
+    },
+    "fv:flat_final_vla_adaptive_rank_157.jsonl": {
+      "seed2": 583712,
+      "seed": 0,
+      "cosmos": 1356000,
+      "avclm": 3473745,
+      "snac": 0,
+      "agent": 3018412,
+      "text": 70934
+    },
+    "fv:flat_final_vla_adaptive_rank_158.jsonl": {
+      "seed2": 575104,
+      "seed": 0,
+      "cosmos": 1308400,
+      "avclm": 2933960,
+      "snac": 0,
+      "agent": 3458481,
+      "text": 65513
+    },
+    "fv:flat_final_vla_adaptive_rank_159.jsonl": {
+      "seed2": 466560,
+      "seed": 0,
+      "cosmos": 1074600,
+      "avclm": 2485362,
+      "snac": 0,
+      "agent": 2695165,
+      "text": 61367
+    },
+    "fv:flat_final_vla_adaptive_rank_16.jsonl": {
+      "seed2": 569216,
+      "seed": 0,
+      "cosmos": 1372600,
+      "avclm": 3081388,
+      "snac": 0,
+      "agent": 3667883,
+      "text": 66219
+    },
+    "fv:flat_final_vla_adaptive_rank_17.jsonl": {
+      "seed2": 503808,
+      "seed": 0,
+      "cosmos": 1193600,
+      "avclm": 2856990,
+      "snac": 0,
+      "agent": 3715216,
+      "text": 64702
+    },
+    "fv:flat_final_vla_adaptive_rank_18.jsonl": {
+      "seed2": 517920,
+      "seed": 0,
+      "cosmos": 1212800,
+      "avclm": 2732078,
+      "snac": 0,
+      "agent": 2800864,
+      "text": 63121
+    },
+    "fv:flat_final_vla_adaptive_rank_19.jsonl": {
+      "seed2": 530752,
+      "seed": 0,
+      "cosmos": 1250800,
+      "avclm": 2527567,
+      "snac": 0,
+      "agent": 3912662,
+      "text": 67541
+    },
+    "fv:flat_final_vla_adaptive_rank_2.jsonl": {
+      "seed2": 537376,
+      "seed": 0,
+      "cosmos": 1246200,
+      "avclm": 2605602,
+      "snac": 0,
+      "agent": 2873080,
+      "text": 67766
+    },
+    "fv:flat_final_vla_adaptive_rank_20.jsonl": {
+      "seed2": 608544,
+      "seed": 0,
+      "cosmos": 1431400,
+      "avclm": 3218385,
+      "snac": 0,
+      "agent": 3525602,
+      "text": 78409
+    },
+    "fv:flat_final_vla_adaptive_rank_21.jsonl": {
+      "seed2": 585888,
+      "seed": 0,
+      "cosmos": 1378800,
+      "avclm": 2901220,
+      "snac": 0,
+      "agent": 3568931,
+      "text": 72013
+    },
+    "fv:flat_final_vla_adaptive_rank_22.jsonl": {
+      "seed2": 574048,
+      "seed": 0,
+      "cosmos": 1344000,
+      "avclm": 2970926,
+      "snac": 0,
+      "agent": 2910368,
+      "text": 67660
+    },
+    "fv:flat_final_vla_adaptive_rank_23.jsonl": {
+      "seed2": 462688,
+      "seed": 0,
+      "cosmos": 1107800,
+      "avclm": 2497000,
+      "snac": 0,
+      "agent": 3683988,
+      "text": 62307
+    },
+    "fv:flat_final_vla_adaptive_rank_24.jsonl": {
+      "seed2": 532672,
+      "seed": 0,
+      "cosmos": 1250000,
+      "avclm": 2985085,
+      "snac": 0,
+      "agent": 2875799,
+      "text": 68589
+    },
+    "fv:flat_final_vla_adaptive_rank_25.jsonl": {
+      "seed2": 517216,
+      "seed": 0,
+      "cosmos": 1222200,
+      "avclm": 2699291,
+      "snac": 0,
+      "agent": 3088470,
+      "text": 66637
+    },
+    "fv:flat_final_vla_adaptive_rank_26.jsonl": {
+      "seed2": 635552,
+      "seed": 0,
+      "cosmos": 1498800,
+      "avclm": 2867133,
+      "snac": 0,
+      "agent": 2623179,
+      "text": 72341
+    },
+    "fv:flat_final_vla_adaptive_rank_27.jsonl": {
+      "seed2": 553664,
+      "seed": 0,
+      "cosmos": 1298000,
+      "avclm": 3283375,
+      "snac": 0,
+      "agent": 3833487,
+      "text": 73034
+    },
+    "fv:flat_final_vla_adaptive_rank_28.jsonl": {
+      "seed2": 578048,
+      "seed": 0,
+      "cosmos": 1356400,
+      "avclm": 3138795,
+      "snac": 0,
+      "agent": 5179546,
+      "text": 71402
+    },
+    "fv:flat_final_vla_adaptive_rank_29.jsonl": {
+      "seed2": 629280,
+      "seed": 0,
+      "cosmos": 1448000,
+      "avclm": 3265267,
+      "snac": 0,
+      "agent": 4368417,
+      "text": 76131
+    },
+    "fv:flat_final_vla_adaptive_rank_3.jsonl": {
+      "seed2": 462880,
+      "seed": 0,
+      "cosmos": 1092600,
+      "avclm": 2503472,
+      "snac": 0,
+      "agent": 3297522,
+      "text": 64632
+    },
+    "fv:flat_final_vla_adaptive_rank_30.jsonl": {
+      "seed2": 489760,
+      "seed": 0,
+      "cosmos": 1150000,
+      "avclm": 2410197,
+      "snac": 0,
+      "agent": 3206105,
+      "text": 67744
+    },
+    "fv:flat_final_vla_adaptive_rank_31.jsonl": {
+      "seed2": 596288,
+      "seed": 0,
+      "cosmos": 1380600,
+      "avclm": 2829969,
+      "snac": 0,
+      "agent": 4144869,
+      "text": 82776
+    },
+    "fv:flat_final_vla_adaptive_rank_32.jsonl": {
+      "seed2": 447520,
+      "seed": 0,
+      "cosmos": 1052000,
+      "avclm": 2441285,
+      "snac": 0,
+      "agent": 2910980,
+      "text": 57305
+    },
+    "fv:flat_final_vla_adaptive_rank_33.jsonl": {
+      "seed2": 549760,
+      "seed": 0,
+      "cosmos": 1301800,
+      "avclm": 2907808,
+      "snac": 0,
+      "agent": 3940194,
+      "text": 68934
+    },
+    "fv:flat_final_vla_adaptive_rank_34.jsonl": {
+      "seed2": 515744,
+      "seed": 0,
+      "cosmos": 1218600,
+      "avclm": 2662089,
+      "snac": 0,
+      "agent": 2960470,
+      "text": 67368
+    },
+    "fv:flat_final_vla_adaptive_rank_35.jsonl": {
+      "seed2": 556288,
+      "seed": 0,
+      "cosmos": 1294400,
+      "avclm": 3000246,
+      "snac": 0,
+      "agent": 2849706,
+      "text": 62975
+    },
+    "fv:flat_final_vla_adaptive_rank_36.jsonl": {
+      "seed2": 711488,
+      "seed": 0,
+      "cosmos": 1687200,
+      "avclm": 3813129,
+      "snac": 0,
+      "agent": 5240891,
+      "text": 86731
+    },
+    "fv:flat_final_vla_adaptive_rank_37.jsonl": {
+      "seed2": 496672,
+      "seed": 0,
+      "cosmos": 1139400,
+      "avclm": 2597883,
+      "snac": 0,
+      "agent": 2995872,
+      "text": 68132
+    },
+    "fv:flat_final_vla_adaptive_rank_38.jsonl": {
+      "seed2": 568800,
+      "seed": 0,
+      "cosmos": 1296200,
+      "avclm": 2835726,
+      "snac": 0,
+      "agent": 3683648,
+      "text": 73670
+    },
+    "fv:flat_final_vla_adaptive_rank_39.jsonl": {
+      "seed2": 617472,
+      "seed": 0,
+      "cosmos": 1473600,
+      "avclm": 3227063,
+      "snac": 0,
+      "agent": 3691688,
+      "text": 77575
+    },
+    "fv:flat_final_vla_adaptive_rank_4.jsonl": {
+      "seed2": 630432,
+      "seed": 0,
+      "cosmos": 1492600,
+      "avclm": 3127997,
+      "snac": 0,
+      "agent": 3279555,
+      "text": 77444
+    },
+    "fv:flat_final_vla_adaptive_rank_40.jsonl": {
+      "seed2": 462848,
+      "seed": 0,
+      "cosmos": 1087800,
+      "avclm": 2419255,
+      "snac": 0,
+      "agent": 2581994,
+      "text": 54152
+    },
+    "fv:flat_final_vla_adaptive_rank_41.jsonl": {
+      "seed2": 657568,
+      "seed": 0,
+      "cosmos": 1549600,
+      "avclm": 3503882,
+      "snac": 0,
+      "agent": 3694548,
+      "text": 82259
+    },
+    "fv:flat_final_vla_adaptive_rank_42.jsonl": {
+      "seed2": 586080,
+      "seed": 0,
+      "cosmos": 1381600,
+      "avclm": 3178944,
+      "snac": 0,
+      "agent": 4494519,
+      "text": 76928
+    },
+    "fv:flat_final_vla_adaptive_rank_43.jsonl": {
+      "seed2": 653632,
+      "seed": 0,
+      "cosmos": 1504200,
+      "avclm": 3335253,
+      "snac": 0,
+      "agent": 4787296,
+      "text": 81004
+    },
+    "fv:flat_final_vla_adaptive_rank_44.jsonl": {
+      "seed2": 585824,
+      "seed": 0,
+      "cosmos": 1379000,
+      "avclm": 3200063,
+      "snac": 0,
+      "agent": 3440303,
+      "text": 71928
+    },
+    "fv:flat_final_vla_adaptive_rank_45.jsonl": {
+      "seed2": 546112,
+      "seed": 0,
+      "cosmos": 1281400,
+      "avclm": 2830554,
+      "snac": 0,
+      "agent": 2768734,
+      "text": 71092
+    },
+    "fv:flat_final_vla_adaptive_rank_46.jsonl": {
+      "seed2": 609248,
+      "seed": 0,
+      "cosmos": 1406600,
+      "avclm": 3497475,
+      "snac": 0,
+      "agent": 3369332,
+      "text": 74697
+    },
+    "fv:flat_final_vla_adaptive_rank_47.jsonl": {
+      "seed2": 424800,
+      "seed": 0,
+      "cosmos": 980400,
+      "avclm": 2447016,
+      "snac": 0,
+      "agent": 3334584,
+      "text": 57307
+    },
+    "fv:flat_final_vla_adaptive_rank_48.jsonl": {
+      "seed2": 504864,
+      "seed": 0,
+      "cosmos": 1181400,
+      "avclm": 2466999,
+      "snac": 0,
+      "agent": 3955032,
+      "text": 65348
+    },
+    "fv:flat_final_vla_adaptive_rank_49.jsonl": {
+      "seed2": 544288,
+      "seed": 0,
+      "cosmos": 1257000,
+      "avclm": 2994542,
+      "snac": 0,
+      "agent": 2257761,
+      "text": 66104
+    },
+    "fv:flat_final_vla_adaptive_rank_5.jsonl": {
+      "seed2": 644576,
+      "seed": 0,
+      "cosmos": 1493400,
+      "avclm": 3158584,
+      "snac": 0,
+      "agent": 3333454,
+      "text": 76805
+    },
+    "fv:flat_final_vla_adaptive_rank_50.jsonl": {
+      "seed2": 656160,
+      "seed": 0,
+      "cosmos": 1574000,
+      "avclm": 3421164,
+      "snac": 0,
+      "agent": 4652264,
+      "text": 73314
+    },
+    "fv:flat_final_vla_adaptive_rank_51.jsonl": {
+      "seed2": 578208,
+      "seed": 0,
+      "cosmos": 1344000,
+      "avclm": 3419952,
+      "snac": 0,
+      "agent": 3753017,
+      "text": 74764
+    },
+    "fv:flat_final_vla_adaptive_rank_52.jsonl": {
+      "seed2": 592960,
+      "seed": 0,
+      "cosmos": 1385400,
+      "avclm": 3140523,
+      "snac": 0,
+      "agent": 4386179,
+      "text": 75962
+    },
+    "fv:flat_final_vla_adaptive_rank_53.jsonl": {
+      "seed2": 630656,
+      "seed": 0,
+      "cosmos": 1471200,
+      "avclm": 3396814,
+      "snac": 0,
+      "agent": 3732434,
+      "text": 81990
+    },
+    "fv:flat_final_vla_adaptive_rank_54.jsonl": {
+      "seed2": 454848,
+      "seed": 0,
+      "cosmos": 1081400,
+      "avclm": 2389392,
+      "snac": 0,
+      "agent": 2391429,
+      "text": 53477
+    },
+    "fv:flat_final_vla_adaptive_rank_55.jsonl": {
+      "seed2": 577408,
+      "seed": 0,
+      "cosmos": 1345800,
+      "avclm": 2802298,
+      "snac": 0,
+      "agent": 2806999,
+      "text": 72000
+    },
+    "fv:flat_final_vla_adaptive_rank_56.jsonl": {
+      "seed2": 515520,
+      "seed": 0,
+      "cosmos": 1200400,
+      "avclm": 2849120,
+      "snac": 0,
+      "agent": 3471897,
+      "text": 62754
+    },
+    "fv:flat_final_vla_adaptive_rank_57.jsonl": {
+      "seed2": 625408,
+      "seed": 0,
+      "cosmos": 1455200,
+      "avclm": 3079011,
+      "snac": 0,
+      "agent": 3078059,
+      "text": 75170
+    },
+    "fv:flat_final_vla_adaptive_rank_58.jsonl": {
+      "seed2": 622048,
+      "seed": 0,
+      "cosmos": 1471000,
+      "avclm": 3158738,
+      "snac": 0,
+      "agent": 3900426,
+      "text": 74123
+    },
+    "fv:flat_final_vla_adaptive_rank_59.jsonl": {
+      "seed2": 462432,
+      "seed": 0,
+      "cosmos": 1068000,
+      "avclm": 2450301,
+      "snac": 0,
+      "agent": 3113020,
+      "text": 59935
+    },
+    "fv:flat_final_vla_adaptive_rank_6.jsonl": {
+      "seed2": 593280,
+      "seed": 0,
+      "cosmos": 1365000,
+      "avclm": 3161712,
+      "snac": 0,
+      "agent": 3673043,
+      "text": 81835
+    },
+    "fv:flat_final_vla_adaptive_rank_60.jsonl": {
+      "seed2": 480608,
+      "seed": 0,
+      "cosmos": 1119400,
+      "avclm": 2455773,
+      "snac": 0,
+      "agent": 3251692,
+      "text": 66547
+    },
+    "fv:flat_final_vla_adaptive_rank_61.jsonl": {
+      "seed2": 576480,
+      "seed": 0,
+      "cosmos": 1325400,
+      "avclm": 3031723,
+      "snac": 0,
+      "agent": 2859431,
+      "text": 75553
+    },
+    "fv:flat_final_vla_adaptive_rank_62.jsonl": {
+      "seed2": 443392,
+      "seed": 0,
+      "cosmos": 1026800,
+      "avclm": 2364634,
+      "snac": 0,
+      "agent": 2751204,
+      "text": 55819
+    },
+    "fv:flat_final_vla_adaptive_rank_63.jsonl": {
+      "seed2": 580256,
+      "seed": 0,
+      "cosmos": 1360600,
+      "avclm": 3196567,
+      "snac": 0,
+      "agent": 2507740,
+      "text": 71928
+    },
+    "fv:flat_final_vla_adaptive_rank_64.jsonl": {
+      "seed2": 614592,
+      "seed": 0,
+      "cosmos": 1430600,
+      "avclm": 3355465,
+      "snac": 0,
+      "agent": 2950996,
+      "text": 70630
+    },
+    "fv:flat_final_vla_adaptive_rank_65.jsonl": {
+      "seed2": 585856,
+      "seed": 0,
+      "cosmos": 1347800,
+      "avclm": 3242893,
+      "snac": 0,
+      "agent": 4921317,
+      "text": 68404
+    },
+    "fv:flat_final_vla_adaptive_rank_66.jsonl": {
+      "seed2": 479008,
+      "seed": 0,
+      "cosmos": 1142200,
+      "avclm": 2449904,
+      "snac": 0,
+      "agent": 3211206,
+      "text": 59493
+    },
+    "fv:flat_final_vla_adaptive_rank_67.jsonl": {
+      "seed2": 494304,
+      "seed": 0,
+      "cosmos": 1173200,
+      "avclm": 2974381,
+      "snac": 0,
+      "agent": 2972173,
+      "text": 61076
+    },
+    "fv:flat_final_vla_adaptive_rank_68.jsonl": {
+      "seed2": 613760,
+      "seed": 0,
+      "cosmos": 1425000,
+      "avclm": 3303808,
+      "snac": 0,
+      "agent": 4079006,
+      "text": 77958
+    },
+    "fv:flat_final_vla_adaptive_rank_69.jsonl": {
+      "seed2": 457312,
+      "seed": 0,
+      "cosmos": 1070200,
+      "avclm": 2291562,
+      "snac": 0,
+      "agent": 2418677,
+      "text": 61240
+    },
+    "fv:flat_final_vla_adaptive_rank_7.jsonl": {
+      "seed2": 577312,
+      "seed": 0,
+      "cosmos": 1341400,
+      "avclm": 2803211,
+      "snac": 0,
+      "agent": 3791407,
+      "text": 70214
+    },
+    "fv:flat_final_vla_adaptive_rank_70.jsonl": {
+      "seed2": 792896,
+      "seed": 0,
+      "cosmos": 1816000,
+      "avclm": 4209665,
+      "snac": 0,
+      "agent": 4387732,
+      "text": 84213
+    },
+    "fv:flat_final_vla_adaptive_rank_71.jsonl": {
+      "seed2": 592160,
+      "seed": 0,
+      "cosmos": 1363800,
+      "avclm": 3347673,
+      "snac": 0,
+      "agent": 4491398,
+      "text": 82517
+    },
+    "fv:flat_final_vla_adaptive_rank_72.jsonl": {
+      "seed2": 543360,
+      "seed": 0,
+      "cosmos": 1277200,
+      "avclm": 2751882,
+      "snac": 0,
+      "agent": 4066582,
+      "text": 70342
+    },
+    "fv:flat_final_vla_adaptive_rank_73.jsonl": {
+      "seed2": 539520,
+      "seed": 0,
+      "cosmos": 1264600,
+      "avclm": 2605988,
+      "snac": 0,
+      "agent": 4092743,
+      "text": 72955
+    },
+    "fv:flat_final_vla_adaptive_rank_74.jsonl": {
+      "seed2": 522624,
+      "seed": 0,
+      "cosmos": 1229000,
+      "avclm": 2821277,
+      "snac": 0,
+      "agent": 4506350,
+      "text": 71323
+    },
+    "fv:flat_final_vla_adaptive_rank_75.jsonl": {
+      "seed2": 510752,
+      "seed": 0,
+      "cosmos": 1185000,
+      "avclm": 2839698,
+      "snac": 0,
+      "agent": 3856362,
+      "text": 69134
+    },
+    "fv:flat_final_vla_adaptive_rank_76.jsonl": {
+      "seed2": 562656,
+      "seed": 0,
+      "cosmos": 1311400,
+      "avclm": 2974708,
+      "snac": 0,
+      "agent": 3365974,
+      "text": 69214
+    },
+    "fv:flat_final_vla_adaptive_rank_77.jsonl": {
+      "seed2": 532352,
+      "seed": 0,
+      "cosmos": 1243800,
+      "avclm": 2884471,
+      "snac": 0,
+      "agent": 3397756,
+      "text": 66438
+    },
+    "fv:flat_final_vla_adaptive_rank_78.jsonl": {
+      "seed2": 635424,
+      "seed": 0,
+      "cosmos": 1473200,
+      "avclm": 3108368,
+      "snac": 0,
+      "agent": 2848752,
+      "text": 76997
+    },
+    "fv:flat_final_vla_adaptive_rank_79.jsonl": {
+      "seed2": 535392,
+      "seed": 0,
+      "cosmos": 1224000,
+      "avclm": 2886922,
+      "snac": 0,
+      "agent": 3377261,
+      "text": 63466
+    },
+    "fv:flat_final_vla_adaptive_rank_8.jsonl": {
+      "seed2": 482368,
+      "seed": 0,
+      "cosmos": 1154400,
+      "avclm": 2399243,
+      "snac": 0,
+      "agent": 2641589,
+      "text": 63730
+    },
+    "fv:flat_final_vla_adaptive_rank_80.jsonl": {
+      "seed2": 516064,
+      "seed": 0,
+      "cosmos": 1197000,
+      "avclm": 2799132,
+      "snac": 0,
+      "agent": 3314254,
+      "text": 66553
+    },
+    "fv:flat_final_vla_adaptive_rank_81.jsonl": {
+      "seed2": 556160,
+      "seed": 0,
+      "cosmos": 1300800,
+      "avclm": 3102585,
+      "snac": 0,
+      "agent": 3224827,
+      "text": 71204
+    },
+    "fv:flat_final_vla_adaptive_rank_82.jsonl": {
+      "seed2": 537696,
+      "seed": 0,
+      "cosmos": 1275000,
+      "avclm": 3184279,
+      "snac": 0,
+      "agent": 3115891,
+      "text": 65866
+    },
+    "fv:flat_final_vla_adaptive_rank_83.jsonl": {
+      "seed2": 547232,
+      "seed": 0,
+      "cosmos": 1266400,
+      "avclm": 3070652,
+      "snac": 0,
+      "agent": 2638016,
+      "text": 72870
+    },
+    "fv:flat_final_vla_adaptive_rank_84.jsonl": {
+      "seed2": 499264,
+      "seed": 0,
+      "cosmos": 1178400,
+      "avclm": 2861617,
+      "snac": 0,
+      "agent": 2392864,
+      "text": 65672
+    },
+    "fv:flat_final_vla_adaptive_rank_85.jsonl": {
+      "seed2": 544256,
+      "seed": 0,
+      "cosmos": 1270000,
+      "avclm": 2992432,
+      "snac": 0,
+      "agent": 4448111,
+      "text": 74139
+    },
+    "fv:flat_final_vla_adaptive_rank_86.jsonl": {
+      "seed2": 409472,
+      "seed": 0,
+      "cosmos": 955400,
+      "avclm": 2289304,
+      "snac": 0,
+      "agent": 3084571,
+      "text": 57668
+    },
+    "fv:flat_final_vla_adaptive_rank_87.jsonl": {
+      "seed2": 604832,
+      "seed": 0,
+      "cosmos": 1399000,
+      "avclm": 3148445,
+      "snac": 0,
+      "agent": 3948199,
+      "text": 71208
+    },
+    "fv:flat_final_vla_adaptive_rank_88.jsonl": {
+      "seed2": 551104,
+      "seed": 0,
+      "cosmos": 1299800,
+      "avclm": 3277744,
+      "snac": 0,
+      "agent": 4152480,
+      "text": 69378
+    },
+    "fv:flat_final_vla_adaptive_rank_89.jsonl": {
+      "seed2": 484640,
+      "seed": 0,
+      "cosmos": 1118000,
+      "avclm": 2611790,
+      "snac": 0,
+      "agent": 4016693,
+      "text": 67402
+    },
+    "fv:flat_final_vla_adaptive_rank_9.jsonl": {
+      "seed2": 747776,
+      "seed": 0,
+      "cosmos": 1760800,
+      "avclm": 3916311,
+      "snac": 0,
+      "agent": 4131990,
+      "text": 86638
+    },
+    "fv:flat_final_vla_adaptive_rank_90.jsonl": {
+      "seed2": 716064,
+      "seed": 0,
+      "cosmos": 1660600,
+      "avclm": 4003313,
+      "snac": 0,
+      "agent": 3785622,
+      "text": 85801
+    },
+    "fv:flat_final_vla_adaptive_rank_91.jsonl": {
+      "seed2": 508992,
+      "seed": 0,
+      "cosmos": 1189400,
+      "avclm": 2186248,
+      "snac": 0,
+      "agent": 3550471,
+      "text": 67452
+    },
+    "fv:flat_final_vla_adaptive_rank_92.jsonl": {
+      "seed2": 609568,
+      "seed": 0,
+      "cosmos": 1420600,
+      "avclm": 3258197,
+      "snac": 0,
+      "agent": 3595391,
+      "text": 73203
+    },
+    "fv:flat_final_vla_adaptive_rank_93.jsonl": {
+      "seed2": 749760,
+      "seed": 0,
+      "cosmos": 1748800,
+      "avclm": 3936301,
+      "snac": 0,
+      "agent": 5782842,
+      "text": 99095
+    },
+    "fv:flat_final_vla_adaptive_rank_94.jsonl": {
+      "seed2": 623456,
+      "seed": 0,
+      "cosmos": 1455000,
+      "avclm": 3294483,
+      "snac": 0,
+      "agent": 4619797,
+      "text": 72705
+    },
+    "fv:flat_final_vla_adaptive_rank_95.jsonl": {
+      "seed2": 533056,
+      "seed": 0,
+      "cosmos": 1242600,
+      "avclm": 2856679,
+      "snac": 0,
+      "agent": 3090247,
+      "text": 66449
+    },
+    "fv:flat_final_vla_adaptive_rank_96.jsonl": {
+      "seed2": 587552,
+      "seed": 0,
+      "cosmos": 1363000,
+      "avclm": 3239529,
+      "snac": 0,
+      "agent": 4363659,
+      "text": 76556
+    },
+    "fv:flat_final_vla_adaptive_rank_97.jsonl": {
+      "seed2": 547040,
+      "seed": 0,
+      "cosmos": 1255600,
+      "avclm": 2994977,
+      "snac": 0,
+      "agent": 2557785,
+      "text": 65736
+    },
+    "fv:flat_final_vla_adaptive_rank_98.jsonl": {
+      "seed2": 621408,
+      "seed": 0,
+      "cosmos": 1434200,
+      "avclm": 3147655,
+      "snac": 0,
+      "agent": 3869962,
+      "text": 73286
+    },
+    "fv:flat_final_vla_adaptive_rank_99.jsonl": {
+      "seed2": 561120,
+      "seed": 0,
+      "cosmos": 1284200,
+      "avclm": 2813976,
+      "snac": 0,
+      "agent": 2880104,
+      "text": 69645
+    },
+    "vws:valid_with_seed_shard_00000.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00001.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00002.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00003.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00004.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00005.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00006.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00007.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00008.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00009.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00010.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00011.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00012.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00013.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00014.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00015.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00016.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00017.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00018.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00019.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00020.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00021.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00022.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00023.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00024.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00025.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00026.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00027.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00028.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00029.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00030.tar.gz": {
+      "seed2": 0,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00031.tar.gz": {
+      "seed2": 135488,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00032.tar.gz": {
+      "seed2": 124832,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00033.tar.gz": {
+      "seed2": 185952,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00034.tar.gz": {
+      "seed2": 180544,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00035.tar.gz": {
+      "seed2": 192096,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00036.tar.gz": {
+      "seed2": 191648,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00037.tar.gz": {
+      "seed2": 168288,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00038.tar.gz": {
+      "seed2": 137088,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00039.tar.gz": {
+      "seed2": 196416,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00040.tar.gz": {
+      "seed2": 137408,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00041.tar.gz": {
+      "seed2": 191104,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00042.tar.gz": {
+      "seed2": 206624,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00043.tar.gz": {
+      "seed2": 179616,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00044.tar.gz": {
+      "seed2": 182272,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00045.tar.gz": {
+      "seed2": 158656,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00046.tar.gz": {
+      "seed2": 136288,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00047.tar.gz": {
+      "seed2": 171488,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00048.tar.gz": {
+      "seed2": 207424,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00049.tar.gz": {
+      "seed2": 197056,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00050.tar.gz": {
+      "seed2": 122080,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00051.tar.gz": {
+      "seed2": 152256,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00052.tar.gz": {
+      "seed2": 128640,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00053.tar.gz": {
+      "seed2": 187424,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00054.tar.gz": {
+      "seed2": 180704,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00055.tar.gz": {
+      "seed2": 144416,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00056.tar.gz": {
+      "seed2": 144736,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00057.tar.gz": {
+      "seed2": 168448,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00058.tar.gz": {
+      "seed2": 243104,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00059.tar.gz": {
+      "seed2": 190048,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00060.tar.gz": {
+      "seed2": 150048,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00061.tar.gz": {
+      "seed2": 165664,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00062.tar.gz": {
+      "seed2": 197504,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "vws:valid_with_seed_shard_00063.tar.gz": {
+      "seed2": 177312,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:apple.stackexchange.com.tar.gz": {
+      "seed2": 16096,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:askubuntu.com.tar.gz": {
+      "seed2": 15008,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:blender.stackexchange.com.tar.gz": {
+      "seed2": 16160,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:diy.stackexchange.com.tar.gz": {
+      "seed2": 17824,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:electronics.stackexchange.com.tar.gz": {
+      "seed2": 32,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:es.stackoverflow.com.tar.gz": {
+      "seed2": 205408,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:gis.stackexchange.com.tar.gz": {
+      "seed2": 96,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:math.stackexchange.com.tar.gz": {
+      "seed2": 3616,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:mathematica.stackexchange.com.tar.gz": {
+      "seed2": 14528,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:physics.stackexchange.com.tar.gz": {
+      "seed2": 14432,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:ru.stackoverflow.com.tar.gz": {
+      "seed2": 7040,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "stack:tex.stackexchange.com.tar.gz": {
+      "seed2": 2752,
+      "seed": 0,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 0,
+      "agent": 0,
+      "text": 0
+    },
+    "snac:valid_snac_0.jsonl.gz": {
+      "seed2": 0,
+      "seed": 3786048,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 907864977,
+      "agent": 0,
+      "text": 371341001
+    },
+    "snac:valid_snac_1.jsonl.gz": {
+      "seed2": 0,
+      "seed": 3446464,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 896158024,
+      "agent": 0,
+      "text": 354717348
+    },
+    "snac:valid_snac_2.jsonl.gz": {
+      "seed2": 0,
+      "seed": 3426496,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 917805358,
+      "agent": 0,
+      "text": 378068937
+    },
+    "snac:valid_snac_3.jsonl.gz": {
+      "seed2": 0,
+      "seed": 3616416,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 916890818,
+      "agent": 0,
+      "text": 370522906
+    },
+    "snac:valid_snac_4.jsonl.gz": {
+      "seed2": 0,
+      "seed": 3258656,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 913692633,
+      "agent": 0,
+      "text": 368969466
+    },
+    "snac:valid_snac_5.jsonl.gz": {
+      "seed2": 0,
+      "seed": 1715584,
+      "cosmos": 0,
+      "avclm": 0,
+      "snac": 370269371,
+      "agent": 0,
+      "text": 147088527
+    }
+  },
+  "last_updated": "2026-06-26T12:42:52.867435"
+}
