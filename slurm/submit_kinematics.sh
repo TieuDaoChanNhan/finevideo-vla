@@ -28,7 +28,7 @@ for i in $(seq 0 $MAX_ID); do
     export SLURM_ARRAY_TASK_ID=$i
     export SLURM_ARRAY_TASK_COUNT=$NUM_WORKERS
 
-    python -u pipeline/phase3_kinematics_processor.py \
+    python -u pipeline_pose/phase3_kinematics_processor.py \
         --input-dir "$DIR_INPUT" \
         --output-dir "$DIR_OUTPUT" \
         --json-2d-dir "$DIR_2D_JSON" \

@@ -27,6 +27,6 @@ export TORCH_CUDA_ARCH_LIST="9.0"
 export HF_DATASETS_OFFLINE=1
 
 # Pass offset so jobs partition work correctly across IDs 0-159
-srun python -u pipeline/phase1_hrnet_gpu.py --offset $OFFSET --total_workers 200
+srun python -u pipeline_pose/phase1_hrnet_gpu.py --offset $OFFSET --total_workers 200
 EOT
 done

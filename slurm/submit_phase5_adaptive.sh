@@ -20,7 +20,7 @@ echo "Launching $NUM_WORKERS workers for Phase 5 (Adaptive PCHIP per-joint)..."
 
 for i in $(seq 0 $((NUM_WORKERS - 1))); do
     SLURM_ARRAY_TASK_ID=$i SLURM_ARRAY_TASK_COUNT=$NUM_WORKERS \
-    python -u pipeline/phase5_adaptive_pchip.py \
+    python -u pipeline_pose/phase5_adaptive_pchip.py \
         --input-dir  "${DATA_ROOT}/yolo_cleaned_30fps" \
         --output-dir "${DATA_ROOT}/agent_tokens_adaptive" \
         --stride 8 \

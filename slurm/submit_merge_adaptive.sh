@@ -19,7 +19,7 @@ mkdir -p logs "${OUT_DIR}"
 
 echo "[Worker ${SLURM_ARRAY_TASK_ID}] Starting merge (adaptive PCHIP)..."
 
-python -u pipeline/phase6_merge_adaptive.py \
+python -u pipeline_pose/phase6_merge_adaptive.py \
   --input-glob "${DATA}/training_ready_rank_*.jsonl" \
   --agent-tokens-dir "${AGENT_DIR}" \
   --output-dir "${OUT_DIR}" \

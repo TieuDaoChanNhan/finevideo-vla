@@ -38,7 +38,7 @@ for i in $(seq 1 $NUM_WORKERS); do
     CUDA_VISIBLE_DEVICES=$GPU_ID \
     SLURM_ARRAY_TASK_ID=$i \
     SLURM_ARRAY_TASK_COUNT=$NUM_WORKERS \
-    python -u pipeline/phase4_yolo_cleaner.py \
+    python -u pipeline_pose/phase4_yolo_cleaner.py \
         --videos-dir "/e/data1/datasets/playground/mmlaion/shared/nguyen38/videos_staging" \
         --input-dir  "/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/states_jsonl_30fps" \
         --output-dir "/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/yolo_cleaned_30fps" \

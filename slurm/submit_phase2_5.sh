@@ -16,7 +16,7 @@ source /e/project1/reformo/nguyen38/3d-human-pose/setup_motionbert.sh
 
 cd /e/project1/reformo/nguyen38/3d-human-pose
 
-python pipeline/phase2_5_resample_30fps.py \
+python pipeline_pose/phase2_5_resample_30fps.py \
     --input-dir  outputs/3d_npy \
     --output-dir outputs/3d_npy_30fps \
     --fps-json   outputs/fps_lookup.json

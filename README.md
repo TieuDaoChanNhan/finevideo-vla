@@ -6,8 +6,8 @@ There are two parallel branches that produce different token types and are merge
 
 | Branch | What it produces | Entry point |
 |--------|-----------------|-------------|
-| **Prototype pipeline** (Step A) | Seed2 + Cosmos + AVC-LM video tokens | `prototype_pipeline/pipeline.py` |
-| **3D pose pipeline** (Steps B–G) | Adaptive PCHIP per-joint tokens (17 joints, variable CPs) | `pipeline/phase1_hrnet_gpu.py` … `pipeline/phase5_adaptive_pchip.py` |
+| **Prototype pipeline** (Step A) | Seed2 + Cosmos + AVC-LM video tokens | `pipeline_video/pipeline.py` |
+| **3D pose pipeline** (Steps B–G) | Adaptive PCHIP per-joint tokens (17 joints, variable CPs) | `pipeline_pose/phase1_hrnet_gpu.py` … `pipeline_pose/phase5_adaptive_pchip.py` |
 
 Each video activity in the final dataset produces an interleaved token sequence:
 ```
@@ -41,7 +41,7 @@ All datasets under `EmpathicRobotics/`, split 152 train / 8 test shards (95/5, s
 ## Repository Layout
 
 ```
-├── prototype_pipeline/         # Step A: Seed2, Cosmos, AVC-LM tokenization
+├── pipeline_video/         # Step A: Seed2, Cosmos, AVC-LM tokenization
 │   ├── pipeline.py                 ← main entry point (read this first)
 │   ├── pipeline_1gpu.py            single-GPU debug version
 │   ├── submit_official.sbatch      SLURM job: 40 nodes × 4 GPU
@@ -113,46 +113,46 @@ $DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen38
 
 ──────────────── BRANCH A: Video Tokens ────────────────────────────────────
 
-Step A   prototype_pipeline/pipeline.py   (submit_official.sbatch, 40 nodes × 4 GPU)
+Step A   pipeline_video/pipeline.py   (submit_official.sbatch, 40 nodes × 4 GPU)
          Extracts frames at 30fps; tokenizes every activity segment with
          Seed2 (1fps), Cosmos (8-frame), and AVC-LM (8-frame).
          → $DATA/FineVideo-VLA/training_ready_rank_*.jsonl
 
 ──────────────── BRANCH B: 3D Pose / Adaptive PCHIP Tokens ───────────────
 
-Step B   pipeline/phase1_hrnet_gpu.py          (slurm/submit_hrnet.sh)
+Step B   pipeline_pose/phase1_hrnet_gpu.py          (slurm/submit_hrnet.sh)
          HRNet + Faster R-CNN 2D pose estimation
          → outputs/2d_json/{video_id}_2d.json
 
-Step C   pipeline/phase2_motionbert_gpu.py     (slurm/submit_motionbert.sh)
+Step C   pipeline_pose/phase2_motionbert_gpu.py     (slurm/submit_motionbert.sh)
          MotionBERT 3D lifting (native video fps)
          → outputs/3d_npy/{video_id}.npy
 
-Step D   pipeline/phase2_5_resample_30fps.py   (slurm/submit_phase2_5.sh)
+Step D   pipeline_pose/phase2_5_resample_30fps.py   (slurm/submit_phase2_5.sh)
          Resample native-fps 3D poses to 30fps via linear interpolation.
          Required so Steps E–G share the same time grid as Branch A.
          → outputs/3d_npy_30fps/{video_id}.npy
 
-Step E   pipeline/phase3_kinematics_processor.py  (slurm/submit_kinematics.sh)
+Step E   pipeline_pose/phase3_kinematics_processor.py  (slurm/submit_kinematics.sh)
          Signal filter, bone normalisation, kinematics (pos/vel/acc)
          → outputs/states_jsonl/{video_id}_states.jsonl   (windows × 8 × 153)
 
-Step F   pipeline/phase4_yolo_cleaner.py       (slurm/submit_yolo.sh)
+Step F   pipeline_pose/phase4_yolo_cleaner.py       (slurm/submit_yolo.sh)
          Drop 8-frame windows where ≥ 4 frames have no detected person.
          → outputs/yolo_cleaned_30fps/{video_id}_cleaned.jsonl
 
-Step G   pipeline/phase5_adaptive_pchip.py     (slurm/submit_phase5_adaptive.sh)
+Step G   pipeline_pose/phase5_adaptive_pchip.py     (slurm/submit_phase5_adaptive.sh)
          Adaptive PCHIP per-joint tokenisation: 2/4/8 CPs based on curvature
          → outputs/agent_tokens_adaptive/{video_id}_tokens.jsonl
 
 ──────────────── MERGE + FLATTEN ───────────────────────────────────────────
 
-Step H   pipeline/phase6_merge_adaptive.py     (slurm/submit_merge_adaptive.sh)
+Step H   pipeline_pose/phase6_merge_adaptive.py     (slurm/submit_merge_adaptive.sh)
          Injects <agent> blocks (with per-joint named tokens) after each
          <avc_lm> block in training_ready files. Adds chunk_timing + timing_meta.
          → $DATA/FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl
 
-Step I   pipeline/phase7_flatten.py            (run on login node or SLURM)
+Step I   pipeline_pose/phase7_flatten.py            (run on login node or SLURM)
          Hierarchical JSON → Megatron flat JSONL.
          Agent blocks pass through unchanged (already self-describing).
          → $DATA/FineVideo-VLA/megatron_dataset_adaptive/flat_*.jsonl
@@ -252,7 +252,7 @@ module load Stages/2025 GCC/13.3.0 Python/3.12.3 CUDA/12 PyTorch/2.5.1 torchvisi
 source /e/project1/reformo/nguyen38/env_stable_vla/bin/activate
 export FFMPEG_PATH=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
 ```
-Model weights are **not committed** — download once with `prototype_pipeline/download.py` (requires `HF_TOKEN`).
+Model weights are **not committed** — download once with `pipeline_video/download.py` (requires `HF_TOKEN`).
 
 **Steps B–H — 3D pose pipeline** (HRNet, MotionBERT, YOLO, tokenizer):
 ```bash
@@ -331,7 +331,7 @@ python tools/upload_tokenizer.py  # create + upload HF tokenizer
 
 ```bash
 # Flatten the adaptive merged dataset (Step I)
-python pipeline/phase7_flatten.py
+python pipeline_pose/phase7_flatten.py
 
 # Upload flattened dataset to HuggingFace
 export HF_TOKEN='hf_...'
@@ -366,5 +366,5 @@ python tools/render_filtered_skeleton.py \
 - **[MotionBERT](https://github.com/Walter0807/MotionBERT)** — 3D pose lifting (Step C). Checkpoint: `third_party/MotionBERT/checkpoint/pose3d/FT_MB_release_MB_ft_h36m/best_epoch.bin`
 - **HRNet** — model weights in `hrnet_storage/` (gitignored)
 - **YOLO** — `yolo26n.pt` expected in working directory for Step F
-- **Cosmos tokenizer weights** — download via `prototype_pipeline/download.py`; stored in `prototype_pipeline/pretrained_ckpts/` (gitignored)
-- **Seed2 model weights** — `prototype_pipeline/seed2/model.safetensors` and `ae.safetensors` (gitignored)
+- **Cosmos tokenizer weights** — download via `pipeline_video/download.py`; stored in `pipeline_video/pretrained_ckpts/` (gitignored)
+- **Seed2 model weights** — `pipeline_video/seed2/model.safetensors` and `ae.safetensors` (gitignored)

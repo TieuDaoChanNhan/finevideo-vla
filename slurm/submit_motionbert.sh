@@ -22,6 +22,6 @@ source setup_motionbert.sh
 export HF_DATASETS_OFFLINE=1
 
 # 160 GPUs scan in parallel — each lifts a video to 3D as soon as its 2D is ready
-srun python -u pipeline/phase2_motionbert_gpu.py --offset $OFFSET --total_workers 200
+srun python -u pipeline_pose/phase2_motionbert_gpu.py --offset $OFFSET --total_workers 200
 EOT
 done

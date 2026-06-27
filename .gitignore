@@ -4,6 +4,7 @@ env_hrnet_gpu/
 env_motion_final/
 env_hrnet_datasets_v1/
 miniforge3/
+env_pose/
 
 # Model weights / checkpoints
 hrnet_storage/

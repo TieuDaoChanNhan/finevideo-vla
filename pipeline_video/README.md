@@ -1,12 +1,12 @@
-# prototype_pipeline — Seed2 / Cosmos / AVC-LM Tokenization (Step A)
+# pipeline_video — Seed2 / Cosmos / AVC-LM Tokenization (Step A)
 
 This folder implements **Step A** of the FineVideo-VLA pipeline: it reads videos
 from the HuggingFace FineVideo dataset and produces the interleaved
 `<seed2>`, `<cosmos>`, and `<avc_lm>` token blocks written into
 `training_ready_rank_*.jsonl`.
 
-These files are the input for both the legacy merge (`pipeline/merge_agent_tokens.py`)
-and the current XYZT merge (`pipeline/merge_xyzt_tokens.py`), which inject 3D pose
+These files are the input for both the legacy merge (`archive/pipeline_pose_deprecated/merge_agent_tokens.py`)
+and the current XYZT merge (`archive/pipeline_pose_deprecated/merge_xyzt_tokens.py`), which inject 3D pose
 tokens from the pose pipeline branch.
 
 ---

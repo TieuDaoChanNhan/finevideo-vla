@@ -21,7 +21,7 @@ Build a multimodal Vision-Language-Action pretraining dataset from ~40K YouTube 
 
 ### 2.1 Branch A: Video Token Extraction (prototype pipeline)
 
-**Script:** `prototype_pipeline/pipeline.py`  
+**Script:** `pipeline_video/pipeline.py`  
 **Compute:** 40 SLURM nodes × 4 GPUs = 160 GPUs  
 
 Processed all ~40K FineVideo videos:
@@ -34,14 +34,14 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 ### 2.2 Branch B: 3D Human Pose Pipeline
 
 #### Phase 1 — 2D Pose Detection (HRNet + Faster R-CNN)
-**Script:** `pipeline/phase1_hrnet_gpu.py` | **SLURM:** `slurm/submit_hrnet.sh`
+**Script:** `pipeline_pose/phase1_hrnet_gpu.py` | **SLURM:** `slurm/submit_hrnet.sh`
 
 - Ran HRNet with Faster R-CNN person detection on all videos
 - Output: `outputs/2d_json/{video_id}_2d.json` — 2D joint coordinates per frame
 - **40,804 videos** processed, **145 GB**
 
 #### Phase 2 — 3D Pose Lifting (MotionBERT)
-**Script:** `pipeline/phase2_motionbert_gpu.py` | **SLURM:** `slurm/submit_motionbert.sh`
+**Script:** `pipeline_pose/phase2_motionbert_gpu.py` | **SLURM:** `slurm/submit_motionbert.sh`
 
 - Lifted 2D poses to 3D using MotionBERT (pretrained on Human3.6M)
 - Processed at native video fps
@@ -49,7 +49,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **40,804 videos**, **259 GB**
 
 #### Phase 2.5 — 30fps Resampling
-**Script:** `pipeline/phase2_5_resample_30fps.py` | **SLURM:** `slurm/submit_phase2_5.sh`
+**Script:** `pipeline_pose/phase2_5_resample_30fps.py` | **SLURM:** `slurm/submit_phase2_5.sh`
 
 - Resampled all 3D poses from native video fps to uniform 30fps via linear interpolation
 - Required so pose tokens align to the same time grid as Seed2/Cosmos/AVC-LM (all at 30fps)
@@ -57,7 +57,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **40,804 videos**, **67 GB**
 
 #### Phase 3 — Kinematics Processing
-**Script:** `pipeline/phase3_kinematics_processor.py` | **SLURM:** `slurm/submit_kinematics.sh`
+**Script:** `pipeline_pose/phase3_kinematics_processor.py` | **SLURM:** `slurm/submit_kinematics.sh`
 
 - Applied temporal smoothing (Butterworth filter)
 - Bone length normalisation to canonical Human3.6M skeleton
@@ -68,7 +68,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **40,200 videos** (604 dropped due to too-short sequences), **193 GB**
 
 #### Phase 4 — YOLO Person-Presence Cleaning
-**Script:** `pipeline/phase4_yolo_cleaner.py` | **SLURM:** `slurm/submit_yolo.sh`
+**Script:** `pipeline_pose/phase4_yolo_cleaner.py` | **SLURM:** `slurm/submit_yolo.sh`
 
 - Ran YOLOv8 person detection on original video frames
 - Dropped any 8-frame window where ≥ 4 frames have no detected person (confidence ≥ 0.75)
@@ -77,7 +77,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **40,195 videos**, **107 GB**
 
 #### Phase 5 — Adaptive PCHIP Tokenisation
-**Script:** `pipeline/phase5_adaptive_pchip.py` | **SLURM:** `slurm/submit_phase5_adaptive.sh`
+**Script:** `pipeline_pose/phase5_adaptive_pchip.py` | **SLURM:** `slurm/submit_phase5_adaptive.sh`
 
 - For each 8-frame window, for each of 17 joints:
   - Computed trajectory curvature
@@ -96,7 +96,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - `phase5b_xyzt_tokenizer.py` — 409 fixed tokens per chunk (all 8 frames × 17 joints × 3 dims). Clear and self-describing but wasteful for static joints.
 
 ### 2.3 Merge (Phase 6)
-**Script:** `pipeline/phase6_merge_adaptive.py` | **SLURM:** `slurm/submit_merge_adaptive.sh`
+**Script:** `pipeline_pose/phase6_merge_adaptive.py` | **SLURM:** `slurm/submit_merge_adaptive.sh`
 
 - Injected `<agent>` blocks after each `<avc_lm>` block in the training_ready files
 - Time alignment: matched agent windows to AVC-LM chunks by frame index (both at 30fps, 8-frame windows)
@@ -118,7 +118,7 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - **~399K activities** across all videos, **~2.15M agent blocks** injected
 
 ### 2.4 Flatten (Phase 7)
-**Script:** `pipeline/phase7_flatten.py`
+**Script:** `pipeline_pose/phase7_flatten.py`
 
 - Converted hierarchical JSON (video → scenes → activities) to flat Megatron-LM JSONL
 - **Agent-only filter**: only activities containing `<agent>` blocks are emitted, ensuring every record has action data
@@ -368,15 +368,15 @@ See the [`samples/`](samples/) directory for concrete examples of the data befor
 | Stage | Videos | Output Size | Script |
 |-------|--------|-------------|--------|
 | FineVideo source | ~40,000 | — | HuggingFace dataset |
-| Step A: Video tokens | ~40,000 | 160 files, ~660 GB | `prototype_pipeline/pipeline.py` |
-| Phase 1: 2D pose (HRNet) | 40,804 | 145 GB | `pipeline/phase1_hrnet_gpu.py` |
-| Phase 2: 3D pose (MotionBERT) | 40,804 | 259 GB | `pipeline/phase2_motionbert_gpu.py` |
-| Phase 2.5: 30fps resample | 40,804 | 67 GB | `pipeline/phase2_5_resample_30fps.py` |
-| Phase 3: Kinematics | 40,200 | 193 GB | `pipeline/phase3_kinematics_processor.py` |
-| Phase 4: YOLO cleaning | 40,195 | 107 GB | `pipeline/phase4_yolo_cleaner.py` |
-| Phase 5: Adaptive PCHIP | 18,847 | 7.4 GB | `pipeline/phase5_adaptive_pchip.py` |
-| Phase 6: Merge | 160 files | 657 GB | `pipeline/phase6_merge_adaptive.py` |
-| Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline/phase7_flatten.py` |
+| Step A: Video tokens | ~40,000 | 160 files, ~660 GB | `pipeline_video/pipeline.py` |
+| Phase 1: 2D pose (HRNet) | 40,804 | 145 GB | `pipeline_pose/phase1_hrnet_gpu.py` |
+| Phase 2: 3D pose (MotionBERT) | 40,804 | 259 GB | `pipeline_pose/phase2_motionbert_gpu.py` |
+| Phase 2.5: 30fps resample | 40,804 | 67 GB | `pipeline_pose/phase2_5_resample_30fps.py` |
+| Phase 3: Kinematics | 40,200 | 193 GB | `pipeline_pose/phase3_kinematics_processor.py` |
+| Phase 4: YOLO cleaning | 40,195 | 107 GB | `pipeline_pose/phase4_yolo_cleaner.py` |
+| Phase 5: Adaptive PCHIP | 18,847 | 7.4 GB | `pipeline_pose/phase5_adaptive_pchip.py` |
+| Phase 6: Merge | 160 files | 657 GB | `pipeline_pose/phase6_merge_adaptive.py` |
+| Phase 7: Flatten (dropout + augment) | 160 files, 69,844 records | 19.2 GB | `pipeline_pose/phase7_flatten.py` |
 | Phase 8: Megatron tokenization | 2 shards, 2.84B tokens | 10.58 GB | `tokenize_vla_adaptive.sbatch` |
 | Phase 9: Training | 2,032 iters, 3 epochs | 3.6 GB (HF ckpt) | `oellm-autoexp` |
 
@@ -817,6 +817,6 @@ She brings the knife down in a smooth chopping motion on a red bell pepper.
 
 ## 14. Repository
 
-**GitHub:** [TieuDaoChanNhan/3D-Human-Pose-VLA](https://github.com/TieuDaoChanNhan/3D-Human-Pose-VLA)
+**GitHub:** [TieuDaoChanNhan/finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla)
 
 All pipeline scripts, SLURM jobs, upload tools, vocab, and documentation are in this repo. See `README.md` for setup instructions and detailed usage.
