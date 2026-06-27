@@ -255,11 +255,16 @@ Scanned all 242 files across 4 dataset families:
 
 ### Immediate priorities (code during any available time, no GPU needed)
 
-**Priority 1 — Vocab expansion for SNAC + seed tokens**
-- Add `<snac_0>` ... `<snac_4095>` (~4096 tokens) and `<seed_0>` ... `<seed_8191>` (~8192 tokens) via `add_tokens(special_tokens=True)`
-- New vocab: ~156,500 tokens
-- Unlocks MV-Omni's **6.93B tokens** for training
-- Effort: 1–2 days
+**Priority 1 — Vocab expansion for SNAC tokens** ← PARTIALLY DONE
+- ~~Convert MV-Omni `<seed_N>` → `<seed2_N>`~~ **DONE** (Jun 27, 2026)
+  - Script: `data_prep/convert_mvomni_seed.py`
+  - Output: `/p/data1/mmlaion/shared/vla/mv_omni_converted/mv_omni_snac_*.jsonl.gz`
+  - 1,593,301 records | 19,249,664 seed tokens converted | 30 GB
+  - `<seed_N>` tokens fully eliminated — zero remaining in output
+- **REMAINING:** Add `<snac_0>` ... `<snac_4095>` (~4096 tokens) to tokenizer via `add_tokens(special_tokens=True)`
+  - New vocab: ~148,311 tokens (no need for `<seed_N>` — already converted to `<seed2_N>`)
+  - Unlocks MV-Omni's **6.93B tokens** for training
+  - Effort: ~1 day
 
 **Priority 2 — Adjust modality dropout in Phase 7**
 - AVC-LM: 99% → 80–90% drop (keep 10–20%)
@@ -378,6 +383,7 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | Hold AVC-LM in new datasets until ablations | No evidence yet that it helps vs adds noise | Jun 2026 |
 | Ego-centric perspective as free data multiplier | Same underlying motion, different reference frame, doubles diversity | Jun 2026 |
 | Qwen3 migration deferred | Too early — data landscape still changing | Jun 2026 |
+| MV-Omni: convert seed→seed2 instead of adding new vocab | Avoids unnecessary vocab expansion; seed_N and seed2_N are identical semantics | Jun 2026 |
 
 ---
 

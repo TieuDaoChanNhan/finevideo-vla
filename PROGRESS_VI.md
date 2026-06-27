@@ -242,12 +242,18 @@ Quét 242 file trên 4 nhóm dataset:
 
 ### Nhóm 1 — Làm được ngay, không cần nhiều GPU
 
-**Ưu tiên 1 — Vocab expansion cho SNAC + seed tokens**
+**Ưu tiên 1 — Chuẩn bị MV-Omni** ← HOÀN THÀNH MỘT PHẦN
 
-Thêm `<snac_0>` ... `<snac_4095>` (~4096 token) và `<seed_0>` ... `<seed_8191>` (~8192 token) qua `add_tokens(special_tokens=True)`.
-- Vocab mới: ~156,500 token
-- Mở khóa **6.93B token từ MV-Omni**
-- Ước tính: 1–2 ngày code
+- ~~Convert `<seed_N>` → `<seed2_N>` trong MV-Omni~~ **XONG** (27/06/2026)
+  - Script: `data_prep/convert_mvomni_seed.py`
+  - Output: `/p/data1/mmlaion/shared/vla/mv_omni_converted/mv_omni_snac_*.jsonl.gz`
+  - **1,593,301 record | 19,249,664 seed token đã convert | 30 GB output**
+  - Không còn `<seed_N>` nào trong output — verified sạch
+- **CÒN LẠI:** Thêm `<snac_0>` ... `<snac_4095>` (~4096 token) vào tokenizer via `add_tokens(special_tokens=True)`
+  - Không cần thêm `<seed_N>` nữa — đã convert sang `<seed2_N>` rồi
+  - Vocab mới: ~148,311 token
+  - Mở khóa **6.93B token từ MV-Omni**
+  - Ước tính: ~1 ngày
 
 **Ưu tiên 2 — Điều chỉnh dropout trong Phase 7**
 
