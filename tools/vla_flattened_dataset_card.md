@@ -27,29 +27,30 @@ size_categories:
 
 This is the **final, training-ready** flattened dataset from the FineVideo-VLA pipeline. Each record is a single `{"text": "..."}` JSON line containing interleaved multimodal tokens — ready for Megatron-LM tokenization and LLM pretraining.
 
-Four token modalities are interleaved per record:
+Three token modalities are interleaved per record (v2: AVC-LM removed pending ablation):
 
 - **Seed2** — 1 FPS semantic keyframe tokens (vocab: 8192)
-- **Cosmos** — every 8 frames spatial video tokens (vocab: 64000)
-- **AVC-LM** — every 8 frames H.264 BPE tokens (vocab: 8192)
+- **Cosmos** — every 8 frames spatial video tokens (vocab: 64000), kept at 50%
 - **Agent** — adaptive PCHIP 3D human pose tokens with named joints (17 joints, variable control points)
 
 Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo).
 
 **Only activities containing 3D pose (`<agent>`) tokens are included.** This ensures every record has action data for Vision-Language-Action pretraining.
 
-## Modality Dropout (Token Balancing)
+## Modality Dropout (Token Balancing) — v2
 
-In the raw data, image tokens massively outnumber action tokens. To balance the modalities for pretraining, **modality dropout** is applied during flattening:
+In the raw data, image tokens massively outnumber action tokens. **Modality dropout** is applied during flattening to balance the modalities.
 
-| Modality | Raw avg tokens | Ratio vs Agent | Drop rate | Effective tokens |
-|----------|---------------|----------------|-----------|-----------------|
-| AVC-LM | ~125,000 | 373x | **99%** | ~1,250 |
-| Cosmos | ~6,400 | 19x | **90%** | ~640 |
-| Seed2 | ~340 | 1x | 0% | ~340 |
-| Agent | ~300 | 1x | 0% | ~300 |
+**v2 dropout** (this dataset, Jun 2026):
 
-This brings all four modalities into roughly the same order of magnitude (~300–1,250 tokens each), preventing the model from being overwhelmed by image tokens during pretraining.
+| Modality | Drop rate | Reason |
+|----------|-----------|--------|
+| AVC-LM | **100%** | Removed until ablation studies confirm benefit |
+| Cosmos | **50%** | Keep ~50% of chunks for seed2→cosmos→agent transition learning |
+| Seed2 | 0% | Keep all — primary visual signal |
+| Agent | 0% | Keep all |
+
+This ensures most records contain the full `seed2 → cosmos → agent` transition chain, teaching the model to sequence modalities autonomously.
 
 ## Data Augmentation
 
@@ -81,7 +82,7 @@ Each line is a JSON object with a single `text` field:
 
 ```json
 {
-  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n<seed2_6750> <seed2_680> ... <cosmos_18232> ... <avclm_263> <avclm_107> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ..."
+  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n<seed2_6750> <seed2_680> ... <cosmos_18232> <cosmos_41007> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ..."
 }
 ```
 

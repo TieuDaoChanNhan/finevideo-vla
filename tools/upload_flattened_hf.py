@@ -68,11 +68,11 @@ def main():
     )
     parser.add_argument(
         "--source-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/megatron_dataset_adaptive",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2",
     )
     parser.add_argument(
         "--upload-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/hf_upload_flattened_adaptive",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/hf_upload_flattened_v2",
     )
     parser.add_argument(
         "--skip-compress", action="store_true",
@@ -147,7 +147,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload flattened adaptive Megatron-LM dataset with modality dropout and augmentation",
+        commit_message="Upload v2: AVC-LM 100% drop, Cosmos 50% drop, output from megatron_dataset_v2",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")

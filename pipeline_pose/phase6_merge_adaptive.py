@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
-Merge Phase 5 adaptive PCHIP agent tokens into training_ready JSONL files.
+Merge Phase 5 adaptive PCHIP agent tokens + SNAC audio tokens into training_ready JSONL.
 
-Reads self-describing token strings from phase5_adaptive_pchip output and
-injects them as <agent>...</agent> blocks into the video_tokens field,
-immediately after each corresponding <avc_lm>...</avc_lm> block.
+Reads agent tokens from phase5_adaptive_pchip output and (optionally) SNAC tokens
+from snac_finevideo.py output, injecting both into video_tokens after each
+<avc_lm>...</avc_lm> block.
 
 Also adds a chunk_timing array and timing_meta to each activity so that
-all 4 modalities (seed2, cosmos, avc_lm, agent) have explicit timestamps.
+all 5 modalities (seed2, cosmos, avc_lm, agent, snac) have explicit timestamps.
 
 Resulting token order per 8-frame chunk:
-    <cosmos> ... </cosmos> <avc_lm> ... </avc_lm> <agent> <fps_30> <pelvis> ... </pelvis> ... </agent>
+    <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]
+
+SNAC alignment:
+    SNAC listen format = 37.5 tokens/sec. Each 8-frame chunk at 30fps = 0.267s.
+    → ~9–10 SNAC tokens per chunk (3–4 base frames × 3 tokens/frame).
+    snac_finevideo.py encodes the full activity once (preserving audio context)
+    then splits tokens evenly across chunks, snapping to 3-token boundaries
+    (1 base frame = 3 tokens: codes[0], codes[1][2i], codes[1][2i+1]).
 
 Frame alignment
 ---------------
@@ -92,30 +99,79 @@ def find_agent_string(agent_dict: Dict[int, str], abs_frame: int) -> str:
     return ""
 
 
+# ── SNAC token loading ────────────────────────────────────────────────────────
+
+def load_snac_dict(path: str) -> Dict[str, Dict]:
+    """
+    Load snac_finevideo output → {activity_id: snac_by_chunk}.
+    snac_by_chunk: {"0": ["<snac_X>", ...], "1": [...], ...}
+    """
+    snac: Dict[str, Dict] = {}
+    if not os.path.exists(path):
+        return snac
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                act_id = obj.get("activity_id", "")
+                by_chunk = obj.get("snac_by_chunk")
+                if act_id and isinstance(by_chunk, dict):
+                    snac[act_id] = by_chunk
+    except OSError:
+        pass
+    return snac
+
+
+def build_snac_insertion(snac_by_chunk: Dict, chunk_idx: int) -> str:
+    """Return '<snac> <snac_N> ... </snac>' for chunk_idx, or '' if empty."""
+    tokens = snac_by_chunk.get(str(chunk_idx), [])
+    return ("<snac> " + " ".join(tokens) + " </snac>") if tokens else ""
+
+
 # ── Injection ────────────────────────────────────────────────────────────────
 
-def inject_agent_tokens(
+def inject_chunk_tokens(
     video_tokens: str,
     agent_insertions: List[str],
-) -> Tuple[str, int]:
+    snac_insertions: List[str],
+) -> Tuple[str, int, int]:
+    """
+    Inject agent and SNAC tokens after each <avc_lm> block in one pass.
+
+    Per chunk, the resulting token order is:
+        <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]
+
+    Both agent and snac are optional — empty string means nothing is injected.
+    Returns (merged_tokens, n_agent_injected, n_snac_injected).
+    """
     if not video_tokens:
-        return video_tokens, 0
+        return video_tokens, 0, 0
     matches = list(AVC_PATTERN.finditer(video_tokens))
     if not matches:
-        return video_tokens, 0
+        return video_tokens, 0, 0
 
     parts: List[str] = []
     cursor = 0
-    injected = 0
+    inj_agent = inj_snac = 0
     for idx, m in enumerate(matches):
         parts.append(video_tokens[cursor:m.end()])
         agent_text = agent_insertions[idx] if idx < len(agent_insertions) else ""
+        snac_text  = snac_insertions[idx]  if idx < len(snac_insertions)  else ""
         if agent_text:
             parts.append(" " + agent_text)
-            injected += 1
+            inj_agent += 1
+        if snac_text:
+            parts.append(" " + snac_text)
+            inj_snac += 1
         cursor = m.end()
     parts.append(video_tokens[cursor:])
-    return "".join(parts), injected
+    return "".join(parts), inj_agent, inj_snac
 
 
 # ── Chunk timing builder ────────────────────────────────────────────────────
@@ -126,6 +182,7 @@ def build_chunk_timing(
     chunk_starts: List[int],
     agent_dict: Dict[int, str],
     video_tokens: str,
+    snac_by_chunk: Dict = None,
 ) -> List[dict]:
     """Build per-chunk timing array with modality presence flags."""
     timing = []
@@ -143,6 +200,7 @@ def build_chunk_timing(
             c in agent_dict
             for c in (nearest, nearest - CHUNK_SIZE, nearest + CHUNK_SIZE)
         )
+        has_snac = bool(snac_by_chunk and snac_by_chunk.get(str(i)))
 
         timing.append({
             "chunk_idx": i,
@@ -153,6 +211,7 @@ def build_chunk_timing(
             "has_cosmos": i < len(cosmos_matches),
             "has_avc_lm": True,
             "has_agent": has_agent,
+            "has_snac": has_snac,
         })
 
     return timing
@@ -161,7 +220,9 @@ def build_chunk_timing(
 def process_activity(
     activity: dict,
     agent_dict: Dict[int, str],
-) -> Tuple[int, int, int]:
+    snac_by_chunk: Dict = None,
+) -> Tuple[int, int, int, int]:
+    """Returns (avc_count, inj_agent, misses, inj_snac)."""
     start_sec, end_sec = activity.get("time_range_sec", [0.0, 0.0])[:2]
     start_sec = safe_float(start_sec)
     end_sec = safe_float(end_sec)
@@ -169,26 +230,29 @@ def process_activity(
 
     avc_count = len(AVC_PATTERN.findall(video_tokens or ""))
     if avc_count == 0:
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
     duration_frames = int(max(0.0, end_sec - start_sec) * TARGET_FPS)
     chunk_starts = list(range(0, duration_frames, CHUNK_SIZE)) if duration_frames > 0 else []
     abs_start = int(round(start_sec * TARGET_FPS))
 
-    insertions: List[str] = []
+    agent_insertions: List[str] = []
+    snac_insertions: List[str] = []
     misses = 0
     for idx in range(avc_count):
         rel_start = chunk_starts[idx] if idx < len(chunk_starts) else idx * CHUNK_SIZE
         agent_text = find_agent_string(agent_dict, abs_start + rel_start)
         if not agent_text:
             misses += 1
-        insertions.append(agent_text)
+        agent_insertions.append(agent_text)
+        snac_text = build_snac_insertion(snac_by_chunk, idx) if snac_by_chunk else ""
+        snac_insertions.append(snac_text)
 
-    merged, injected = inject_agent_tokens(video_tokens, insertions)
+    merged, inj_agent, inj_snac = inject_chunk_tokens(video_tokens, agent_insertions, snac_insertions)
     activity["video_tokens"] = merged
 
     chunk_timing = build_chunk_timing(
-        avc_count, abs_start, chunk_starts, agent_dict, video_tokens,
+        avc_count, abs_start, chunk_starts, agent_dict, video_tokens, snac_by_chunk,
     )
     activity["chunk_timing"] = chunk_timing
     activity["timing_meta"] = {
@@ -198,25 +262,33 @@ def process_activity(
         "cosmos_rate": "every_8_frames",
         "avc_lm_rate": "every_8_frames",
         "agent_rate": "every_8_frames_adaptive_pchip",
+        "snac_rate": "37.5_tokens_per_sec_listen_format",
     }
 
-    if injected > 0:
+    if inj_agent > 0:
         activity["agent_token_order"] = "image_first"
         activity["agent_fps"] = TARGET_FPS
 
-    return avc_count, injected, misses
+    return avc_count, inj_agent, misses, inj_snac
 
 
-def process_video(record: dict, agent_tokens_dir: str) -> dict:
+def process_video(record: dict, agent_tokens_dir: str, snac_tokens_dir: str = "") -> dict:
     video_id = record.get("video_id", "")
-    path = os.path.join(agent_tokens_dir, f"{video_id}_tokens.jsonl")
-    agent_dict = load_agent_dict(path)
+    agent_path = os.path.join(agent_tokens_dir, f"{video_id}_tokens.jsonl")
+    agent_dict = load_agent_dict(agent_path)
+
+    # Load SNAC data keyed by activity_id (empty dict if dir not set or file missing)
+    snac_file: Dict[str, Dict] = {}
+    if snac_tokens_dir:
+        snac_path = os.path.join(snac_tokens_dir, f"{video_id}_snac.jsonl")
+        snac_file = load_snac_dict(snac_path)
 
     stats = {
         "video_id": video_id,
-        "agent_file_found": os.path.exists(path),
+        "agent_file_found": os.path.exists(agent_path),
+        "snac_file_found": bool(snac_tokens_dir and snac_file),
         "agent_windows": len(agent_dict),
-        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0,
+        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0,
     }
 
     for scene in record.get("scenes", []):
@@ -225,11 +297,14 @@ def process_video(record: dict, agent_tokens_dir: str) -> dict:
         for activity in scene.get("activities", []):
             if not isinstance(activity, dict):
                 continue
+            act_id = activity.get("activity_id", "")
+            snac_by_chunk = snac_file.get(act_id, {})
             stats["activities"] += 1
-            avc, inj, miss = process_activity(activity, agent_dict)
+            avc, inj, miss, inj_snac = process_activity(activity, agent_dict, snac_by_chunk)
             stats["avc_blocks"] += avc
             stats["injected"] += inj
             stats["misses"] += miss
+            stats["snac_injected"] += inj_snac
 
     return stats
 
@@ -246,6 +321,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--agent-tokens-dir",
                     default=os.path.join("outputs", "agent_tokens_adaptive"),
                     help="Dir with <video_id>_tokens.jsonl from Phase 5 adaptive.")
+    p.add_argument("--snac-tokens-dir",
+                    default="",
+                    help="Dir with <video_id>_snac.jsonl from snac_finevideo.py. "
+                         "Leave empty to skip SNAC injection (backward-compatible).")
     p.add_argument("--output-dir", default=None,
                     help="Output directory. Defaults to input file directory.")
     p.add_argument("--output-prefix", default="final_vla_adaptive",
@@ -277,7 +356,7 @@ def main() -> None:
 
     grand = {
         "files": 0, "videos": 0, "no_agent_file": 0,
-        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0,
+        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0,
     }
 
     for in_path in my_paths:
@@ -297,7 +376,7 @@ def main() -> None:
 
         n_lines = count_lines(in_path)
         file_stats = {"videos": 0, "no_agent_file": 0, "activities": 0,
-                       "avc_blocks": 0, "injected": 0, "misses": 0}
+                       "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0}
 
         with open(in_path, "r", encoding="utf-8") as fin, \
              open(out_path, "w", encoding="utf-8") as fout:
@@ -312,12 +391,13 @@ def main() -> None:
                 except json.JSONDecodeError:
                     continue
 
-                st = process_video(record, args.agent_tokens_dir)
+                st = process_video(record, args.agent_tokens_dir, args.snac_tokens_dir)
                 file_stats["videos"] += 1
                 file_stats["activities"] += st["activities"]
                 file_stats["avc_blocks"] += st["avc_blocks"]
                 file_stats["injected"] += st["injected"]
                 file_stats["misses"] += st["misses"]
+                file_stats["snac_injected"] += st["snac_injected"]
                 if not st["agent_file_found"]:
                     file_stats["no_agent_file"] += 1
 
@@ -329,7 +409,8 @@ def main() -> None:
             grand[k] += file_stats[k]
 
         tqdm.write(f"[DONE] {out_path} | vids={file_stats['videos']} "
-                   f"injected={file_stats['injected']} misses={file_stats['misses']}")
+                   f"agent={file_stats['injected']} snac={file_stats['snac_injected']} "
+                   f"misses={file_stats['misses']}")
 
     print("=" * 70)
     print("Merge complete")

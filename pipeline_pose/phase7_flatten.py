@@ -8,21 +8,27 @@ Includes data augmentation: synonym replacement, stopword dropout,
 sentence permutation, modality dropout, and speech/token interleaving.
 
 Modality dropout balances the token ratio across modalities:
-    AVC-LM tokens outnumber agent tokens ~373x, so 99% are dropped.
-    Cosmos tokens outnumber agent tokens ~19x, so 90% are dropped.
+    AVC-LM tokens are fully dropped (100%) pending ablation studies.
+    Cosmos tokens are dropped at 50% to allow modality transition learning.
     Seed2 and Agent tokens are kept at 100%.
 
 Token flattening:
     <seed2> 3758 2157 </seed2>                         → <seed2_3758> <seed2_2157>
-    <cosmos> 58567 </cosmos>                            → <cosmos_58567>
-    <avc_lm> 100 200 </avc_lm>                         → <avclm_100> <avclm_200>
+    <cosmos> 58567 </cosmos>                            → <cosmos_58567>  (50% kept)
+    <avc_lm> 100 200 </avc_lm>                         → dropped entirely
     <agent> <fps_30> <pelvis> ... </pelvis> </agent>   → <fps_30> <pelvis> ... </pelvis>
+    <snac> <snac_130055> ... </snac>                   → <snac_130055> ...  (pass-through)
+
+Record filter (v3):
+    Emit any activity that has <agent> OR <snac> tokens.
+    → Records: full-chain (seed2+cosmos+agent+snac), or partial (seed2+cosmos+snac).
+    → Activities with only seed2+cosmos are skipped (no new modality beyond video).
 
 Input:  .../FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl
-Output: .../FineVideo-VLA/megatron_dataset_adaptive/flat_*.jsonl
+Output: .../FineVideo-VLA/megatron_dataset_v3/flat_*.jsonl
 
 Usage:
-    python pipeline/phase7_flatten.py [--drop_avc 0.99] [--drop_cosmos 0.9]
+    python pipeline_pose/phase7_flatten.py [--drop_avc 1.0] [--drop_cosmos 0.5]
 """
 
 import json
@@ -122,24 +128,32 @@ def permute_chunks_list(chunks, permutation_rate=0.10):
     return chunks_copy
 
 
-def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_cosmos=0.5, drop_rate_seed=0.5):
+def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_cosmos=0.5, drop_rate_seed=0.0, drop_rate_snac=0.0):
     """Flatten <tag> payload </tag> blocks into individual vocab tokens.
 
-    Standard modalities:  <tag> N1 N2 </tag> → <prefix_N1> <prefix_N2>
-    Agent blocks:         <agent> <fps_30> <pelvis> ... </agent> → kept as-is
+    Standard modalities:  <tag> N1 N2 </tag>          → <prefix_N1> <prefix_N2>
+    Agent blocks:         <agent> <fps_30> ... </agent> → inner tokens as-is
+    SNAC blocks:          <snac> <snac_N> ... </snac>  → inner tokens as-is
 
-    Agent blocks are extracted first (they contain nested joint tags that
-    would confuse the generic regex), then remaining modalities are parsed.
+    Agent and SNAC blocks are extracted first (they contain nested tags that
+    would confuse the generic numeric-payload regex), then standard modalities parsed.
     """
     if not isinstance(token_str, str):
         return [], ""
 
     all_final_tokens = []
 
+    # Extract agent blocks (nested joint tags)
     agent_pattern = re.compile(r'<agent>(.*?)</agent>', re.DOTALL)
     agent_blocks = agent_pattern.findall(token_str)
     remaining = agent_pattern.sub('', token_str)
 
+    # Extract SNAC blocks (already-formatted <snac_N> tokens)
+    snac_pattern = re.compile(r'<snac>(.*?)</snac>', re.DOTALL)
+    snac_blocks = snac_pattern.findall(remaining)
+    remaining = snac_pattern.sub('', remaining)
+
+    # Standard modalities: <tag> N1 N2 ... </tag>
     pattern = r'<([a-zA-Z0-9_]+)>\s*(.*?)\s*</\1>'
     for match in re.finditer(pattern, remaining, re.DOTALL):
         tag_name = match.group(1).strip()
@@ -162,6 +176,7 @@ def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_co
         nums = payload.split()
         all_final_tokens.extend(f"<{prefix}_{n}>" for n in nums if n.isdigit())
 
+    # Agent tokens: pass through inner tokens as-is
     for agent_payload in agent_blocks:
         inner_tokens = re.findall(r'<[^>]+>', agent_payload)
         if inner_tokens:
@@ -169,6 +184,13 @@ def process_tokens_to_individual_tags(token_str, drop_rate_avc=1.0, drop_rate_co
         else:
             nums = agent_payload.split()
             all_final_tokens.extend(f"<agent_{n}>" for n in nums if n.isdigit())
+
+    # SNAC tokens: pass through as-is (already <snac_N> format), with optional dropout
+    for snac_payload in snac_blocks:
+        if drop_rate_snac > 0 and random.random() < drop_rate_snac:
+            continue
+        snac_tokens = re.findall(r'<[^>]+>', snac_payload)
+        all_final_tokens.extend(snac_tokens)
 
     trailing_text = re.sub(r'<[^>]+>.*?</[^>]+>', '', remaining, flags=re.DOTALL).strip()
     return all_final_tokens, trailing_text
@@ -215,12 +237,13 @@ def interleave_speech_and_tokens(chunks, tokens):
 def main():
     parser = argparse.ArgumentParser(description="Flatten adaptive merged dataset into Megatron-LM JSONL.")
     parser.add_argument("--input-glob",
-                        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl")
+                        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl")
     parser.add_argument("--output-dir",
-                        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/megatron_dataset_adaptive")
-    parser.add_argument("--drop_avc", type=float, default=0.99, help="Dropout rate for AVC tags (373x agent, keep ~1%%)")
-    parser.add_argument("--drop_cosmos", type=float, default=0.9, help="Dropout rate for Cosmos tags (19x agent, keep ~10%%)")
-    parser.add_argument("--drop_seed", type=float, default=0.0, help="Dropout rate for Seed tags (balanced with agent)")
+                        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v3")
+    parser.add_argument("--drop_avc", type=float, default=1.0, help="Dropout rate for AVC tags (removed until ablations confirm benefit)")
+    parser.add_argument("--drop_cosmos", type=float, default=0.5, help="Dropout rate for Cosmos tags (keep 50%% for modality transition learning)")
+    parser.add_argument("--drop_seed", type=float, default=0.0, help="Dropout rate for Seed2 tags (keep all — primary visual signal)")
+    parser.add_argument("--drop_snac", type=float, default=0.0, help="Dropout rate for SNAC audio tokens (keep all by default)")
     parser.add_argument("--synonym_rate", type=float, default=0.15, help="Synonym mutation chance")
     parser.add_argument("--stopword_drop", type=float, default=0.05, help="Stopword removal chance")
     parser.add_argument("--permute_sentences", type=float, default=0.10, help="Sentence swap chance")
@@ -241,6 +264,7 @@ def main():
         drop_avc=args.drop_avc,
         drop_cosmos=args.drop_cosmos,
         drop_seed=args.drop_seed,
+        drop_snac=args.drop_snac,
         synonym_rate=args.synonym_rate,
         stopword_drop=args.stopword_drop,
         permute_sentences=args.permute_sentences,
@@ -261,8 +285,8 @@ def main():
 
 
 def flatten_one_file(in_path, output_dir, skip_existing,
-                     drop_avc, drop_cosmos, drop_seed,
-                     synonym_rate, stopword_drop, permute_sentences):
+                     drop_avc, drop_cosmos, drop_seed, drop_snac=0.0,
+                     synonym_rate=0.15, stopword_drop=0.05, permute_sentences=0.10):
     base = os.path.basename(in_path)
     out_path = os.path.join(output_dir, f"flat_{base}")
 
@@ -291,7 +315,9 @@ def flatten_one_file(in_path, output_dir, skip_existing,
 
                 for activity in scene.get("activities", []):
                     raw_tokens = activity.get("video_tokens", "")
-                    if "<agent>" not in raw_tokens:
+                    # Emit if activity has agent (pose) or snac (audio) tokens.
+                    # Pure seed2+cosmos records without either are skipped.
+                    if "<agent>" not in raw_tokens and "<snac>" not in raw_tokens:
                         continue
 
                     speech = activity.get("speech_transcript", "")
@@ -309,6 +335,7 @@ def flatten_one_file(in_path, output_dir, skip_existing,
                         drop_rate_avc=drop_avc,
                         drop_rate_cosmos=drop_cosmos,
                         drop_rate_seed=drop_seed,
+                        drop_rate_snac=drop_snac,
                     )
 
                     interleaved = interleave_speech_and_tokens(text_chunks, kept_tokens)

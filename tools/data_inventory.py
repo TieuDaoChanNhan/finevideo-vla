@@ -33,7 +33,7 @@ import requests
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
-FINEVIDEO_DIR   = "/p/data1/mmlaion/shared/vla/vla_adaptive"
+FINEVIDEO_DIR   = "/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2"
 STACK_LOCAL_DIR = ("/p/data1/mmlaion/mixture-vitae/shared/"
                    "mixture-vitae-backup-MixtureVitae-Backup/data/stack_images3_gzip")
 CACHE_BASE      = "/p/data1/mmlaion/nguyen38/inventory_cache"
@@ -43,7 +43,7 @@ SNAC_CACHE_DIR  = os.path.join(CACHE_BASE, "hf_snac")
 HF_SHARD_CACHE  = os.path.join(CACHE_BASE, "hf_shards")
 
 SCRIPT_DIR      = os.path.dirname(os.path.abspath(__file__))
-CHECKPOINT_PATH = os.path.join(SCRIPT_DIR, "inventory_checkpoint.json")
+CHECKPOINT_PATH = os.path.join(SCRIPT_DIR, "inventory_checkpoint_v2.json")
 CHARTS_OUT      = os.path.join(SCRIPT_DIR, "data_inventory_charts.png")
 
 HF_BACKUP_REPO  = "mixture-vitae-backup/MixtureVitae-Backup"

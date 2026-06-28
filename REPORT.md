@@ -8,12 +8,13 @@
 
 ## 1. Goal
 
-Build a multimodal Vision-Language-Action pretraining dataset from ~40K YouTube videos (HuggingFace [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo)). The final output is a Megatron-LM-ready flat JSONL dataset where each record interleaves four token modalities:
+Build a multimodal Vision-Language-Action pretraining dataset from ~40K YouTube videos (HuggingFace [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo)). The final output is a Megatron-LM-ready flat JSONL dataset where each record interleaves five token modalities:
 
 - **Seed2** — semantic keyframe tokens (1 FPS, vocab 8192)
 - **Cosmos** — spatial video tokens (every 8 frames, vocab 64000)
 - **AVC-LM** — H.264 BPE tokens (every 8 frames, vocab 8192)
 - **Agent** — 3D human pose tokens (every 8 frames, adaptive PCHIP, 17 joints)
+- **SNAC** — audio tokens in listen format (~10 tokens per 8-frame chunk, 12,288 vocab) ← *in progress*
 
 ---
 
@@ -110,12 +111,25 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
     "has_seed2": true,
     "has_cosmos": true,
     "has_avc_lm": true,
-    "has_agent": true
+    "has_agent": true,
+    "has_snac": false
   }
   ```
 - Added `timing_meta` with fps and rate info for each modality
 - Output: 160 `final_vla_adaptive_rank_*.jsonl` files, **657 GB** total
 - **~399K activities** across all videos, **~2.15M agent blocks** injected
+
+**Phase 6 v2 (Jun 28, 2026) — SNAC injection support:**
+
+Added `--snac-tokens-dir` argument. When provided, Phase 6 reads per-activity SNAC output from `snac_finevideo.py` and injects `<snac>...</snac>` blocks alongside agent tokens in a single pass over `video_tokens`. Token order per 8-frame chunk becomes:
+
+```
+<cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]
+```
+
+SNAC rate alignment: SNAC listen format produces 37.5 tokens/sec. Each 8-frame chunk at 30fps = 0.267s → ~9–10 SNAC tokens per chunk (3.33 base frames × 3 tokens/frame). `snac_finevideo.py` encodes the full activity audio once (preserving temporal audio context) then splits tokens evenly across chunks, snapping to 3-token boundaries (1 SNAC base frame = 3 tokens).
+
+Running without `--snac-tokens-dir` is backward compatible with v1 behavior.
 
 ### 2.4 Flatten (Phase 7)
 **Script:** `pipeline_pose/phase7_flatten.py`
@@ -137,16 +151,44 @@ In the raw data, image tokens massively outnumber action tokens. The raw token r
 | Seed2 | ~340 | ~1x |
 | Agent | ~300 | 1x (baseline) |
 
-To balance modalities for pretraining, **modality dropout** is applied during flattening:
+To balance modalities for pretraining, **modality dropout** is applied during flattening.
+
+**v1 dropout** (used for first two training runs — `megatron_dataset_adaptive/`):
 
 | Modality | Drop rate | Effective keep | Resulting tokens |
 |----------|-----------|---------------|-----------------|
-| AVC-LM | **99%** | ~1% of chunks | ~1,250 |
-| Cosmos | **90%** | ~10% of chunks | ~640 |
+| AVC-LM | 99% | ~1% of chunks | ~1,250 |
+| Cosmos | 90% | ~10% of chunks | ~640 |
 | Seed2 | 0% | 100% | ~340 |
 | Agent | 0% | 100% | ~300 |
 
-This brings all four modalities into roughly the same order of magnitude (~300–1,250 tokens each), preventing the model from being overwhelmed by image tokens during pretraining.
+**v2 dropout** (Jun 27, 2026 — `megatron_dataset_v2/`):
+
+| Modality | Drop rate | Reason |
+|----------|-----------|--------|
+| AVC-LM | **100%** | Removed until ablations confirm benefit (per Huu) |
+| Cosmos | **50%** | Keep ~6/12 chunks per activity for seed2→cosmos→agent transition learning |
+| Seed2 | 0% | Keep all — primary visual signal |
+| Agent | 0% | Keep all |
+
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2/`
+
+**v3 — SNAC support (Jun 28, 2026, pending `snac_finevideo.py` run):**
+
+| Modality | Drop rate | Notes |
+|----------|-----------|-------|
+| AVC-LM | 100% | Unchanged |
+| Cosmos | 50% | Unchanged |
+| Seed2 | 0% | Unchanged |
+| Agent | 0% | Unchanged |
+| **SNAC** | **0%** | New — pass-through, `<snac_N>` tokens extracted from `<snac>...</snac>` blocks |
+
+**Changed record filter:** v1/v2 required `<agent>` in record. v3 emits if `<agent>` OR `<snac>` present:
+- **Full-chain:** seed2 + cosmos + agent + snac (17,676 activities with confirmed human presence)
+- **Partial-chain:** seed2 + cosmos + snac (remaining ~382K activities — teaches audio↔video binding)
+- Pure seed2+cosmos activities still skipped
+
+Script: `pipeline_pose/phase7_flatten.py` | Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v3/`
 
 #### Data augmentation
 
@@ -203,6 +245,63 @@ tok.save_pretrained("tokenizer_vla_adaptive")         # vocab size: 144,215
 This tokenizer is published at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) and used for Megatron-LM tokenization.
 
 **Script:** `tools/upload_tokenizer.py` — creates and uploads the tokenizer to HuggingFace.
+
+### 2.5b SNAC Audio Tokenization (snac_finevideo.py) — *In Progress*
+**Script:** `pipeline_pose/snac_finevideo.py` | **SLURM:** `slurm/submit_snac_finevideo.sh`
+
+SNAC (Scalable Neural Audio Codec) tokenises the audio track of each FineVideo video using SNAC_24kHz in **listen format** (3 tokens per base frame):
+
+```
+SNAC base frame i  →  <snac_{ codes[0][i] + 128266 }>      (Level 0, 12.5 Hz)
+                       <snac_{ codes[1][2i] + 132362 }>     (Level 1 even, 25 Hz)
+                       <snac_{ codes[1][2i+1] + 144650 }>   (Level 1 odd, 25 Hz)
+```
+
+Listen format ignores Level 2 (50 Hz fine detail), giving **37.5 tokens/sec** vs 87.5 for the full "speak" format. Compatible with MixtureVitae-Omni offsets.
+
+**Chunk alignment:** SNAC rate (37.5 tok/s) and video chunk rate (3.75 chunks/s) have irrational ratio. Solution:
+1. Encode full activity audio in one call (preserves temporal audio context across chunk boundaries)
+2. Divide flat token list evenly across chunks, snapping to 3-token boundaries
+3. Each 8-frame chunk receives ~9–10 SNAC tokens (3.33 base frames × 3)
+
+Output: `{OUTPUT_DIR}/{video_id}_snac.jsonl` — one line per activity:
+```json
+{
+  "video_id": "abc123",
+  "activity_id": "scene_1_act_2",
+  "has_agent": true,
+  "snac_by_chunk": {
+    "0": ["<snac_130055>", "<snac_133001>", "<snac_144980>", ...],
+    "1": ["<snac_129900>", "<snac_132800>", "<snac_145200>", ...],
+    ...
+  }
+}
+```
+
+**Coverage:** ALL activities, not just agent ones. 86% of activities have no agent tokens but still have valid seed2+cosmos — adding SNAC to these creates seed2+cosmos+snac training records that teach audio↔video binding.
+
+**Vocab cost:** 3 × 4096 = 12,288 new `<snac_N>` token strings (N ∈ {[128266,132361], [132362,136457], [144650,148745]}). Will be added to tokenizer via `add_tokens(special_tokens=True)` → new vocab ~156,503.
+
+**Environment setup (done Jun 28, 2026):**
+- `snac 1.2.1` installed into both `env_tools` (x86, login node) and `my_env_clean` (ppc64le, booster)
+- SNAC model weights pre-downloaded: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz`
+- `HF_HUB_OFFLINE=1` set in SLURM script — compute nodes have no internet
+- Task list built: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_task_list.json` (40,798 videos, 372,385 activities)
+
+**SLURM cluster note (discovered Jun 28, 2026):**
+- `jwlogin08.juwels` (JUWELS Cluster) cannot submit to `booster` partition with `laionize` account
+- Must SSH to `juwels-booster.fz-juelich.de` (separate Slurm cluster) to access GPU nodes
+- CPU fallback available: `bash slurm/submit_snac_finevideo.sh --cpu` (uses `batch` partition, x86, ~24h)
+
+**Run procedure (GPU, from juwels-booster.fz-juelich.de):**
+```bash
+# Task list already built — skip step 1
+# Step 2: submit array job (16 GPU workers, ~8-12 hours)
+cd /p/data1/mmlaion/nguyen38/3d-human-pose
+bash slurm/submit_snac_finevideo.sh
+```
+
+**STATUS: BLOCKED — waiting for JUWELS Booster SSH access (Jun 28, 2026)**
 
 ### 2.6 Megatron-LM Tokenization (Phase 8)
 **Script:** `/p/data1/mmlaion/nguyen38/mv-scale/tokenize_vla_adaptive.sbatch`

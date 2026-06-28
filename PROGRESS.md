@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** June 27, 2026  
+**Last updated:** June 28, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
@@ -21,6 +21,7 @@ USER: <activity description> [Speech: ...]  ASSISTANT:
   <cosmos_N> ...         # Spatial video tokens      (every 8 frames, vocab 64000)
   <avclm_N> ...          # H.264 BPE video tokens    (every 8 frames, vocab 8192)
   <fps_30> <pelvis> ...  # 3D human pose tokens      (every 8 frames, 17 joints)
+  <snac_N> ...           # Audio tokens — SNAC listen format (~10 tokens per 8-frame chunk)
 ```
 
 The model learns to "read" and "continue" this interleaved sequence. In inference, you prompt it with video tokens + a text command, and it predicts the next agent tokens = the motion.
@@ -143,6 +144,15 @@ Token range: 171 (all 2-CP, very static pose) to 579 (all 8-CP, fast motion), ty
 - ~399K activities, **~2.15M agent blocks** injected
 - Output: 160 `final_vla_adaptive_rank_*.jsonl`, **657 GB**
 
+**Phase 6 v2 — SNAC injection support (Jun 28, 2026):**
+- Added `--snac-tokens-dir` argument to also inject SNAC audio tokens per chunk
+- New `inject_chunk_tokens()` function handles both agent + SNAC in one pass over `video_tokens`
+- Token order per 8-frame chunk: `<cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]`
+- `chunk_timing` now includes `has_snac` flag per chunk
+- `timing_meta` now includes `snac_rate: "37.5_tokens_per_sec_listen_format"`
+- Backward compatible: running without `--snac-tokens-dir` behaves identically to v1
+- **Requires `snac_finevideo.py` to run first** → `{video_id}_snac.jsonl` files in snac output dir
+
 ---
 
 ### Phase 7: Flatten + Augment
@@ -153,7 +163,7 @@ Converts hierarchical JSON → flat Megatron-LM JSONL. Key decisions:
 
 **Agent-only filter:** Only activities with `<agent>` blocks are emitted (every training record has action data).
 
-**Modality dropout (token balancing):**
+**Modality dropout (token balancing) — v1 (old, already trained on this):**
 | Modality | Raw ratio vs agent | Drop rate | Resulting ratio |
 |----------|-------------------|-----------|----------------|
 | AVC-LM | ~373× | 99% | ~4× |
@@ -161,9 +171,37 @@ Converts hierarchical JSON → flat Megatron-LM JSONL. Key decisions:
 | Seed2 | ~1× | 0% | 1× |
 | Agent | baseline | 0% | 1× |
 
+**Modality dropout — v2 (Jun 27, 2026 update, pending re-flatten):**
+| Modality | Drop rate | Reason |
+|----------|-----------|--------|
+| AVC-LM | **100%** | Removed until ablations confirm benefit (per Huu) |
+| Cosmos | **50%** | Keep ~6/12 blocks per activity for modality transition learning |
+| Seed2 | 0% | Keep all — primary visual signal |
+| Agent | 0% | Keep all |
+
 **Text augmentation:** 15% synonym replacement, 5% stopword dropout, 10% sentence permutation, random speech/token interleaving, random layout block shuffling.
 
-Output: 160 files, **69,844 records**, 19.2 GB.
+Output v1: 160 files, **69,844 records**, 19.2 GB → `megatron_dataset_adaptive/`  
+Output v2: → `megatron_dataset_v2/` (cosmos 50% drop, avclm 100% drop — re-flattened Jun 27, 2026)
+
+**Phase 7 v3 — SNAC + updated filter (Jun 28, 2026):**
+- Added `<snac>...</snac>` block extraction in `process_tokens_to_individual_tags` (pass-through, like agent)
+- Added `--drop_snac` argument (default 0.0 = keep all SNAC tokens)
+- **Changed record filter:** was `<agent> required`; now emits if `<agent>` OR `<snac>` present
+  - Full-chain records: seed2 + cosmos + agent + snac (best quality, 17,676 activities)
+  - Partial-chain records: seed2 + cosmos + snac only (86% of activities, adds audio modality binding)
+  - Pure seed2+cosmos records still skipped (no new modality)
+- Output: → `megatron_dataset_v3/` (pending snac_finevideo.py run + re-phase6 + re-flatten)
+
+**DATA PATHS (IMPORTANT — updated Jun 27, 2026):**  
+JUPITER `/e/data1` is sometimes down (cluster maintenance). All critical data copied to `/p/`:
+```
+/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/
+  ├── final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl  ← INPUT for Phase 7
+  ├── megatron_dataset_adaptive/flat_*.jsonl                  ← v1 flat output
+  └── megatron_dataset_v2/flat_*.jsonl                       ← v2 flat output (pending)
+```
+Phase 7 script and SLURM now default to `/p/` paths.
 
 ---
 
@@ -266,12 +304,12 @@ Scanned all 242 files across 4 dataset families:
   - Unlocks MV-Omni's **6.93B tokens** for training
   - Effort: ~1 day
 
-**Priority 2 — Adjust modality dropout in Phase 7**
-- AVC-LM: 99% → 80–90% drop (keep 10–20%)
-- Cosmos: 90% → 50–70% drop (keep 30–50%)
-- Re-flatten + re-tokenize
-- Model will see full modality transition chains, fixing root cause 3
-- Effort: 1 day code + 1–2 days SLURM
+**Priority 2 — Adjust modality dropout in Phase 7** ← ~~DONE~~ (Jun 27, 2026)
+- AVC-LM: 99% → **100% drop** (removed entirely)
+- Cosmos: 90% → **50% drop** (keeps ~6/12 chunks per activity)
+- Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2/`
+- Uploaded to `EmpathicRobotics/FineVideo-Phase7-Flattened` (v2 commit)
+- **Next step:** Megatron re-tokenize `megatron_dataset_v2/` → new `.bin/.idx` shards → re-train v0.2
 
 **Priority 3 — Ego-centric perspective for FineVideo**
 - Read Phase 4 yolo_cleaned pose data
@@ -296,11 +334,79 @@ Scanned all 242 files across 4 dataset families:
 - First robot-domain data — critical for generalization beyond human motion
 - Hold off on AVC-LM until ablations confirm it helps (per Huu's guidance)
 
-**Priority 6 — SNAC tokenization for FineVideo**
-- Run Orpheus SNAC2 on audio tracks of ~18K FineVideo videos (those with agent tokens)
-- Inject `<snac_N>` tokens into training records alongside existing seed2/cosmos/avclm/agent
-- Adds first-person + third-person + audio modality binding
-- Expected: meaningful cross-modal binding (speech ↔ motion)
+**Priority 6 — SNAC tokenization for FineVideo** ← **BLOCKED (Jun 28, 2026): need JUWELS Booster SSH access**
+
+Pipeline design decisions made and coded:
+- **Script:** `pipeline_pose/snac_finevideo.py` (WRITTEN, ready to run)
+- **SLURM:** `slurm/submit_snac_finevideo.sh` (WRITTEN, two modes: GPU + CPU fallback)
+- **Coverage:** ALL 40,804 activities (not just agent ones) — 100% video coverage confirmed
+- **Format:** Listen format (3 tokens/base frame @ 12.5Hz = 37.5 tok/s)
+  - `<snac_N>` where N ∈ [128266, 148745] → 12,288 unique token strings needed in vocab
+- **Chunk alignment:** Encode full activity audio once → split tokens evenly across 8-frame chunks
+  - Each 8-frame chunk at 30fps = 0.267s → ~9–10 SNAC tokens per chunk (3.33 base frames × 3)
+  - Snap to 3-token boundaries (1 SNAC base frame = 3 tokens, must stay together)
+  - Output per activity: `snac_by_chunk: {"0": [...], "1": [...], ...}` keyed by chunk_idx
+- **Injection:** Phase 6 (not Phase 7) — already coded in `phase6_merge_adaptive.py` v2
+  - `--snac-tokens-dir /path/to/snac_tokens/` injects into final_dataset_adaptive
+  - Token order per chunk: `<cosmos>...</cosmos> <avc_lm>...</avc_lm> <agent>...</agent> <snac>...</snac>`
+- **Phase 7 updated** to emit seed2+cosmos+snac records (not just agent-only)
+
+**Environment prep (DONE Jun 28, 2026):**
+- `snac 1.2.1` installed in both `env_tools` (x86) and `my_env_clean` (ppc64le booster)
+- SNAC model weights pre-downloaded: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz`
+- `HF_HUB_OFFLINE=1` set in SLURM script (compute nodes have no internet)
+
+**CLUSTER ARCHITECTURE NOTE (discovered Jun 28, 2026):**
+- `jwlogin08.juwels` = JUWELS Cluster login node (x86_64)
+- `juwels-booster.fz-juelich.de` = JUWELS Booster login nodes (separate system, ppc64le compute)
+- `laionize` account with GPU access (`booster` partition) is only usable from the Booster login nodes
+- From JUWELS Cluster login, `laionize` only has CPU partitions: `batch`, `devel`, `large`
+- **To submit GPU job: SSH to `juwels-booster.fz-juelich.de` first**
+
+**Task list already built (Jun 28, 2026):**
+```
+/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_task_list.json
+→ 40,798 videos, 372,385 activities, all with chunk_timing
+```
+
+**Submission commands (when on juwels-booster login node):**
+```bash
+cd /p/data1/mmlaion/nguyen38/3d-human-pose
+
+# GPU mode: 16 workers on booster partition, ~8-12h
+bash slurm/submit_snac_finevideo.sh
+
+# CPU fallback (from jwlogin, slower ~24h, no SSH needed):
+bash slurm/submit_snac_finevideo.sh --cpu
+```
+
+**Run sequence after SNAC tokenization completes:**
+```bash
+# Step 1 — DONE: build task list
+# snac_task_list.json already at TASK_CACHE path
+
+# Step 2 — PENDING: submit SNAC array job (need juwels-booster SSH)
+# Output: .../FineVideo-VLA/snac_tokens/{video_id}_snac.jsonl (~40K files)
+
+# Step 3: Vocab expansion — add 12,288 <snac_N> tokens to tokenizer
+# TODO: update tools/expand_vocab.py to include snac range [128266..148745]
+
+# Step 4: Re-run Phase 6 with SNAC injection
+python pipeline_pose/phase6_merge_adaptive.py \
+  --input-glob "/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/training_ready_rank_*.jsonl" \
+  --agent-tokens-dir /p/data1/mmlaion/shared/nguyen38/data/outputs/agent_tokens_adaptive \
+  --snac-tokens-dir  /p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens \
+  --output-dir       /p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive_v2 \
+  --output-prefix    final_vla_adaptive_v2
+
+# Step 5: Re-run Phase 7 → megatron_dataset_v3/
+python pipeline_pose/phase7_flatten.py \
+  --input-glob ".../final_dataset_adaptive_v2/final_vla_adaptive_v2_rank_*.jsonl" \
+  --output-dir ".../megatron_dataset_v3" \
+  --drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0 --workers 16
+
+# Step 6: Megatron tokenize → .bin/.idx → train v0.3
+```
 
 **Priority 7 — Investigate leo seed2 + euro_pat**
 - Check what's on the `leo` cluster: seed2 + euro_pat datasets mentioned by Huu
@@ -384,6 +490,9 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | Ego-centric perspective as free data multiplier | Same underlying motion, different reference frame, doubles diversity | Jun 2026 |
 | Qwen3 migration deferred | Too early — data landscape still changing | Jun 2026 |
 | MV-Omni: convert seed→seed2 instead of adding new vocab | Avoids unnecessary vocab expansion; seed_N and seed2_N are identical semantics | Jun 2026 |
+| SNAC injection in Phase 6, not Phase 7 | Phase 6 already does per-chunk injection; Phase 7 is stateless flatten. Keeping injection in Phase 6 means Phase 7 needs no external lookups. | Jun 2026 |
+| SNAC chunk alignment: encode full activity once, split by count | Encoding per-chunk (0.267s segments) would lose audio context + slow due to many small calls. Encode once, split evenly preserves context and is accurate (SNAC rate is constant). | Jun 2026 |
+| SNAC for ALL activities, not just agent ones | Only 14% of activities have agent tokens. Other 86% still have seed2+cosmos — adding SNAC teaches seed2→cosmos→snac transitions. Filtering to agent-only wastes most of the GPU run. | Jun 2026 |
 
 ---
 
@@ -402,10 +511,46 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 
 ---
 
+## Environments & How to Run (JUWELS login node)
+
+**env_tools** — use for: phase7_flatten, data_inventory, HF uploads, eval, any non-GPU script  
+Location: `/p/data1/mmlaion/nguyen38/env_tools`  
+Python: 3.12.3 | Has: torch, transformers, wn, datasets, scipy, huggingface-hub, rich, tqdm, ...
+
+> **Note (Jun 27, 2026):** env_tools was created on JUSUF but we run on JUWELS. Python symlink and pyvenv.cfg had wrong paths. Fixed via `load_env_tools.sh`.
+
+```bash
+# Activate env_tools (source it, don't bash it — needs to modify your shell):
+source /p/data1/mmlaion/nguyen38/3d-human-pose/load_env_tools.sh
+# → auto-fixes symlinks on first run, then activates
+
+# Then run whatever you need:
+python pipeline_pose/phase7_flatten.py --workers 16 --skip-existing
+```
+
+**env_pose** (miniforge3 conda) — use for: phases 1–6 (HRNet, MotionBERT, YOLO, kinematics)  
+Location: `/p/data1/mmlaion/nguyen38/3d-human-pose/env_pose`  
+Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile.d/conda.sh && conda activate /p/data1/mmlaion/nguyen38/3d-human-pose/env_pose`
+
+**Data paths on `/p/` (use these when JUPITER `/e/` is down):**
+```
+/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/
+  ├── final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl  ← Phase 7 input
+  ├── megatron_dataset_adaptive/flat_*.jsonl                  ← v1 flatten output
+  └── megatron_dataset_v2/flat_*.jsonl                       ← v2 flatten output (pending)
+
+/p/data1/mmlaion/shared/vla/
+  ├── mv_omni_converted/mv_omni_snac_*.jsonl.gz              ← MV-Omni seed→seed2 done
+  ├── tokenizer_vla_adaptive/                                 ← local tokenizer copy
+  └── tokenized_output/vla_adaptive/data_shard_*.bin/.idx    ← Megatron shards (2.84B tokens)
+```
+
+---
+
 ## Immediate Action Items (Next 2 Weeks)
 
-- [ ] Vocab expansion: add `<snac_N>` and `<seed_N>` tokens to tokenizer
-- [ ] Adjust Phase 7 dropout rates (AVC-LM → 80–90%, Cosmos → 50–70%)
+- [ ] Run phase7 re-flatten v2: `source load_env_tools.sh && python pipeline_pose/phase7_flatten.py --workers 16 --skip-existing`
+- [ ] Vocab expansion: add `<snac_N>` tokens to tokenizer (pending answer from Huu on exact SNAC range/offset)
 - [ ] Start writing ego-centric perspective converter
 - [ ] Start writing captioning pipeline code (SmolVLM2 / Qwen2.5-VL on keyframes)
 - [ ] Investigate leo seed2 + euro_pat token counts
