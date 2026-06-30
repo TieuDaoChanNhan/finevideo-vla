@@ -334,7 +334,7 @@ Scanned all 242 files across 4 dataset families:
 - First robot-domain data — critical for generalization beyond human motion
 - Hold off on AVC-LM until ablations confirm it helps (per Huu's guidance)
 
-**Priority 6 — SNAC tokenization for FineVideo** ← **BLOCKED (Jun 28, 2026): need JUWELS Booster SSH access**
+**Priority 6 — SNAC tokenization for FineVideo** ← **RUNNING (Jun 30, 2026): CPU batch job đang chạy**
 
 Pipeline design decisions made and coded:
 - **Script:** `pipeline_pose/snac_finevideo.py` (WRITTEN, ready to run)
@@ -351,10 +351,26 @@ Pipeline design decisions made and coded:
   - Token order per chunk: `<cosmos>...</cosmos> <avc_lm>...</avc_lm> <agent>...</agent> <snac>...</snac>`
 - **Phase 7 updated** to emit seed2+cosmos+snac records (not just agent-only)
 
-**Environment prep (DONE Jun 28, 2026):**
-- `snac 1.2.1` installed in both `env_tools` (x86) and `my_env_clean` (ppc64le booster)
-- SNAC model weights pre-downloaded: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz`
-- `HF_HUB_OFFLINE=1` set in SLURM script (compute nodes have no internet)
+**Environment prep (DONE):**
+- `snac 1.2.1` installed in both `env_tools` (x86) và `my_env_clean` (ppc64le booster)
+- SNAC model weights: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz/snapshots/d73ad176...`
+- ffmpeg: `imageio_ffmpeg` bundled binary tại `env_tools/lib/.../imageio_ffmpeg/binaries/ffmpeg-linux-x86_64-v7.0.2` (không cần system ffmpeg)
+
+**Bug fixes (Jun 30, 2026) — ĐÃ FIX TRONG CODE:**
+1. `HF_HUB_OFFLINE=1` một mình không đủ để ngăn kết nối internet → thêm `local_files_only=True`
+2. `cache_dir=HF_CACHE` trỏ sai chỗ — HuggingFace lưu model ở `HF_CACHE/hub/models--...` nhưng `cache_dir` tìm ở `HF_CACHE/models--...` (thiếu `hub/`) → **bỏ `cache_dir` khỏi `from_pretrained()`**, thay bằng set `os.environ["HF_HOME"] = args.hf_cache` trước khi gọi
+3. Fix đã verify bằng end-to-end test trực tiếp trên login node:
+   - SNAC model load OK ✅
+   - ffmpeg extract audio từ real video OK ✅  
+   - SNAC encode 2s audio → 72 listen tokens OK ✅
+
+**Job đang chạy (Jun 30, 2026):**
+- Submitted từ `jwlogin08`, partition=`batch`, account=`laionize`, 32 array tasks
+- Time limit: 24h/task | CPUs: 4/task
+- Logs: `logs/snac_finevideo/snac_cpu_<JOB_ID>_*.out`
+- Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/{video_id}_snac.jsonl`
+- Check tiến độ: `tail -f logs/snac_finevideo/snac_cpu_<JOB_ID>_0.out`
+- Dấu hiệu chạy OK: log phải có dòng `SNAC loaded (Xs)` → sau đó `[100/1275] ...`
 
 **CLUSTER ARCHITECTURE NOTE (discovered Jun 28, 2026):**
 - `jwlogin08.juwels` = JUWELS Cluster login node (x86_64)
@@ -385,7 +401,7 @@ bash slurm/submit_snac_finevideo.sh --cpu
 # Step 1 — DONE: build task list
 # snac_task_list.json already at TASK_CACHE path
 
-# Step 2 — PENDING: submit SNAC array job (need juwels-booster SSH)
+# Step 2 — RUNNING (Jun 30): CPU batch job, 32 workers, ~20-24h
 # Output: .../FineVideo-VLA/snac_tokens/{video_id}_snac.jsonl (~40K files)
 
 # Step 3: Vocab expansion — add 12,288 <snac_N> tokens to tokenizer
@@ -549,9 +565,109 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 
 ## Immediate Action Items (Next 2 Weeks)
 
-- [ ] Run phase7 re-flatten v2: `source load_env_tools.sh && python pipeline_pose/phase7_flatten.py --workers 16 --skip-existing`
-- [ ] Vocab expansion: add `<snac_N>` tokens to tokenizer (pending answer from Huu on exact SNAC range/offset)
-- [ ] Start writing ego-centric perspective converter
-- [ ] Start writing captioning pipeline code (SmolVLM2 / Qwen2.5-VL on keyframes)
+### Đang chạy (Jun 30, 2026)
+- [x] **SNAC CPU job** — submitted, 32 workers, ~20-24h. Check: `tail -f logs/snac_finevideo/snac_cpu_<JOB_ID>_0.out`
+- [~] **Dataset overlap check** — `tools/check_dataset_overlap.py` đang chạy (chậm do nested tar). Log: `tools/overlap_run.log`. Kết quả → `tools/dataset_overlap_results.json`
+
+### Chờ kết quả SNAC job xong
+- [ ] **Vocab expansion** — thêm 12,288 `<snac_N>` tokens vào tokenizer (`tools/expand_vocab.py`). Range: [128266..132361], [132362..136457], [144650..148745]. Cần update `EmpathicRobotics/tokenizer-vla-adaptive`
+- [ ] **Re-run Phase 6 v2** — inject SNAC tokens: `bash slurm/submit_merge_adaptive.sh` với `--snac-tokens-dir`
+- [ ] **Re-run Phase 7 v3** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
+- [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
+
+### Chờ overlap check xong
+- [ ] Quyết định có dùng `valid_with_seed` không (5.6M tokens, có thể bỏ)
+- [ ] Nếu dùng `omni_valid`: confirm không overlap với FineVideo-VLA (khác nguồn hoàn toàn)
+
+### Coding (không cần GPU)
+- [ ] Start writing ego-centric perspective converter (Phase 3 → rotate to head camera)
+- [ ] Start writing captioning pipeline (SmolVLM2/Qwen2.5-VL trên FineVideo keyframes)
 - [ ] Investigate leo seed2 + euro_pat token counts
 - [ ] Plan Cosmos3-DROID pipeline (download strategy, SLURM script)
+
+---
+
+## Dataset Overlap Analysis (Jun 30, 2026)
+
+### Background
+
+Từ cuộc họp Jun 28: Huu chỉ ra rằng `omni_valid` có khả năng được subsample từ `valid_with_seed`, dẫn đến **double-counting** nếu dùng cả hai. Kết luận ban đầu: chỉ dùng 3 dataset:
+1. **FineVideo-VLA** (local)
+2. **omni_valid** (MixtureVitae-Omni)
+3. **stack_images3_gzip** (MixtureVitae-Backup)
+
+Còn `valid_with_seed` cần check xem overlap với `omni_valid` bao nhiêu % trước khi quyết định có dùng hay không.
+
+### Data đã download
+
+| Dataset | Location | Format |
+|---------|----------|--------|
+| `valid_with_seed` | `/p/data1/mmlaion/nguyen38/inventory_cache/hf_shards/` | 64 outer `.tar.gz`, mỗi cái chứa file `.ogg`, `.png`, `_seed2.jsonl` |
+| `omni_valid` | `/p/data1/mmlaion/nguyen38/inventory_cache/hf_snac/` | 6 `valid_snac_N.jsonl.gz` |
+| `ontocord/VALID` | `multimodal/head.txt` | Chỉ có head sample (5 records), chưa download full |
+
+### Script overlap check
+
+**Script:** `tools/check_dataset_overlap.py`
+
+**Logic:**
+- `valid_with_seed`: Extract YouTube video ID (11 chars đầu) từ tên file trong các tar.gz
+- `omni_valid`: Extract `params.id` từ metadata của mỗi JSONL record
+- So sánh hai set, tính % overlap
+
+**Command để chạy:**
+```bash
+cd /p/data1/mmlaion/nguyen38/3d-human-pose
+python3 tools/check_dataset_overlap.py
+```
+
+Không cần env đặc biệt — chỉ dùng stdlib Python (tarfile, gzip, json, re).
+
+**Output:** In kết quả ra màn hình + lưu vào `tools/dataset_overlap_results.json`
+
+### Kết quả (PENDING — script đang chạy Jun 30, 2026)
+
+Script `tools/check_dataset_overlap.py` đang chạy. Điền vào đây khi có kết quả:
+- `valid_with_seed` unique video IDs: ???
+- `omni_valid` unique video IDs: ???
+- Overlap: ??? IDs (???% of seed, ???% of omni)
+- Kết luận: valid_with_seed có nên dùng không?
+
+Log: `tools/overlap_run.log` | Kết quả JSON: `tools/dataset_overlap_results.json`
+
+**Lưu ý quan trọng:** Script phải mở **2 tầng tar** (outer tar → inner tar → files) vì shards 0–30 chỉ chứa inner tar.gz bên trong, không có loose files. Script v1 bị lỗi (0 IDs) do bỏ qua inner tar — đã fix trong v2.
+
+### Cấu trúc dataset (đã verify)
+
+**omni_valid record format:**
+```json
+{
+  "text": "<listen><snac_N>...<snac_N></listen>\n<see><seed_N>...</see>\n...",
+  "metadata": "[{\"source\": \"grass-yt-cc-by.{YT_ID}|...\", \"params\": \"{\\\"id\\\": \\\"{YT_ID}\\\", ...}\"}]"
+}
+```
+→ YouTube ID ở `metadata[0].params.id` (11 ký tự)
+
+**valid_with_seed shard format:**
+- Outer tar chứa: `shard_NNNNN.tar.gz` (inner) + loose files (`*.ogg`, `*.png`, `*_seed2.jsonl`)
+- File name format: `{YT_ID_11chars}_{clip_num}[_{crop}][_seed2].{ext}`
+- YouTube ID = 11 ký tự đầu của filename
+
+**ontocord/VALID format** (head.txt — 3 lines per record):
+```jsonl
+{"file_name": "-mbDQC0y0PY_6.ogg", "media_type": "audio", "text": "...", "snac_token": [...]}
+{"file_name": "-mbDQC0y0PY_6.png", "media_type": "image", "text": "..."}
+{"emotion": "...", "query": "...", "answer": "...", "shard_idx": "shard_0"}
+```
+
+### Câu hỏi cần trả lời sau khi chạy script
+
+1. Bao nhiêu % của `omni_valid` đến từ `valid_with_seed`? (kỳ vọng: cao, vì Huu nói omni subsample từ valid_with_seed)
+2. `valid_with_seed` có video nào **không** có trong `omni_valid` không? → Nếu có thì những video đó có giá trị gì thêm?
+3. `ontocord/VALID` (full) có tương đương với `valid_with_seed` không hay là superset?
+
+### Kế hoạch tiếp theo (sau khi có kết quả)
+
+- Nếu omni_valid là subset của valid_with_seed: Chỉ dùng omni_valid (richer: có SNAC + seed), bỏ valid_with_seed
+- Nếu valid_with_seed có nhiều video không có trong omni_valid: Check xem những video đó có seed tokens không (chỉ shards 31–63 mới có), cân nhắc có nên tokenize thêm
+- Expand vocab thêm `<snac_N>` để unlock toàn bộ omni_valid (6.93B tokens)

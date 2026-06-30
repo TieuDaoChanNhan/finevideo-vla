@@ -49,4 +49,4 @@ __pycache__/
 Miniforge3-Linux-aarch64.sh
 
 # Environment
-env_flatten/
+env_flatten/Miniforge3-Linux-x86_64.sh

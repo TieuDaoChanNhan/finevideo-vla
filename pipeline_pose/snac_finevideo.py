@@ -488,7 +488,9 @@ def main():
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     log.info(f"Loading SNAC model ({SNAC_MODEL}) on {device}...")
     t_load = time.time()
-    model  = SNAC.from_pretrained(SNAC_MODEL, cache_dir=args.hf_cache).eval().to(device)
+    os.environ["HF_HOME"] = args.hf_cache  # ensure hub/ subdir is found
+    model  = SNAC.from_pretrained(SNAC_MODEL,
+                                  local_files_only=True).eval().to(device)
     log.info(f"SNAC loaded ({time.time()-t_load:.1f}s)")
 
     # ── Process videos ────────────────────────────────────────────────────────
