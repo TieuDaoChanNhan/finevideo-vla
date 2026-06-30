@@ -872,7 +872,21 @@ She brings the knife down in a smooth chopping motion on a red bell pepper.
 | MV-Backup stack_images3_gzip (12 archives) | **313K** | ✅ seed2 | Negligible. |
 | SenseNova-SI-8M | 0 | — | Raw image-text pairs, needs Seed2 tokenization. |
 
-**Short-term**: Add `<snac_N>` and `<seed_N>` tokens to the tokenizer via `tokenizer.add_tokens()` to unlock MV-Omni's 6.93B tokens. valid_with_seed and stack are too small to bother mixing in.
+**Dataset overlap analysis (Jun 30, 2026 — COMPLETE):**
+
+`tools/check_dataset_overlap.py` compared `valid_with_seed` (64 HF shards) vs `omni_valid` (6 gzip files) by YouTube video ID:
+
+| Metric | Count |
+|--------|-------|
+| `valid_with_seed` unique video IDs | 31,500 |
+| `omni_valid` unique video IDs | 238,539 |
+| Overlap | **27,359** (86.9% of seed / 11.5% of omni) |
+| Only in `valid_with_seed` | 4,141 |
+| Only in `omni_valid` | 211,180 |
+
+**Key finding:** `omni_valid` already covers 86.9% of `valid_with_seed`'s videos. The remaining 4,141 unique-to-seed videos only have seed2 tokens (~700K tokens total) — not worth the 1.1 TB of storage. **Decision: do not use `valid_with_seed`.** The 1.1 TB already downloaded can be freed.
+
+**Short-term**: Add `<snac_N>` tokens to the tokenizer via `tokenizer.add_tokens()` to unlock MV-Omni's 6.93B tokens. valid_with_seed is confirmed not worth mixing in (covered by omni_valid and negligible unique content).
 
 **Medium-term** (requires GPU runs): Run Seed2 tokenization on SenseNova-SI-8M images to add another large seed2 source.
 

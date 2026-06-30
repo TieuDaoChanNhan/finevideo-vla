@@ -1,0 +1,36 @@
+[valid_with_seed] scanning 64 outer shards ...
+  ... 8/64 shards done, 5719 unique IDs so far
+  ... 16/64 shards done, 13077 unique IDs so far
+  ... 24/64 shards done, 21310 unique IDs so far
+  ... 32/64 shards done, 30357 unique IDs so far
+  ... 40/64 shards done, 31007 unique IDs so far
+  ... 48/64 shards done, 31246 unique IDs so far
+  ... 56/64 shards done, 31400 unique IDs so far
+  ... 64/64 shards done, 31500 unique IDs so far
+[valid_with_seed] total unique video IDs: 31500
+
+[omni_valid] scanning 6 gzip files ...
+  valid_snac_0.jsonl.gz: 296651 lines processed
+  valid_snac_1.jsonl.gz: 290169 lines processed
+  valid_snac_2.jsonl.gz: 294657 lines processed
+  valid_snac_3.jsonl.gz: 296095 lines processed
+  valid_snac_4.jsonl.gz: 296365 lines processed
+  valid_snac_5.jsonl.gz: 119364 lines processed
+[omni_valid] total unique video IDs: 238539
+
+[ontocord/VALID] head.txt: 20 lines → 0 unique video IDs (SAMPLE ONLY)
+
+============================================================
+OVERLAP ANALYSIS
+============================================================
+
+valid_with_seed  : 31,500 unique video IDs
+omni_valid       : 238,539 unique video IDs
+overlap (both)   : 27,359 video IDs
+  = 86.9% of valid_with_seed is in omni_valid
+  = 11.5% of omni_valid comes from valid_with_seed
+
+Only in valid_with_seed (not in omni): 4,141
+Only in omni_valid (not in valid_with_seed): 211,180
+
+Results saved to: /p/data1/mmlaion/nguyen38/3d-human-pose/tools/dataset_overlap_results.json

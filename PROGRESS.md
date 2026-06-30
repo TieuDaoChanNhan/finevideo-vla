@@ -567,7 +567,7 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 
 ### Đang chạy (Jun 30, 2026)
 - [x] **SNAC CPU job** — submitted, 32 workers, ~20-24h. Check: `tail -f logs/snac_finevideo/snac_cpu_<JOB_ID>_0.out`
-- [~] **Dataset overlap check** — `tools/check_dataset_overlap.py` đang chạy (chậm do nested tar). Log: `tools/overlap_run.log`. Kết quả → `tools/dataset_overlap_results.json`
+- [x] **Dataset overlap check** — **HOÀN THÀNH (Jun 30, 2026)**. Kết quả: 27,359 video chồng nhau (86.9% of valid_with_seed ∈ omni_valid). Xem section "Dataset Overlap Analysis" bên dưới.
 
 ### Chờ kết quả SNAC job xong
 - [ ] **Vocab expansion** — thêm 12,288 `<snac_N>` tokens vào tokenizer (`tools/expand_vocab.py`). Range: [128266..132361], [132362..136457], [144650..148745]. Cần update `EmpathicRobotics/tokenizer-vla-adaptive`
@@ -575,9 +575,9 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 - [ ] **Re-run Phase 7 v3** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
 - [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
 
-### Chờ overlap check xong
-- [ ] Quyết định có dùng `valid_with_seed` không (5.6M tokens, có thể bỏ)
-- [ ] Nếu dùng `omni_valid`: confirm không overlap với FineVideo-VLA (khác nguồn hoàn toàn)
+### Kết luận overlap check (Jun 30, 2026 — XONG)
+- [x] Quyết định **KHÔNG dùng `valid_with_seed`** — 86.9% đã có trong omni_valid, 13.1% còn lại (4,141 video) chỉ có seed2 token và không đáng tốn thêm storage/compute
+- [x] omni_valid **không overlap với FineVideo-VLA** (khác nguồn hoàn toàn — MixtureVitae vs YouTube FineVideo)
 
 ### Coding (không cần GPU)
 - [ ] Start writing ego-centric perspective converter (Phase 3 → rotate to head camera)
@@ -625,13 +625,19 @@ Không cần env đặc biệt — chỉ dùng stdlib Python (tarfile, gzip, jso
 
 **Output:** In kết quả ra màn hình + lưu vào `tools/dataset_overlap_results.json`
 
-### Kết quả (PENDING — script đang chạy Jun 30, 2026)
+### Kết quả (HOÀN THÀNH — Jun 30, 2026)
 
-Script `tools/check_dataset_overlap.py` đang chạy. Điền vào đây khi có kết quả:
-- `valid_with_seed` unique video IDs: ???
-- `omni_valid` unique video IDs: ???
-- Overlap: ??? IDs (???% of seed, ???% of omni)
-- Kết luận: valid_with_seed có nên dùng không?
+Script `tools/check_dataset_overlap.py` đã chạy xong. Kết quả lưu tại `tools/dataset_overlap_results.json`:
+
+| Metric | Số liệu |
+|--------|---------|
+| `valid_with_seed` unique video IDs | **31,500** |
+| `omni_valid` unique video IDs | **238,539** |
+| Overlap (cả hai) | **27,359** (86.9% của seed / 11.5% của omni) |
+| Chỉ có trong `valid_with_seed` | **4,141** |
+| Chỉ có trong `omni_valid` | **211,180** |
+
+**Kết luận: KHÔNG dùng `valid_with_seed`.** omni_valid đã cover 86.9% video của nó. 4,141 video còn lại chỉ có seed2 token và không đủ giá trị (tổng < 700K token) để bù cho 1.1 TB storage.
 
 Log: `tools/overlap_run.log` | Kết quả JSON: `tools/dataset_overlap_results.json`
 
@@ -660,14 +666,21 @@ Log: `tools/overlap_run.log` | Kết quả JSON: `tools/dataset_overlap_results.
 {"emotion": "...", "query": "...", "answer": "...", "shard_idx": "shard_0"}
 ```
 
-### Câu hỏi cần trả lời sau khi chạy script
+### Câu hỏi đã trả lời (Jun 30, 2026)
 
-1. Bao nhiêu % của `omni_valid` đến từ `valid_with_seed`? (kỳ vọng: cao, vì Huu nói omni subsample từ valid_with_seed)
-2. `valid_with_seed` có video nào **không** có trong `omni_valid` không? → Nếu có thì những video đó có giá trị gì thêm?
-3. `ontocord/VALID` (full) có tương đương với `valid_with_seed` không hay là superset?
+1. **Bao nhiêu % của `omni_valid` đến từ `valid_with_seed`?**
+   → 11.5% (27,359/238,539). omni_valid chủ yếu là data riêng, KHÔNG phải subsample từ valid_with_seed như Huu dự đoán — thực ra ngược lại: valid_with_seed là subset của omni_valid.
 
-### Kế hoạch tiếp theo (sau khi có kết quả)
+2. **`valid_with_seed` có video không có trong `omni_valid` không?**
+   → Có: 4,141 video (13.1% của valid_with_seed). Nhưng những video này chỉ có seed2 token, không có SNAC, và tổng token ~700K — không đủ giá trị để dùng riêng.
 
-- Nếu omni_valid là subset của valid_with_seed: Chỉ dùng omni_valid (richer: có SNAC + seed), bỏ valid_with_seed
-- Nếu valid_with_seed có nhiều video không có trong omni_valid: Check xem những video đó có seed tokens không (chỉ shards 31–63 mới có), cân nhắc có nên tokenize thêm
-- Expand vocab thêm `<snac_N>` để unlock toàn bộ omni_valid (6.93B tokens)
+3. **`ontocord/VALID` có tương đương với `valid_with_seed` không?**
+   → Chưa check (chỉ có head sample 20 records → 0 video ID). Không cần điều tra thêm vì đã quyết định không dùng valid_with_seed.
+
+### Kết luận cuối cùng
+
+**Chỉ dùng 2 nguồn external:**
+- **omni_valid (MV-Omni)** — 238,539 video, 6.93B token (SNAC + text + seed2). Cần vocab expansion `<snac_N>`.
+- **stack_images3_gzip** — 313K token seed2. Quá nhỏ nhưng không tốn gì thêm nếu đã có sẵn.
+
+**Bỏ valid_with_seed.** 1.1 TB đã download có thể xóa để giải phóng storage.
