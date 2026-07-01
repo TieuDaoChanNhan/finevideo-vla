@@ -599,8 +599,8 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
   - `chunk_timing` có đủ các flag `has_seed2/cosmos/avc_lm/agent/has_snac` ✓
   - SLURM script mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
   - Ước tính toàn bộ 160 file với 32 workers: **~25–40 phút**
-- [ ] **Re-run Phase 6 v2** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
-- [ ] **Re-run Phase 7 v3** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
+- [x] **Re-run Phase 6 v2** — **COMPLETE**. Job `14082096`, 32/32 workers. 40,804 videos | 398,775 activities | SNAC 100% | Agent 5.5% | 0 errors → `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive_v2/` (160 files)
+- [ ] **Re-run Phase 7 v3** ← **TASK TIẾP THEO** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
 - [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
 - [x] **Upload tokenizers** — **COMPLETE (Jul 1, 2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 

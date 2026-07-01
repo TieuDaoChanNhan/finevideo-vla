@@ -521,8 +521,8 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
   - `chunk_timing` đủ flag `has_seed2/cosmos/avc_lm/agent/has_snac` ✓
   - Script SLURM mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
   - Ước tính 160 file với 32 workers: **~25–40 phút**
-- [ ] **Phase 6 v2 re-run** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
-- [ ] **Phase 7 v3 re-run** — emit seed2+cosmos+snac records (không chỉ agent-only)
+- [x] **Phase 6 v2 re-run** — **HOÀN THÀNH**. Job `14082096`, 32/32 workers. 40,804 video | 398,775 activity | SNAC 100% | Agent 5.5% | 0 lỗi → `final_dataset_adaptive_v2/` (160 file)
+- [ ] **Phase 7 v3 re-run** ← **TASK TIẾP THEO** — emit seed2+cosmos+snac records (không chỉ agent-only)
 - [ ] **Megatron re-tokenize** → `.bin/.idx` → train v0.3
 - [x] **Upload tokenizers** — **HOÀN THÀNH (01/07/2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 

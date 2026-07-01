@@ -144,7 +144,16 @@ Dry run on `training_ready_rank_0.jsonl` (254 videos, ~5 min):
 | Output format | `</avc_lm> <agent>...</agent> <snac> <snac_N>... </snac>` ✓ |
 | chunk_timing flags | `has_seed2/cosmos/avc_lm/agent/has_snac` all correct ✓ |
 
-Full run: `sbatch slurm/submit_merge_adaptive_v2.sh` (32 workers, `laionize`/`batch`, `/p/` paths). Estimated time: ~25–40 min for all 160 files. Output: `.../FineVideo-VLA/final_dataset_adaptive_v2/`
+**Full run results (Jul 1, 2026) — COMPLETE:** Job `14082096`, 32/32 workers, 0 errors.
+
+| Metric | Result |
+|--------|--------|
+| Videos | 40,804 |
+| Activities | 398,775 |
+| avc_lm blocks | 38,825,249 |
+| SNAC injected | 38,824,718 (**100.0%**) |
+| Agent injected | 2,148,474 (5.5% — expected, only ~18K videos have Phase 5 output) |
+| Output | `FineVideo-VLA/final_dataset_adaptive_v2/` — 160 files |
 
 ### 2.4 Flatten (Phase 7)
 **Script:** `pipeline_pose/phase7_flatten.py`
