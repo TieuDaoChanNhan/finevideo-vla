@@ -14,7 +14,7 @@ Build a multimodal Vision-Language-Action pretraining dataset from ~40K YouTube 
 - **Cosmos** — spatial video tokens (every 8 frames, vocab 64000)
 - **AVC-LM** — H.264 BPE tokens (every 8 frames, vocab 8192)
 - **Agent** — 3D human pose tokens (every 8 frames, adaptive PCHIP, 17 joints)
-- **SNAC** — audio tokens in listen format (~10 tokens per 8-frame chunk, 12,288 vocab) ← *in progress*
+- **SNAC** — audio tokens in listen format (~10 tokens per 8-frame chunk, 12,288 vocab) ← *tokenization complete (Jul 1, 2026)*
 
 ---
 
@@ -130,6 +130,21 @@ Added `--snac-tokens-dir` argument. When provided, Phase 6 reads per-activity SN
 SNAC rate alignment: SNAC listen format produces 37.5 tokens/sec. Each 8-frame chunk at 30fps = 0.267s → ~9–10 SNAC tokens per chunk (3.33 base frames × 3 tokens/frame). `snac_finevideo.py` encodes the full activity audio once (preserving temporal audio context) then splits tokens evenly across chunks, snapping to 3-token boundaries (1 SNAC base frame = 3 tokens).
 
 Running without `--snac-tokens-dir` is backward compatible with v1 behavior.
+
+**Phase 6 v2 dry run (Jul 1, 2026) — VERIFIED:**
+
+Dry run on `training_ready_rank_0.jsonl` (254 videos, ~5 min):
+
+| Metric | Result |
+|--------|--------|
+| avc_lm blocks found | 259,505 |
+| SNAC blocks injected | **259,503** (~100%) |
+| Agent blocks injected | **12,705** (46% of videos have Phase 5 output) |
+| Agent misses | 246,800 (expected — most videos have no Phase 5 output) |
+| Output format | `</avc_lm> <agent>...</agent> <snac> <snac_N>... </snac>` ✓ |
+| chunk_timing flags | `has_seed2/cosmos/avc_lm/agent/has_snac` all correct ✓ |
+
+Full run: `sbatch slurm/submit_merge_adaptive_v2.sh` (32 workers, `laionize`/`batch`, `/p/` paths). Estimated time: ~25–40 min for all 160 files. Output: `.../FineVideo-VLA/final_dataset_adaptive_v2/`
 
 ### 2.4 Flatten (Phase 7)
 **Script:** `pipeline_pose/phase7_flatten.py`
@@ -280,7 +295,7 @@ Output: `{OUTPUT_DIR}/{video_id}_snac.jsonl` — one line per activity:
 
 **Coverage:** ALL activities, not just agent ones. 86% of activities have no agent tokens but still have valid seed2+cosmos — adding SNAC to these creates seed2+cosmos+snac training records that teach audio↔video binding.
 
-**Vocab cost:** 3 × 4096 = 12,288 new `<snac_N>` token strings (N ∈ {[128266,132361], [132362,136457], [144650,148745]}). Will be added to tokenizer via `add_tokens(special_tokens=True)` → new vocab ~156,503.
+**Vocab cost:** 3 × 4096 = 12,288 new `<snac_N>` token strings (N ∈ {[128266,132361], [132362,136457], [144650,148745]}). Added to tokenizer via `add_tokens(special_tokens=True)` → new vocab **156,505** (see Section 2.5b Tokenizer v2).
 
 **Environment setup (done Jun 28, 2026):**
 - `snac 1.2.1` installed into both `env_tools` (x86, login node) and `my_env_clean` (ppc64le, booster)
@@ -301,7 +316,30 @@ cd /p/data1/mmlaion/nguyen38/3d-human-pose
 bash slurm/submit_snac_finevideo.sh
 ```
 
-**STATUS: BLOCKED — waiting for JUWELS Booster SSH access (Jun 28, 2026)**
+**STATUS: COMPLETE (Jul 1, 2026)** — Job `snac_cpu_14077331`, 32/32 tasks done. 371,855 activities, 363M tokens, 6.5 GB → `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/`
+
+### 2.5b Tokenizer v2 — SNAC support (Jul 1, 2026)
+**Script:** `tools/build_tokenizers.py`
+
+Built two tokenizers with SNAC support. All VLA tokens verified atomic (single token ID per string):
+
+| Tokenizer | Base | + VLA tokens | Final vocab | Path |
+|-----------|------|--------------|-------------|------|
+| `tokenizer_vla_adaptive_v2` | GPT-NeoX-20b (50,277) | 93,938 existing + 12,290 SNAC | **156,505** | `/p/data1/mmlaion/shared/vla/tokenizer_vla_adaptive_v2/` |
+| `tokenizer_vla_qwen3` | Qwen3 (~151,669) | 106,228 VLA (all types) | **257,897** | `/p/data1/mmlaion/shared/vla/tokenizer_vla_qwen3/` |
+
+SNAC token ranges (12,288 tokens total, plus `<snac>` and `</snac>` wrappers = 12,290):
+- Level 0: `<snac_128266>` … `<snac_132361>` (4096 tokens)
+- Level 1 even: `<snac_132362>` … `<snac_136457>` (4096 tokens)
+- Level 1 odd: `<snac_144650>` … `<snac_148745>` (4096 tokens)
+
+Usage:
+```bash
+source /p/data1/mmlaion/nguyen38/3d-human-pose/activate_env_tools.sh
+python tools/build_tokenizers.py --mode current   # GPT-NeoX v2 only
+python tools/build_tokenizers.py --mode qwen3     # Qwen3 only
+python tools/build_tokenizers.py --mode all       # both
+```
 
 ### 2.6 Megatron-LM Tokenization (Phase 8)
 **Script:** `/p/data1/mmlaion/nguyen38/mv-scale/tokenize_vla_adaptive.sbatch`

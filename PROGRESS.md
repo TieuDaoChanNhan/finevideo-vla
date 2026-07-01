@@ -334,43 +334,58 @@ Scanned all 242 files across 4 dataset families:
 - First robot-domain data — critical for generalization beyond human motion
 - Hold off on AVC-LM until ablations confirm it helps (per Huu's guidance)
 
-**Priority 6 — SNAC tokenization for FineVideo** ← **RUNNING (Jun 30, 2026): CPU batch job đang chạy**
+**Priority 6 — Vocab expansion (tokenizer build)** ← **COMPLETE (Jul 1, 2026)**
 
-Pipeline design decisions made and coded:
-- **Script:** `pipeline_pose/snac_finevideo.py` (WRITTEN, ready to run)
-- **SLURM:** `slurm/submit_snac_finevideo.sh` (WRITTEN, two modes: GPU + CPU fallback)
-- **Coverage:** ALL 40,804 activities (not just agent ones) — 100% video coverage confirmed
-- **Format:** Listen format (3 tokens/base frame @ 12.5Hz = 37.5 tok/s)
-  - `<snac_N>` where N ∈ [128266, 148745] → 12,288 unique token strings needed in vocab
-- **Chunk alignment:** Encode full activity audio once → split tokens evenly across 8-frame chunks
-  - Each 8-frame chunk at 30fps = 0.267s → ~9–10 SNAC tokens per chunk (3.33 base frames × 3)
-  - Snap to 3-token boundaries (1 SNAC base frame = 3 tokens, must stay together)
-  - Output per activity: `snac_by_chunk: {"0": [...], "1": [...], ...}` keyed by chunk_idx
-- **Injection:** Phase 6 (not Phase 7) — already coded in `phase6_merge_adaptive.py` v2
-  - `--snac-tokens-dir /path/to/snac_tokens/` injects into final_dataset_adaptive
-  - Token order per chunk: `<cosmos>...</cosmos> <avc_lm>...</avc_lm> <agent>...</agent> <snac>...</snac>`
-- **Phase 7 updated** to emit seed2+cosmos+snac records (not just agent-only)
+Script: `tools/build_tokenizers.py`. Hai output:
+- `tokenizer_vla_adaptive_v2`: 144,215 (base) + 12,290 SNAC = **156,505 vocab**, tất cả atomic ✓
+- `tokenizer_vla_qwen3`: ~151,669 (Qwen3) + 106,228 VLA = **257,897 vocab**, tất cả atomic ✓
 
-**Environment prep (DONE):**
-- `snac 1.2.1` installed in both `env_tools` (x86) và `my_env_clean` (ppc64le booster)
-- SNAC model weights: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz/snapshots/d73ad176...`
-- ffmpeg: `imageio_ffmpeg` bundled binary tại `env_tools/lib/.../imageio_ffmpeg/binaries/ffmpeg-linux-x86_64-v7.0.2` (không cần system ffmpeg)
+**Priority 7 — SNAC tokenization for FineVideo** ← **COMPLETE (Jul 1, 2026)**
 
-**Bug fixes (Jun 30, 2026) — ĐÃ FIX TRONG CODE:**
-1. `HF_HUB_OFFLINE=1` một mình không đủ để ngăn kết nối internet → thêm `local_files_only=True`
-2. `cache_dir=HF_CACHE` trỏ sai chỗ — HuggingFace lưu model ở `HF_CACHE/hub/models--...` nhưng `cache_dir` tìm ở `HF_CACHE/models--...` (thiếu `hub/`) → **bỏ `cache_dir` khỏi `from_pretrained()`**, thay bằng set `os.environ["HF_HOME"] = args.hf_cache` trước khi gọi
-3. Fix đã verify bằng end-to-end test trực tiếp trên login node:
-   - SNAC model load OK ✅
-   - ffmpeg extract audio từ real video OK ✅  
-   - SNAC encode 2s audio → 72 listen tokens OK ✅
+Job `snac_cpu_14077331`, 32 array tasks on `batch` partition (CPU), submitted from `jwlogin08`.
 
-**Job đang chạy (Jun 30, 2026):**
-- Submitted từ `jwlogin08`, partition=`batch`, account=`laionize`, 32 array tasks
-- Time limit: 24h/task | CPUs: 4/task
-- Logs: `logs/snac_finevideo/snac_cpu_<JOB_ID>_*.out`
-- Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/{video_id}_snac.jsonl`
-- Check tiến độ: `tail -f logs/snac_finevideo/snac_cpu_<JOB_ID>_0.out`
-- Dấu hiệu chạy OK: log phải có dòng `SNAC loaded (Xs)` → sau đó `[100/1275] ...`
+**Results:**
+| Metric | Value |
+|--------|-------|
+| Tasks completed | **32/32** (100%) |
+| Activities processed (ok) | **371,855** |
+| fail_audio (no audio track) | 530 (~0.1%) |
+| fail_snac | **0** |
+| Total SNAC tokens | **363,029,331 (~363M)** |
+| Output files | **40,779** `{video_id}_snac.jsonl` |
+| Output size | **6.5 GB** |
+| Output location | `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/` |
+
+**Output format** — one file per video, one JSONL line per activity:
+```json
+{
+  "video_id": "abc123",
+  "activity_id": "scene_1_act_1",
+  "start_sec": 1.0,
+  "end_sec": 8.9,
+  "has_agent": true,
+  "snac_by_chunk": {
+    "0": ["<snac_132247>", "<snac_132788>", "<snac_147076>", ...],
+    "1": [...],
+    ...
+  }
+}
+```
+
+**Chunk splitting mechanism:**
+- Encode full activity audio once (1 call to SNAC) → flat list of tokens
+- SNAC output = sequence of base frames, each = exactly 3 tokens (L0 + L1_even + L1_odd triplet)
+- `n_base = len(flat_tokens) // 3` — truncate to complete base frames (atomic unit, cannot split triplet)
+- Proportional split: `start_base[k] = round(k * n_base / n_chunks)`, `end_base[k] = round((k+1) * n_base / n_chunks)`
+- Each chunk gets `end_base - start_base` base frames × 3 = **9 or 12 tokens** (alternating due to 3.33 base frames/chunk)
+- Last chunk is NOT shorter — `round(n_chunks × n_base / n_chunks) = n_base` exactly
+- Temporal alignment error: ±1 base frame = ±80ms at each chunk boundary (acceptable for pretraining)
+
+**Next steps unblocked by this completion:**
+1. Vocab expansion — add 12,288 `<snac_N>` tokens to tokenizer
+2. Re-run Phase 6 v2 with `--snac-tokens-dir`
+3. Re-run Phase 7 v3 → `megatron_dataset_v3/`
+4. Megatron re-tokenize → train v0.3
 
 **CLUSTER ARCHITECTURE NOTE (discovered Jun 28, 2026):**
 - `jwlogin08.juwels` = JUWELS Cluster login node (x86_64)
@@ -565,15 +580,27 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 
 ## Immediate Action Items (Next 2 Weeks)
 
-### Đang chạy (Jun 30, 2026)
-- [x] **SNAC CPU job** — submitted, 32 workers, ~20-24h. Check: `tail -f logs/snac_finevideo/snac_cpu_<JOB_ID>_0.out`
-- [x] **Dataset overlap check** — **HOÀN THÀNH (Jun 30, 2026)**. Kết quả: 27,359 video chồng nhau (86.9% of valid_with_seed ∈ omni_valid). Xem section "Dataset Overlap Analysis" bên dưới.
+### Đã hoàn thành (Jun–Jul 2026)
+- [x] **SNAC CPU job** — **COMPLETE (Jul 1, 2026)**. Job `snac_cpu_14077331`, 32/32 tasks. 371,855 activities, 363M tokens, 6.5 GB → `/p/.../snac_tokens/`
+- [x] **Dataset overlap check** — **COMPLETE (Jun 30, 2026)**. Kết quả: 27,359 video chồng nhau (86.9% of valid_with_seed ∈ omni_valid). Xem section "Dataset Overlap Analysis" bên dưới.
+- [x] **Vocab expansion (tokenizer build)** — **COMPLETE (Jul 1, 2026)**. Script: `tools/build_tokenizers.py`. Tạo 2 tokenizer:
+  - `tokenizer_vla_adaptive_v2` (GPT-NeoX-20b + SNAC): **156,505 vocab** → `/p/data1/mmlaion/shared/vla/tokenizer_vla_adaptive_v2/`
+  - `tokenizer_vla_qwen3` (Qwen3 + tất cả VLA tokens): **257,897 vocab** → `/p/data1/mmlaion/shared/vla/tokenizer_vla_qwen3/`
+  - Spot-check 12 tokens đại diện: tất cả **atomic** (1 token/ID), không có sub-piece splitting
+  - SNAC token range: L0 [128266..132361], L1A [132362..136457], L1B [144650..148745]
 
-### Chờ kết quả SNAC job xong
-- [ ] **Vocab expansion** — thêm 12,288 `<snac_N>` tokens vào tokenizer (`tools/expand_vocab.py`). Range: [128266..132361], [132362..136457], [144650..148745]. Cần update `EmpathicRobotics/tokenizer-vla-adaptive`
-- [ ] **Re-run Phase 6 v2** — inject SNAC tokens: `bash slurm/submit_merge_adaptive.sh` với `--snac-tokens-dir`
+### Việc tiếp theo (unblocked bởi vocab expansion)
+- [x] **Phase 6 v2 dry run** — **COMPLETE (Jul 1, 2026)**. Chạy thử 1 file (254 videos, ~5 phút). Kết quả:
+  - SNAC inject: **259,503/259,505** avc blocks (~100%)
+  - Agent inject: **12,705** blocks (đúng — 46% video có Phase 5 output)
+  - Format verified: `</avc_lm> <agent>...</agent> <snac> <snac_N>... </snac>` ✓
+  - `chunk_timing` có đủ các flag `has_seed2/cosmos/avc_lm/agent/has_snac` ✓
+  - SLURM script mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
+  - Ước tính toàn bộ 160 file với 32 workers: **~25–40 phút**
+- [ ] **Re-run Phase 6 v2** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
 - [ ] **Re-run Phase 7 v3** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
 - [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
+- [ ] **Upload tokenizer_vla_adaptive_v2** lên `EmpathicRobotics/tokenizer-vla-adaptive` (tag v2)
 
 ### Kết luận overlap check (Jun 30, 2026 — XONG)
 - [x] Quyết định **KHÔNG dùng `valid_with_seed`** — 86.9% đã có trong omni_valid, 13.1% còn lại (4,141 video) chỉ có seed2 token và không đáng tốn thêm storage/compute

@@ -309,51 +309,43 @@ Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2
 - **Đây là robot data đầu tiên** — quan trọng để model generalize từ người → robot
 - Không thêm AVC-LM cho đến khi có ablation (per Huu)
 
-**Ưu tiên 6 — SNAC cho FineVideo** ← **BỊ CHẶN (28/06/2026): cần SSH vào JUWELS Booster**
+**Ưu tiên 6 — Vocab expansion (tạo tokenizer mới)** ← **HOÀN THÀNH (01/07/2026)**
 
-Code đã viết xong và sẵn sàng chạy:
-- **Script:** `pipeline_pose/snac_finevideo.py` — tokenize toàn bộ 40,804 activity
-- **SLURM:** `slurm/submit_snac_finevideo.sh` — 2 mode: GPU (booster) và CPU fallback (batch)
-- **Format output:** `snac_by_chunk: {"0": [...], "1": [...]}` — token SNAC đã chia sẵn theo chunk 8-frame
+Script: `tools/build_tokenizers.py`. Hai chế độ:
+- `--mode current`: load `tokenizer_vla_adaptive` (144,215 vocab) + thêm 12,290 SNAC token → **156,505 vocab**
+- `--mode qwen3`: load Qwen3 base + thêm 106,228 VLA token → **257,897 vocab**
+- Tất cả token verified atomic bằng spot-check encode (encode → 1 ID duy nhất)
 
-**Cơ chế chia chunk:**
-- Encode toàn bộ audio activity một lần (giữ context âm thanh)
-- SNAC rate: 12.5 Hz base × 3 token = 37.5 token/giây
-- Mỗi chunk 8-frame ở 30fps = 0.267s → 3.33 base frame → **9–10 token SNAC/chunk**
-- Chia đều theo số chunk, snap về bội số 3 (1 base frame = 3 token không được tách)
-- Phase 6 đọc file snac và inject `<snac>...</snac>` sau `<agent>` trong mỗi chunk
+**Ưu tiên 7 — SNAC cho FineVideo** ← **HOÀN THÀNH (01/07/2026)**
 
-**GHI CHÚ KIẾN TRÚC CLUSTER (phát hiện 28/06/2026):**
-- `jwlogin08.juwels` = login node của JUWELS Cluster (x86), KHÔNG phải Booster
-- `juwels-booster.fz-juelich.de` = login nodes riêng của JUWELS Booster (ppc64le A100)
-- Account `laionize` chỉ có GPU access (`booster` partition) khi submit từ Booster login nodes
-- Từ JUWELS Cluster login, `laionize` chỉ có partition CPU: `batch`, `devel`, `large`
-- **Cần SSH vào `juwels-booster.fz-juelich.de` mới submit được GPU job**
+Job `snac_cpu_14077331`, 32 array task, partition `batch`, submit từ `jwlogin08`.
 
-**Đã chuẩn bị xong (28/06/2026):**
-- `snac 1.2.1` đã cài vào cả `env_tools` (x86) và `my_env_clean` (ppc64le, tại `/p/project1/laionize/nguyen38/my_env_clean`)
-- Model weights đã download: `/p/scratch/laionize/nguyen38/hf_cache/hub/models--hubertsiuzdak--snac_24khz`
-- `HF_HUB_OFFLINE=1` đã thêm vào SLURM script (compute nodes không có internet)
-- Task list đã build: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_task_list.json`
-  → 40,798 video, 372,385 activity, tất cả có chunk_timing
+| Metric | Kết quả |
+|--------|---------|
+| Tasks hoàn thành | **32/32** (100%) |
+| Activities xử lý thành công | **371,855** |
+| fail_audio (không có audio) | 530 (~0.1%) |
+| fail_snac | **0** |
+| Tổng SNAC token | **363,029,331 (~363M)** |
+| Số file output | **40,779** `{video_id}_snac.jsonl` |
+| Kích thước output | **6.5 GB** |
+| Đường dẫn output | `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/` |
 
-**Lệnh submit (khi đã SSH vào juwels-booster.fz-juelich.de):**
+**Cơ chế tokenization và chia chunk (đã verify từ code):**
+- Encode toàn bộ audio của activity một lần → flat list token (giữ audio context)
+- SNAC output = chuỗi **base frame**, mỗi base frame = đúng 3 token (triplet L0 + L1_even + L1_odd)
+- `n_base = len(flat_tokens) // 3` — đơn vị chia tối thiểu là base frame (không tách triplet)
+- Chia proportional: `start_base[k] = round(k × n_base / n_chunks)`, `end_base[k] = round((k+1) × n_base / n_chunks)`
+- Mỗi chunk nhận 3 hoặc 4 base frame = **9 hoặc 12 token** (xen kẽ vì 3.33 base frame/chunk)
+- Chunk cuối KHÔNG ngắn hơn — `round(n_chunks × n_base / n_chunks) = n_base` chính xác
+- Sai số alignment: ±1 base frame = ±80ms tại ranh giới chunk (chấp nhận được cho pretraining)
+
+**Việc tiếp theo (đã unblock):**
 ```bash
-cd /p/data1/mmlaion/nguyen38/3d-human-pose
+# Bước 1: Vocab expansion — thêm 12,288 token <snac_N> vào tokenizer
+# TODO: cập nhật tools/expand_vocab.py, range [128266..132361], [132362..136457], [144650..148745]
 
-# GPU mode: 16 workers, booster partition, ~8-12h
-bash slurm/submit_snac_finevideo.sh
-
-# CPU fallback (từ jwlogin, chậm hơn ~24h):
-bash slurm/submit_snac_finevideo.sh --cpu
-```
-
-**Các bước tiếp theo sau khi có snac_tokens:**
-```bash
-# Bước 3: Vocab expansion — thêm 12,288 token <snac_N> vào tokenizer
-# TODO: cập nhật tools/expand_vocab.py, range [128266..148745]
-
-# Bước 4: Re-run Phase 6 với SNAC injection
+# Bước 2: Re-run Phase 6 với SNAC injection
 python pipeline_pose/phase6_merge_adaptive.py \
   --input-glob "...training_ready_rank_*.jsonl" \
   --agent-tokens-dir .../agent_tokens_adaptive \
@@ -361,13 +353,13 @@ python pipeline_pose/phase6_merge_adaptive.py \
   --output-dir       .../FineVideo-VLA/final_dataset_adaptive_v2 \
   --output-prefix    final_vla_adaptive_v2
 
-# Bước 5: Re-run Phase 7 → megatron_dataset_v3/
+# Bước 3: Re-run Phase 7 → megatron_dataset_v3/
 python pipeline_pose/phase7_flatten.py \
   --input-glob ".../final_dataset_adaptive_v2/..." \
   --output-dir ".../megatron_dataset_v3" \
   --drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0 --workers 16
 
-# Bước 6: Megatron tokenize → train v0.3
+# Bước 4: Megatron tokenize → train v0.3
 ```
 
 **Ưu tiên 7 — Điều tra leo seed2 + euro_pat**
@@ -512,14 +504,25 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 
 ## Action Items — 2 tuần tới
 
-### Đang chạy (30/06/2026)
-- [~] **SNAC CPU job** (14077331) — 32 workers, partition=batch. Tiến độ hiện tại: ~22,237/40,798 file xong (~54.5%). ETA: ~3–3.5h nữa cho task chậm nhất (task 31: 300/1274, ETA=211min).
+### Đã hoàn thành (Jun–Jul 2026)
+- [x] **SNAC CPU job** (14077331) — **HOÀN THÀNH (01/07/2026)**. 32/32 tasks, 371,855 activities, 363M token, 6.5 GB → `/p/.../snac_tokens/`
+- [x] **Vocab expansion (tokenizer build)** — **HOÀN THÀNH (01/07/2026)**. Script: `tools/build_tokenizers.py`. Tạo 2 tokenizer:
+  - `tokenizer_vla_adaptive_v2` (GPT-NeoX-20b + SNAC): **156,505 vocab** → `/p/data1/mmlaion/shared/vla/tokenizer_vla_adaptive_v2/`
+  - `tokenizer_vla_qwen3` (Qwen3 + toàn bộ VLA token): **257,897 vocab** → `/p/data1/mmlaion/shared/vla/tokenizer_vla_qwen3/`
+  - Spot-check 12 token đại diện (seed2, cosmos, pose, snac): tất cả **atomic** ✓ — không có sub-piece splitting
 
-### Chờ SNAC xong → pipeline tiếp theo
-- [ ] **Vocab expansion** — thêm 12,288 `<snac_N>` token vào tokenizer (không cần `<seed_N>` nữa vì MV-Omni đã convert sang `<seed2_N>`)
-- [ ] **Phase 6 v2 re-run** — inject SNAC + agent token cùng lúc
+### Pipeline tiếp theo (đã unblock)
+- [x] **Phase 6 v2 dry run** — **HOÀN THÀNH (01/07/2026)**. Chạy thử 1 file (254 video, ~5 phút/file):
+  - SNAC inject: **259,503/259,505** avc block (~100%)
+  - Agent inject: **12,705** block (đúng — chỉ 46% video có Phase 5 output)
+  - Format verified: `</avc_lm> <agent>...</agent> <snac> <snac_N>... </snac>` ✓
+  - `chunk_timing` đủ flag `has_seed2/cosmos/avc_lm/agent/has_snac` ✓
+  - Script SLURM mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
+  - Ước tính 160 file với 32 workers: **~25–40 phút**
+- [ ] **Phase 6 v2 re-run** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
 - [ ] **Phase 7 v3 re-run** — emit seed2+cosmos+snac records (không chỉ agent-only)
 - [ ] **Megatron re-tokenize** → `.bin/.idx` → train v0.3
+- [ ] **Upload tokenizer_vla_adaptive_v2** lên HF `EmpathicRobotics/tokenizer-vla-adaptive` (tag v2)
 
 ### Coding (không cần GPU, làm song song)
 - [x] ~~Điều chỉnh dropout Phase 7 (AVC-LM → 100%, Cosmos → 50%)~~ **XONG** (27/06/2026)
