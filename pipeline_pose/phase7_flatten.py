@@ -237,7 +237,7 @@ def interleave_speech_and_tokens(chunks, tokens):
 def main():
     parser = argparse.ArgumentParser(description="Flatten adaptive merged dataset into Megatron-LM JSONL.")
     parser.add_argument("--input-glob",
-                        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl")
+                        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive_v2/final_vla_adaptive_v2_rank_*.jsonl")
     parser.add_argument("--output-dir",
                         default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v3")
     parser.add_argument("--drop_avc", type=float, default=1.0, help="Dropout rate for AVC tags (removed until ablations confirm benefit)")
