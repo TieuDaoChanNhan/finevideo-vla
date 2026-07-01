@@ -491,7 +491,9 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 
 | Artifact | Vị trí | Trạng thái |
 |----------|--------|------------|
-| Tokenizer (vocab 144,215) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
+| Tokenizer v1 (vocab 144,215, GPT-NeoX) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
+| **Tokenizer v2 (vocab 156,505, GPT-NeoX + SNAC)** | `EmpathicRobotics/tokenizer-vla-adaptive-v2` | **Live (01/07/2026)** |
+| **Tokenizer Qwen3 (vocab 257,897)** | `EmpathicRobotics/tokenizer-vla-qwen3` | **Live (01/07/2026)** |
 | FineVideo-Phase7-Flattened (69,844 record) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | Live |
 | FineVideo-Phase5-AgentTokens (~399K activities) | `EmpathicRobotics/FineVideo-Phase5-AgentTokens` | Live |
 | FineVideo-Phase4-YOLOPose (hàng triệu window) | `EmpathicRobotics/FineVideo-Phase4-YOLOPose` | Live |
@@ -522,7 +524,7 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 - [ ] **Phase 6 v2 re-run** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
 - [ ] **Phase 7 v3 re-run** — emit seed2+cosmos+snac records (không chỉ agent-only)
 - [ ] **Megatron re-tokenize** → `.bin/.idx` → train v0.3
-- [ ] **Upload tokenizer_vla_adaptive_v2** lên HF `EmpathicRobotics/tokenizer-vla-adaptive` (tag v2)
+- [x] **Upload tokenizers** — **HOÀN THÀNH (01/07/2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 
 ### Coding (không cần GPU, làm song song)
 - [x] ~~Điều chỉnh dropout Phase 7 (AVC-LM → 100%, Cosmos → 50%)~~ **XONG** (27/06/2026)

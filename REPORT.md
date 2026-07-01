@@ -367,7 +367,9 @@ All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, see
 | [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | YOLO-cleaned 3D poses (after Phase 3+4, raw floats) | millions of windows | ~107 GB | `{video_id, window_id, states: float[8][17][3]}` |
 | [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Full hierarchical merged dataset with agent tokens (after Phase 5+6) | ~399K activities | ~657 GB | Hierarchical JSON |
 | [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (after Phase 7, agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
-| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | HuggingFace tokenizer with 93,938 VLA tokens added via `add_tokens()` | — | 144,215 vocab | HF tokenizer dir |
+| [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | GPT-NeoX-20b + 93,938 VLA tokens (v1, no SNAC) | — | 144,215 vocab | HF tokenizer dir |
+| [EmpathicRobotics/tokenizer-vla-adaptive-v2](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive-v2) | GPT-NeoX-20b + VLA + 12,290 SNAC tokens (v2) | — | **156,505 vocab** | HF tokenizer dir |
+| [EmpathicRobotics/tokenizer-vla-qwen3](https://huggingface.co/EmpathicRobotics/tokenizer-vla-qwen3) | Qwen3 base + all 106,228 VLA tokens incl. SNAC | — | **257,897 vocab** | HF tokenizer dir |
 
 ### Published models
 

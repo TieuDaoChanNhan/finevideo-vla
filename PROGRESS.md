@@ -531,7 +531,9 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 
 | Artifact | Location | Status |
 |----------|----------|--------|
-| Tokenizer (144,215 vocab) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
+| Tokenizer v1 (144,215 vocab, GPT-NeoX) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
+| **Tokenizer v2 (156,505 vocab, GPT-NeoX + SNAC)** | `EmpathicRobotics/tokenizer-vla-adaptive-v2` | **Live (Jul 1, 2026)** |
+| **Tokenizer Qwen3 (257,897 vocab)** | `EmpathicRobotics/tokenizer-vla-qwen3` | **Live (Jul 1, 2026)** |
 | FineVideo-Phase7-Flattened (69,844 records) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | Live |
 | FineVideo-Phase5-AgentTokens (~399K activities) | `EmpathicRobotics/FineVideo-Phase5-AgentTokens` | Live |
 | FineVideo-Phase4-YOLOPose (millions of windows) | `EmpathicRobotics/FineVideo-Phase4-YOLOPose` | Live |
@@ -600,7 +602,7 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 - [ ] **Re-run Phase 6 v2** ← **TASK TIẾP THEO** — `sbatch slurm/submit_merge_adaptive_v2.sh` từ jwlogin08
 - [ ] **Re-run Phase 7 v3** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
 - [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
-- [ ] **Upload tokenizer_vla_adaptive_v2** lên `EmpathicRobotics/tokenizer-vla-adaptive` (tag v2)
+- [x] **Upload tokenizers** — **COMPLETE (Jul 1, 2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 
 ### Kết luận overlap check (Jun 30, 2026 — XONG)
 - [x] Quyết định **KHÔNG dùng `valid_with_seed`** — 86.9% đã có trong omni_valid, 13.1% còn lại (4,141 video) chỉ có seed2 token và không đáng tốn thêm storage/compute
