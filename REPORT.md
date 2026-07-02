@@ -6,6 +6,16 @@
 
 ---
 
+## Pre-training Blockers (Jul 2, 2026)
+
+Three items must be resolved before the next training run (per Huu's directive):
+
+1. **Language data mix** — add ~few billion tokens of instruction/caption data alongside FineVideo v4 + MV-Omni. Candidates: clappa, synthetic COCO, robot SFT datasets, multilingual instruction.
+2. **PCHIP compression analysis** — quantify token saving of adaptive vs fixed 8-CP; confirm coordinate system (absolute xyz vs delta-to-pelvis).
+3. **Eval setup** — define baseline eval protocol (MPJPE, modality transition, instruction-following) before training.
+
+---
+
 ## 1. Goal
 
 Build a multimodal Vision-Language-Action pretraining dataset from ~40K YouTube videos (HuggingFace [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo)). The final output is a Megatron-LM-ready flat JSONL dataset where each record interleaves five token modalities:
@@ -197,7 +207,7 @@ To balance modalities for pretraining, **modality dropout** is applied during fl
 
 Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2/`
 
-**v3 — SNAC support (Jun 28, 2026, pending `snac_finevideo.py` run):**
+**v3 — SNAC support (COMPLETE Jul 2, 2026):**
 
 | Modality | Drop rate | Notes |
 |----------|-----------|-------|
@@ -208,11 +218,85 @@ Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v2
 | **SNAC** | **0%** | New — pass-through, `<snac_N>` tokens extracted from `<snac>...</snac>` blocks |
 
 **Changed record filter:** v1/v2 required `<agent>` in record. v3 emits if `<agent>` OR `<snac>` present:
-- **Full-chain:** seed2 + cosmos + agent + snac (17,676 activities with confirmed human presence)
-- **Partial-chain:** seed2 + cosmos + snac (remaining ~382K activities — teaches audio↔video binding)
+- **Full-chain:** seed2 + cosmos + agent + snac — 69,811 records (18.8%)
+- **Partial-chain:** seed2 + cosmos + snac — 302,044 records (81.2%)
 - Pure seed2+cosmos activities still skipped
+- **0 bad records** (verified full scan)
 
-Script: `pipeline_pose/phase7_flatten.py` | Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v3/`
+**v3 output stats (verified Jul 2, 2026):**
+
+| Metric | Value |
+|--------|-------|
+| Files | 160/160 |
+| Total records | **371,888** |
+| Malformed JSON | 0 |
+| Full-chain (agent+snac) | 69,811 (18.8%) |
+| Snac-only | 302,044 (81.2%) |
+| Bad records (no agent, no snac) | **0** |
+| seed2 tokens | 332.6M |
+| cosmos tokens | 3.88B |
+| snac tokens | 363M |
+| agent windows | 2,148,474 |
+| avclm tokens | 0 ✓ |
+| Total size | 72 GB |
+
+Sample: `samples/after_flatten_v3.json` | Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v3/`
+
+#### ⚠ Known design issue in v3: temporal misalignment (FIXED in v4)
+
+`process_tokens_to_individual_tags()` in v3 extracted all `<agent>` and `<snac>` blocks first, then **appended all agent tokens at the end, followed by all snac tokens**. At seq_len=4096 (measured on 2,269 full-chain records): only **31%** had agent tokens in the first 4096 positions — in most training steps the model saw video OR pose, rarely both.
+
+Additionally, `interleave_speech_and_tokens()` scattered speech words into the middle of agent joint sequences, breaking the `<pelvis_x_N>` grammar in ~42.9% of full-chain records.
+
+**Both bugs are fixed in v4** (see below).
+
+**v4 — Per-chunk temporal ordering (COMPLETE Jul 2, 2026):**
+
+Phase 7 fully rewritten with a state machine that walks Phase 6 output in document order. Output per chunk: `[seed2?][cosmos?][agent?][snac?]`. Speech moved to dedicated `### Speech:` header, never mixed into token sequence.
+
+**v4 output stats (verified Jul 2, 2026):**
+
+| Metric | Value |
+|--------|-------|
+| Files | 160/160 (0 skipped) |
+| Total records | **371,888** |
+| Runtime | 36 min / 32 workers |
+
+| Modality | Tokens | % | Avg/record |
+|----------|--------|---|------------|
+| seed2 | 332,592,448 | 6.4% | 894 |
+| cosmos | 3,882,981,800 | 74.4% | 10,440 |
+| agent | 637,924,374 | 12.2% | 1,715 |
+| snac | 363,029,331 | 7.0% | 976 |
+| **TOTAL** | **5,216,527,953** | — | **14,027** |
+
+At seq_len=4096, each context window now contains ~8–10 fully aligned `[cosmos?][agent?][snac?]` tuples (~490 tokens/chunk). The model sees video and pose simultaneously in every training step.
+
+Script: `pipeline_pose/phase7_flatten.py` | SLURM: `slurm/submit_phase7_v4.sh`
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v4/`
+Upload script: `tools/upload_flattened_hf.py` | HuggingFace: `EmpathicRobotics/FineVideo-Phase7-Flattened`
+
+#### Token rates per 8-frame chunk (30fps grid)
+
+All modalities are aligned to 30fps. One chunk = 8 frames = 8/30s ≈ 0.267s.
+
+| Modality | Tokens/chunk (raw) | Notes |
+|----------|-------------------|-------|
+| Seed2 | **32** (fixed) | Only at keyframe chunks (1 per 30 frames = every 3.75 chunks). Most chunks have no seed2. |
+| Cosmos | **200** (fixed) | Every chunk. DV8x16x16 spatial encoding. |
+| AVC-LM | **885–5,055** (variable) | Every chunk. H.264 BPE, varies with motion. Dropped 100% in v3. |
+| Agent | **171–579** (~280 typical) | Only chunks with detected person. Adaptive PCHIP. |
+| SNAC | **9 or 12** (alternating, avg 10) | Every chunk. 37.5 tok/s × 0.267s = 10; snaps to 3-token triplets. |
+
+In 30 seconds (≈ 112 chunks at 50% cosmos dropout):
+
+| Modality | Tokens/30s (v3 dropout) |
+|----------|------------------------|
+| Seed2 | 30 × 32 = **960** |
+| Cosmos | ~56 × 200 = **11,200** |
+| Agent | up to 112 × 280 = **31,360** (when person present) |
+| SNAC | 112 × 10 = **1,120** |
+| AVC-LM | **0** (dropped) |
 
 #### Data augmentation
 
@@ -224,14 +308,15 @@ The flatten also applies text augmentation to improve robustness:
 | Stopword dropout | 5% | Common stopwords randomly removed |
 | Sentence permutation | 10% | Speech transcript sentences randomly reordered |
 | Speech/token interleaving | — | Speech chunks inserted at random positions among tokens |
-| Layout block shuffling | — | Title/Context/Keywords/Tokens blocks randomly reordered |
+| Layout block shuffling | — | Title/Context/Keywords/(Speech) blocks randomly reordered |
 
-Each output record contains four layout blocks (randomly shuffled):
+Each output record (v4) has text headers followed by the token sequence (speech no longer interspersed in tokens):
 ```
 ### Title: <scene title, augmented>
 ### Context: <global context + activity prompt, augmented>
 ### Keywords: <scene thematic + mood, augmented>
-<interleaved speech chunks and flattened tokens>
+[### Speech: <transcript, augmented>]   ← only if speech present
+<flat token sequence in per-chunk temporal order>
 ```
 
 ### 2.5 Vocabulary Extension & Tokenizer

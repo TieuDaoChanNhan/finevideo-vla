@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** June 28, 2026  
+**Last updated:** July 2, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
@@ -184,14 +184,37 @@ Converts hierarchical JSON → flat Megatron-LM JSONL. Key decisions:
 Output v1: 160 files, **69,844 records**, 19.2 GB → `megatron_dataset_adaptive/`  
 Output v2: → `megatron_dataset_v2/` (cosmos 50% drop, avclm 100% drop — re-flattened Jun 27, 2026)
 
-**Phase 7 v3 — SNAC + updated filter (Jun 28, 2026):**
+**Phase 7 v3 — SNAC + updated filter (COMPLETE Jul 2, 2026):**
 - Added `<snac>...</snac>` block extraction in `process_tokens_to_individual_tags` (pass-through, like agent)
 - Added `--drop_snac` argument (default 0.0 = keep all SNAC tokens)
 - **Changed record filter:** was `<agent> required`; now emits if `<agent>` OR `<snac>` present
-  - Full-chain records: seed2 + cosmos + agent + snac (best quality, 17,676 activities)
-  - Partial-chain records: seed2 + cosmos + snac only (86% of activities, adds audio modality binding)
-  - Pure seed2+cosmos records still skipped (no new modality)
-- Output: → `megatron_dataset_v3/` (pending snac_finevideo.py run + re-phase6 + re-flatten)
+  - Full-chain records: seed2 + cosmos + agent + snac — **69,811 records (18.8%)**
+  - Partial-chain records: seed2 + cosmos + snac — **302,044 records (81.2%)**
+  - Bad records (neither): **0**
+- Output: `megatron_dataset_v3/` — 160 files, **371,888 records**, **72 GB**
+- Sample: `samples/after_flatten_v3.json` | Upload script: `tools/upload_flattened_hf.py` (updated for v3)
+
+**✅ Phase 7 v4 — Per-chunk temporal ordering (COMPLETE Jul 2, 2026):**
+
+Phase 7 fully rewritten (`pipeline_pose/phase7_flatten.py`). State machine walks Phase 6 output in document order, emitting per chunk: `[seed2?][cosmos?][agent?][snac?]`. Speech moved to dedicated `### Speech:` header.
+
+**v4 stats:** 160/160 files, 371,888 records, **5.217B tokens** (seed2 6.4% / cosmos 74.4% / agent 12.2% / snac 7.0%). Runtime: 36 min / 32 workers.
+
+**Bugs fixed:**
+- Temporal misalignment (v3: all agent at end → 69% of records had 0% agent in first 4096 tokens. v4: per-chunk → all records have agent in first 4096 tokens)
+- Speech injection into agent grammar (v3: speech words scattered into joint sequences. v4: speech in header only)
+
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v4/` (160 files)
+
+**Token rates per 8-frame chunk (verified Jul 2, 2026):**
+
+| Modality | Tokens/chunk | Per 30s (after v3 dropout) |
+|----------|-------------|---------------------------|
+| Seed2 | 32 fixed (1 block per 3.75 chunks) | 30 × 32 = **960** |
+| Cosmos | 200 fixed (every chunk) | ~56 × 200 = **11,200** |
+| Agent | 171–579 (~280 typical) | up to 112 × 280 = **31,360** |
+| SNAC | 9 or 12 (avg 10, alternating) | 112 × 10 = **1,120** |
+| AVC-LM | 885–5,055 | **0** (dropped) |
 
 **DATA PATHS (IMPORTANT — updated Jun 27, 2026):**  
 JUPITER `/e/data1` is sometimes down (cluster maintenance). All critical data copied to `/p/`:
@@ -534,7 +557,7 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | Tokenizer v1 (144,215 vocab, GPT-NeoX) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
 | **Tokenizer v2 (156,505 vocab, GPT-NeoX + SNAC)** | `EmpathicRobotics/tokenizer-vla-adaptive-v2` | **Live (Jul 1, 2026)** |
 | **Tokenizer Qwen3 (257,897 vocab)** | `EmpathicRobotics/tokenizer-vla-qwen3` | **Live (Jul 1, 2026)** |
-| FineVideo-Phase7-Flattened (69,844 records) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | Live |
+| FineVideo-Phase7-Flattened v4 (371,888 records, 5.217B tokens) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | **Pending upload** |
 | FineVideo-Phase5-AgentTokens (~399K activities) | `EmpathicRobotics/FineVideo-Phase5-AgentTokens` | Live |
 | FineVideo-Phase4-YOLOPose (millions of windows) | `EmpathicRobotics/FineVideo-Phase4-YOLOPose` | Live |
 | VLA Model v1 (broken tokenizer) | `EmpathicRobotics/vla-1.7b-pab-spline-25b-test` | Live (deprecated) |
@@ -591,6 +614,32 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
   - Spot-check 12 tokens đại diện: tất cả **atomic** (1 token/ID), không có sub-piece splitting
   - SNAC token range: L0 [128266..132361], L1A [132362..136457], L1B [144650..148745]
 
+### Pre-training Discussion Items (Jul 2, 2026 — from Huu chat)
+
+> **⚠ Huu explicitly said: "Before you train let's talk." — do NOT start training until these 3 items are resolved.**
+
+**[DISCUSS-1] Language data mix — what to add before training?**
+- Current plan (FineVideo v4 + MV-Omni = 12B tokens) has almost no instruction/language data
+- Huu: "mix in a few billion tokens mixture so we can steer the robot better"
+- Huu: "We should look for some SFT dataset for our various target (pick up the Apple, Drive left, etc.)"
+- Candidates on leo (`/mnt/sdb/mixture-vitae-working/`): `clappa_text_only`, `coco` (synthetic permissive), `misc_instr/hpprc-r1-distill-qwen-pseudo-qa.jsonl` (Japanese instruction)
+- Also wants multilingual instruction datasets with reasoning/thinking
+- **Action needed:** Identify token counts of available language datasets → decide mix ratio
+
+**[DISCUSS-2] Compression analysis of Adaptive PCHIP**
+- Huu: "Did you do an analysis by how much compression we got? If there is no or low compression then we know it's wrong."
+- Need: token count comparison — adaptive vs fixed 8-CP per chunk, avg % saving across dataset
+- Also: coordinate system question — current = absolute xyz after pelvis root-centering; Huu asked about xyz delta-to-pelvis
+- **Action needed:** Run analysis script on Phase 5 output, report numbers to Huu — IN PROGRESS (planning below)
+
+**[DISCUSS-3] Eval setup**
+- Huu: "We should start eval just to see how things perform with baseline"
+- Need to define eval tasks BEFORE training, not after
+- Candidates: agent token decode quality (MPJPE on 3D pose), modality transition accuracy, instruction-following on robot commands
+- **Action needed:** Define eval protocol and implement baseline metrics
+
+---
+
 ### Việc tiếp theo (unblocked bởi vocab expansion)
 - [x] **Phase 6 v2 dry run** — **COMPLETE (Jul 1, 2026)**. Chạy thử 1 file (254 videos, ~5 phút). Kết quả:
   - SNAC inject: **259,503/259,505** avc blocks (~100%)
@@ -600,8 +649,18 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
   - SLURM script mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
   - Ước tính toàn bộ 160 file với 32 workers: **~25–40 phút**
 - [x] **Re-run Phase 6 v2** — **COMPLETE**. Job `14082096`, 32/32 workers. 40,804 videos | 398,775 activities | SNAC 100% | Agent 5.5% | 0 errors → `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/final_dataset_adaptive_v2/` (160 files)
-- [ ] **Re-run Phase 7 v3** ← **TASK TIẾP THEO** — emit seed2+cosmos+snac records: `--drop_cosmos 0.5 --drop_avc 1.0 --drop_snac 0.0`
-- [ ] **Megatron re-tokenize** → new `.bin/.idx` shards → train v0.3
+- [x] **Re-run Phase 7 v3** — **COMPLETE (Jul 2, 2026)**. 160/160 files, 371,888 records, 72 GB → `megatron_dataset_v3/`
+  - Full-chain (agent+snac): 69,811 (18.8%) | Snac-only: 302,044 (81.2%) | Bad records: 0
+  - Token counts: seed2 332.6M | cosmos 3.88B | snac 363M | agent windows 2,148,474 | avclm 0 ✓
+  - Sample: `samples/after_flatten_v3.json` | Upload script updated: `tools/upload_flattened_hf.py`
+- [x] **Phase 7 v4 — temporal alignment fix** — **COMPLETE (Jul 2, 2026)**. Per-chunk ordering fixed, speech in headers, 5.217B tokens → `megatron_dataset_v4/`. See stats above.
+- [ ] **Upload Phase 7 v4 to HF** → `EmpathicRobotics/FineVideo-Phase7-Flattened`:
+  ```bash
+  export HF_TOKEN='hf_...'
+  python tools/upload_flattened_hf.py
+  ```
+  Source: `megatron_dataset_v4/` | Upload dir: `hf_upload_flattened_v4/` | Dataset card: `tools/vla_flattened_dataset_card.md` (updated for v4)
+- [ ] **Megatron re-tokenize** `megatron_dataset_v4/` with `tokenizer-vla-adaptive-v2` (156,505 vocab) → new `.bin/.idx` → train v0.3
 - [x] **Upload tokenizers** — **COMPLETE (Jul 1, 2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 
 ### Kết luận overlap check (Jun 30, 2026 — XONG)

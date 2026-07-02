@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 27/06/2026  
+**Cập nhật lần cuối:** 02/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
 
@@ -158,13 +158,36 @@ Chuyển JSON phân cấp → flat Megatron-LM JSONL.
 Output v1: **69,844 record**, 19.2 GB → `megatron_dataset_adaptive/`  
 Output v2: cosmos 50% drop, avclm 100% drop → `megatron_dataset_v2/` (xong 27/06/2026)
 
-**Phase 7 v3 — SNAC + cập nhật filter (28/06/2026):**
+**Phase 7 v3 — SNAC + cập nhật filter (HOÀN THÀNH 02/07/2026):**
 - Thêm xử lý khối `<snac>...</snac>` (pass-through giống agent)
 - **Thay đổi filter quan trọng:** trước đây chỉ emit activity có `<agent>`; giờ emit nếu có `<agent>` HOẶC `<snac>`
-  - Record đầy đủ: seed2 + cosmos + agent + snac (17,676 activity có người)
-  - Record một phần: seed2 + cosmos + snac (86% activity còn lại, dạy audio↔video binding)
-  - Record chỉ seed2+cosmos vẫn bị skip
-- Output: → `megatron_dataset_v3/` (chờ snac_finevideo.py chạy xong)
+  - Record đầy đủ: seed2 + cosmos + agent + snac — **69,811 record (18.8%)**
+  - Record một phần: seed2 + cosmos + snac — **302,044 record (81.2%)**
+  - Bad record (không có gì): **0**
+- Output: `megatron_dataset_v3/` — 160 file, **371,888 record**, **72 GB**
+- Sample: `samples/after_flatten_v3.json` | Upload script đã cập nhật: `tools/upload_flattened_hf.py`
+
+**✅ Phase 7 v4 — Căn chỉnh thời gian per-chunk (HOÀN THÀNH 02/07/2026):**
+
+Phase 7 được viết lại hoàn toàn với state machine đi theo thứ tự tài liệu trong output Phase 6. Mỗi chunk phát ra: `[seed2?][cosmos?][agent?][snac?]`. Speech được chuyển vào header `### Speech:`, không còn xen vào chuỗi token.
+
+**Thống kê v4:** 160/160 file, 371,888 record, **5.217B token** (seed2 6.4% / cosmos 74.4% / agent 12.2% / snac 7.0%). Thời gian chạy: 36 phút / 32 worker.
+
+**Các bug đã fix:**
+- Mất căn chỉnh thời gian (v3: toàn bộ agent ở cuối → 69% record có 0% agent trong 4096 token đầu. v4: per-chunk → mọi record đều có agent trong 4096 token đầu)
+- Xen speech vào agent grammar (v3: từ speech rải vào giữa chuỗi joint token. v4: speech chỉ ở header)
+
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v4/` (160 file)
+
+**Tần suất token thực tế (verified 02/07/2026):**
+
+| Modality | Token/chunk | Trong 30s (sau v3 dropout) |
+|----------|-------------|--------------------------|
+| Seed2 | 32 cố định (1 block mỗi 3.75 chunk) | 30 × 32 = **960** |
+| Cosmos | 200 cố định (mỗi chunk) | ~56 × 200 = **11,200** |
+| Agent | 171–579 (~280 thông thường) | đến 112 × 280 = **31,360** |
+| SNAC | 9 hoặc 12 (tb 10, xen kẽ) | 112 × 10 = **1,120** |
+| AVC-LM | 885–5,055 | **0** (dropped) |
 
 ---
 
@@ -269,6 +292,32 @@ Quét 242 file trên 4 nhóm dataset:
   - Vocab mới: ~148,311 token
   - Mở khóa **6.93B token từ MV-Omni**
   - Ước tính: ~1 ngày
+
+### Các điểm cần thảo luận trước khi train (02/07/2026 — từ chat Huu)
+
+> **⚠ Huu nói rõ: "Before you train let's talk." — CHƯA được train cho đến khi giải quyết xong 3 điểm này.**
+
+**[DISCUSS-1] Language data mix — thêm gì vào trước khi train?**
+- FineVideo v4 + MV-Omni = 12B token nhưng gần như không có instruction/language data
+- Huu: "mix in a few billion tokens mixture so we can steer the robot better"
+- Huu muốn SFT datasets dạng robot instruction ("pick up the Apple", "Drive left", v.v.)
+- Dataset có sẵn trên leo (`/mnt/sdb/mixture-vitae-working/`): `clappa_text_only`, `coco` (synthetic permissive), `misc_instr/hpprc-r1-distill-qwen-pseudo-qa.jsonl` (instruction tiếng Nhật)
+- Cũng muốn multilingual instruction datasets có reasoning/thinking
+- **Cần làm:** Đếm token các dataset này → quyết định mix ratio
+
+**[DISCUSS-2] Compression analysis của Adaptive PCHIP**
+- Huu: "If there is no or low compression then we know it's wrong"
+- Cần: so sánh token count adaptive vs fixed 8-CP per chunk, tính % saving trung bình
+- Câu hỏi coordinate: hiện tại dùng absolute xyz sau root-centering pelvis; Huu hỏi về xyz delta relative to pelvis
+- **Cần làm:** Chạy analysis script trên Phase 5 output, báo cáo số liệu cho Huu — ĐANG LÊN PLAN
+
+**[DISCUSS-3] Eval setup**
+- Huu: "We should start eval just to see how things perform with baseline"
+- Cần định nghĩa eval tasks TRƯỚC khi train
+- Ứng viên: MPJPE trên 3D pose decode, modality transition accuracy, instruction-following robot commands
+- **Cần làm:** Định nghĩa eval protocol và implement baseline metrics
+
+---
 
 **Ưu tiên 2 — Điều chỉnh dropout trong Phase 7** ← ~~XONG~~ (27/06/2026)
 
@@ -494,7 +543,7 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 | Tokenizer v1 (vocab 144,215, GPT-NeoX) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
 | **Tokenizer v2 (vocab 156,505, GPT-NeoX + SNAC)** | `EmpathicRobotics/tokenizer-vla-adaptive-v2` | **Live (01/07/2026)** |
 | **Tokenizer Qwen3 (vocab 257,897)** | `EmpathicRobotics/tokenizer-vla-qwen3` | **Live (01/07/2026)** |
-| FineVideo-Phase7-Flattened (69,844 record) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | Live |
+| FineVideo-Phase7-Flattened v4 (371,888 record, 5.217B token) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | **Chờ upload** |
 | FineVideo-Phase5-AgentTokens (~399K activities) | `EmpathicRobotics/FineVideo-Phase5-AgentTokens` | Live |
 | FineVideo-Phase4-YOLOPose (hàng triệu window) | `EmpathicRobotics/FineVideo-Phase4-YOLOPose` | Live |
 | VLA Model v1 (tokenizer broken) | `EmpathicRobotics/vla-1.7b-pab-spline-25b-test` | Live (deprecated) |
@@ -522,8 +571,17 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
   - Script SLURM mới: `slurm/submit_merge_adaptive_v2.sh` (account `laionize`, partition `batch`, 32 workers, 2h)
   - Ước tính 160 file với 32 workers: **~25–40 phút**
 - [x] **Phase 6 v2 re-run** — **HOÀN THÀNH**. Job `14082096`, 32/32 workers. 40,804 video | 398,775 activity | SNAC 100% | Agent 5.5% | 0 lỗi → `final_dataset_adaptive_v2/` (160 file)
-- [ ] **Phase 7 v3 re-run** ← **TASK TIẾP THEO** — emit seed2+cosmos+snac records (không chỉ agent-only)
-- [ ] **Megatron re-tokenize** → `.bin/.idx` → train v0.3
+- [x] **Phase 7 v3 re-run** — **HOÀN THÀNH (02/07/2026)**. 160/160 file, 371,888 record, 72 GB → `megatron_dataset_v3/`
+  - Full-chain: 69,811 (18.8%) | Snac-only: 302,044 (81.2%) | Bad: 0
+  - seed2 332.6M | cosmos 3.88B | snac 363M | agent windows 2,148,474 | avclm 0 ✓
+- [x] **Phase 7 v4 — fix temporal alignment** — **HOÀN THÀNH (02/07/2026)**. Per-chunk ordering, speech trong header, 5.217B token → `megatron_dataset_v4/`
+- [ ] **Upload Phase 7 v4 lên HF** → `EmpathicRobotics/FineVideo-Phase7-Flattened`:
+  ```bash
+  export HF_TOKEN='hf_...'
+  python tools/upload_flattened_hf.py
+  ```
+  Source: `megatron_dataset_v4/` | Dataset card đã cập nhật: `tools/vla_flattened_dataset_card.md`
+- [ ] **Megatron re-tokenize** `megatron_dataset_v4/` với `tokenizer-vla-adaptive-v2` (156,505 vocab) → `.bin/.idx` → train v0.3
 - [x] **Upload tokenizers** — **HOÀN THÀNH (01/07/2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
 
 ### Coding (không cần GPU, làm song song)
