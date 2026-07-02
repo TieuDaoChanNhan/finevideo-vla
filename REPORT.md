@@ -87,6 +87,21 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - Output: `outputs/yolo_cleaned_30fps/{video_id}_cleaned.jsonl`
 - **40,195 videos**, **107 GB**
 
+**Data quality analysis (Jul 2, 2026):**
+
+Direct inspection of `yolo_cleaned` data via `tools/visualize_skeleton_sidebyside.py` + per-window statistics revealed:
+
+| Issue | Finding |
+|-------|---------|
+| Joint sparsity | **4–7 finite joints per frame** out of 17 (24–41% skeleton coverage) |
+| Arms absent | j11–j16 (both arms: shoulder/elbow/wrist) = **NaN in nearly 100% of frames** — MotionBERT cannot reliably lift arm joints from YouTube footage due to occlusion and side-view ambiguity |
+| Zero-fill artifact | j10 (head_top) stores **(0,0,0) when undetected** — coincides with pelvis origin, is counted as finite by `~np.isnan()` but is anatomically wrong |
+| Coordinate scale | Ankle at −0.638 m below pelvis is anatomically plausible; metric scale is correct |
+
+**Root cause:** Monocular 2D→3D lifting (MotionBERT) has fundamental depth ambiguity, especially for distal joints (hands, feet) under occlusion. "In the wild" YouTube videos are a much harder setting than controlled Human3.6M studio recordings (MotionBERT's pretraining domain).
+
+**Training impact:** Pose tokens are predominantly lower body (hip/knee/ankle) + torso spine. This is sufficient as a weak pretraining signal for learning video-pose correlation — even noisy partial skeletons teach the model that certain visual motion patterns co-occur with particular joint configurations. However, for downstream robot manipulation fine-tuning (arm/hand control), higher-quality pose data (simulation, MoCap, depth cameras, or 4D-Humans-style fitting) will be needed.
+
 #### Phase 5 — Adaptive PCHIP Tokenisation
 **Script:** `pipeline_pose/phase5_adaptive_pchip.py` | **SLURM:** `slurm/submit_phase5_adaptive.sh`
 
@@ -884,6 +899,7 @@ The model correctly generated:
 - **Modality dropout imbalance:** Phase 7 drops 99% of avclm and 90% of cosmos tokens, so the model sees far fewer cosmos/avclm examples relative to seed2 and agent tokens. This likely contributes to the model's inability to learn transitions.
 - **No simulation data:** Training data is 100% FineVideo YouTube videos. No Isaac Sim rollouts, RL policies, or MoCap data are included yet.
 - **Simplified tokenizer vs spec:** The current adaptive PCHIP tokenizer encodes only xyz positions. The PAB-Spline spec calls for joint angles (q), velocities (qd), phase variable φ, cyclic detection, and static joint compression — all not yet implemented.
+- **Pose data quality — arm joints absent (Jul 2, 2026):** Only 4–7 of 17 joints are finite per frame; arm joints (j11–j16) are NaN in nearly all windows. The model learns lower-body and torso motion but has no arm/hand signal. head_top (j10) has a zero-fill artifact (stored as (0,0,0) when undetected, same as pelvis). This is a limitation of monocular MotionBERT lifting on unconstrained YouTube video.
 
 ---
 

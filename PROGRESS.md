@@ -111,6 +111,21 @@ Output: 160 `training_ready_rank_*.jsonl` files. Each file contains hierarchical
 - Drops any 8-frame window where ≥4 frames have no detected person (confidence ≥ 0.75)
 - **40,195 videos**, 107 GB
 
+**⚠ Pose Data Quality Finding (Jul 2, 2026):**
+
+Side-by-side skeleton visualization (`tools/visualize_skeleton_sidebyside.py`) + direct inspection of `yolo_cleaned` data revealed significant quality issues:
+
+| Issue | Detail |
+|-------|--------|
+| **Joint sparsity** | Average 4–7 finite joints per frame out of 17 (24–41% skeleton) |
+| **Arms absent** | j11–j16 (both arms: shoulder/elbow/wrist) = NaN in nearly all frames — MotionBERT cannot reliably lift arm joints from YouTube videos due to occlusion/side views |
+| **Zero-fill artifact** | j10 (head_top) often stores (0,0,0) when undetected, identical to pelvis position — counted as finite but is wrong/misleading |
+| **Coordinate scale OK** | ankle at ~−0.638m below pelvis is anatomically plausible; metric scale is correct |
+
+**Impact on training:** Pose tokens are predominantly lower body (hip/knee/ankle) + torso. The arms — most important for manipulation tasks — are almost never captured. The model learns rough walking/sitting body motion but not fine hand/arm motion. This is a fundamental limitation of monocular video pose lifting from YouTube.
+
+**Does NOT affect FineVideo as pretraining signal** — even noisy lower-body pose is better than none for learning video-pose correlation. But for downstream manipulation fine-tuning, better pose data (simulation, MoCap, or depth cameras) will be needed.
+
 ---
 
 ### Phase 5: Adaptive PCHIP Tokenization
@@ -626,11 +641,20 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
 - Also wants multilingual instruction datasets with reasoning/thinking
 - **Action needed:** Identify token counts of available language datasets → decide mix ratio
 
-**[DISCUSS-2] Compression analysis of Adaptive PCHIP**
+**[DISCUSS-2] Compression analysis of Adaptive PCHIP — RESULTS READY**
 - Huu: "Did you do an analysis by how much compression we got? If there is no or low compression then we know it's wrong."
-- Need: token count comparison — adaptive vs fixed 8-CP per chunk, avg % saving across dataset
-- Also: coordinate system question — current = absolute xyz after pelvis root-centering; Huu asked about xyz delta-to-pelvis
-- **Action needed:** Run analysis script on Phase 5 output, report numbers to Huu — IN PROGRESS (planning below)
+- **DONE:** `tools/analyze_pchip_compression.py` — 18,847 files, 1,743,189 windows. Results:
+  - **50.9% token saving** vs fixed 8-CP (284.1 avg vs 579)
+  - CP tiers: 55.2% 2-CP / 25.6% 4-CP / 19.2% 8-CP
+  - Most dynamic: r_knee (33.5% 8-CP), r_wrist (29.4%). Most static: pelvis (100% 2-CP)
+  - Pelvis confirmed at origin: 500/500 samples within ±0.1m ✓
+  - Coordinate system: absolute xyz after root-centering is correct
+- **NEW — Pose data quality concern (Jul 2, 2026):**
+  - Only **4–7 joints finite per frame** (out of 17) — 24–41% skeleton coverage
+  - **Arms (j11–j16) nearly always NaN** — MotionBERT cannot reliably lift arm joints from YouTube (occlusion/side views)
+  - **head_top (j10) zero-fill artifact** — stores (0,0,0) when undetected, same as pelvis, counted as finite but wrong
+  - Impact: model learns lower-body + torso pose only. Fine for pretraining pose presence; NOT sufficient for arm/hand manipulation learning
+- **Action needed:** Report numbers + pose quality concern to Huu
 
 **[DISCUSS-3] Eval setup**
 - Huu: "We should start eval just to see how things perform with baseline"
