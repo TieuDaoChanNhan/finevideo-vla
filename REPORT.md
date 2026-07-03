@@ -117,6 +117,57 @@ Direct inspection of `yolo_cleaned` data via `tools/visualize_skeleton_sidebysid
 
 **Why adaptive PCHIP?** A static pelvis doesn't need 8 data points — 2 suffice. A fast-moving wrist does need 8. This reduces average token count by ~35% vs fixed 8-CP while preserving reconstruction quality where it matters.
 
+**Why 2-CP is the minimum (not 1-CP):** PCHIP is an *interpolating* polynomial — it needs ≥2 points to construct a curve. With 1 point there is nothing to interpolate. More importantly, "low curvature" ≠ "no movement": a joint below tau_low may still drift linearly (e.g., 15mm) from frame 0 to frame 7. 2-CP captures that drift accurately via linear interpolation between the two endpoints; 1-CP would wrongly assume a constant value.
+
+**NaN handling (important for understanding coverage):** `process_file()` skips any window where `np.isnan(states).any()` — i.e., if *any* of the 17 joints has NaN in *any* frame, the entire window is discarded. This is why REPORT Section 8 says "All 17 joints present in every record" — it is true, but only because windows with missing joints are filtered out entirely. The 18,847 videos represent the subset of FineVideo where at least some 8-frame windows had all 17 joints finite simultaneously. Arm joints (j11–j16) are NaN in nearly all YouTube frames, so agent tokens in practice encode lower-body + torso motion only.
+
+**Compression analysis results (Jul 2, 2026):** `tools/analyze_pchip_compression.py` — 18,847 files, 1,743,189 windows:
+- **50.9% token saving** vs fixed 8-CP (284.1 avg vs 579 max)
+- CP tiers: 55.2% 2-CP / 25.6% 4-CP / 19.2% 8-CP
+- Most dynamic: r_knee (33.5% 8-CP), r_wrist (29.4%). Most static: pelvis (100% 2-CP)
+
+**Comparison with BEAST (Jul 3, 2026):**
+
+BEAST ("B-spline Encoded Action Sequence Tokenizer", KIT, NeurIPS 2025, arXiv 2506.06072) uses B-splines with a *fixed* N control points fit via ridge regression, and claims **4–8× compression** vs binning-based tokenization (e.g., 100-step action chunk → 15 control points = 6.67×).
+
+The 50.9% figure above is not directly comparable to BEAST's 4–8× because the baselines differ:
+
+| | Baseline | Compression |
+|---|---|---|
+| **BEAST** | Binning: 1 token/timestep/DoF | 4–8× (75–87% fewer tokens) |
+| **Ours** | Fixed 8-CP PCHIP (already compressed) | ~2× (51% fewer tokens) |
+
+If compared against raw binning (1 token/frame/dim/joint):
+- Raw: 8 frames × 17 joints × 3 dims = **408 scalar values**
+- Our adaptive avg: 284 tokens (including 35 wrapper tokens + ~62 t tokens + ~187 xyz tokens)
+- **Compression vs raw binning: ~1.5× — far below BEAST's 4–8×**
+
+The gap is explained by overhead: our format is **self-describing** (joint name embedded in token string). This gives the LLM semantic grounding ("pelvis" = body center, "r_wrist" = end of arm) but costs 34% of every token budget as overhead (wrappers + t tokens). BEAST has zero overhead because its decoder has the structure hardcoded.
+
+| Aspect | Ours (Adaptive PCHIP) | BEAST |
+|--------|----------------------|-------|
+| Spline type | PCHIP (exact interpolation) | B-spline (ridge regression) |
+| CP count | Adaptive: 2/4/8 per joint | Fixed N for all joints |
+| Fitting | Curvature heuristic | Optimal least-squares |
+| Tokens/static joint | 10 (2 wrappers + 2 t + 6 xyz) | N×3 (e.g. N=3 → 9, no overhead) |
+| Overhead | ~97/284 = **34%** | **0%** |
+| Format | Self-describing (joint name in token) | Position-indexed (hardcoded structure) |
+| Variable length | Yes (complicates LLM learning) | No (fixed → parallel decode) |
+| Compression vs raw | ~1.5× | 4–8× |
+
+**1-CP proposal (Huu, Jul 3, 2026):** For joints where both endpoints quantize to identical values — `quantize(frame_0) == quantize(frame_7)` for all 3 dims — 2-CP is redundant. A single xyz triple with no t token suffices:
+
+```
+# Current 2-CP (8 tokens/joint):
+<pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+<pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+
+# Proposed 1-CP (3 tokens/joint, implied constant):
+<pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+```
+
+Estimated impact: ~55% of joint-windows at tier 2-CP; if ~half qualify as truly static → ~4–5 joints/window × 5 tokens saved ≈ **20–47 tokens/window** → additional ~8–16% compression on top of current 50.9%. Grammar change required (decoder distinguishes 1-CP by absence of `<joint_t_N>` after open tag). Would break backward compatibility with existing Phase 5 output — requires re-run of Phase 5 and all downstream phases.
+
 **Previous iterations (superseded):**
 - `phase5_interpolation_tokenizer.py` — 256 opaque uint8 tokens per chunk (scale + anchor + motion CPs). Abandoned because tokens were not self-describing.
 - `phase5b_xyzt_tokenizer.py` — 409 fixed tokens per chunk (all 8 frames × 17 joints × 3 dims). Clear and self-describing but wasteful for static joints.

@@ -656,6 +656,31 @@ Activate: `source /p/data1/mmlaion/nguyen38/3d-human-pose/miniforge3/etc/profile
   - Impact: model learns lower-body + torso pose only. Fine for pretraining pose presence; NOT sufficient for arm/hand manipulation learning
 - **Action needed:** Report numbers + pose quality concern to Huu
 
+**BEAST comparison (Jul 3, 2026) — context for reporting to Huu:**
+
+Huu asked: *"What does the BEAST paper say about their compression? That will give us a sanity check."*
+
+BEAST = "B-spline Encoded Action Sequence Tokenizer" (KIT, NeurIPS 2025, arXiv 2506.06072). Uses B-splines with fixed N control points fit by ridge regression. Claims **4–8× compression** vs binning (e.g., ACT 100-step chunk → 15 tokens = 6.67×).
+
+**Why our 50.9% looks lower:** different baselines.
+
+| | Baseline | Result |
+|---|---|---|
+| **BEAST** | Binning (1 token/timestep/DoF) | 4–8× fewer tokens |
+| **Ours** | Fixed 8-CP (already compressed) | ~2× fewer tokens |
+
+Vs raw binning: our 284 tokens / (8×17×3=408 raw values) = **~1.5×** — much less than BEAST. Root cause: 34% of our tokens are overhead (wrappers + t tokens) to make the format self-describing for the LLM. BEAST has zero overhead (decoder structure is hardcoded). Self-describing is a deliberate design choice for LLM joint-semantic learning.
+
+**Huu's 1-CP suggestion (Jul 3, 2026):** *"Why do we have 2-CP as minimum? Can we have 1-CP? Like — relative, no movement."*
+
+Why 2-CP was minimum originally:
+1. PCHIP requires ≥2 points (it's an interpolating polynomial — 1 point = nothing to interpolate)
+2. "Low curvature" ≠ "no movement": joint may drift linearly within the window below tau_low
+
+How 1-CP would work: if `quantize(frame_0) == quantize(frame_7)` for all 3 dims → emit only `<joint_x_N> <joint_y_N> <joint_z_N>` (no t token, 3 tokens vs current 8 tokens)
+
+Estimated gain: ~4–5 qualifying joints/window × 5 tokens saved ≈ 20–47 tokens/window → **additional ~8–16% compression**. Requires grammar change + re-run of Phase 5 and all downstream phases.
+
 **[DISCUSS-3] Eval setup**
 - Huu: "We should start eval just to see how things perform with baseline"
 - Need to define eval tasks BEFORE training, not after
