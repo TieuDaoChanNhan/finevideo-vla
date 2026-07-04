@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 02/07/2026  
+**Cập nhật lần cuối:** 04/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
 
@@ -320,57 +320,99 @@ Quét 242 file trên 4 nhóm dataset:
 - Cũng muốn multilingual instruction datasets có reasoning/thinking
 - **Cần làm:** Đếm token các dataset này → quyết định mix ratio
 
-**[DISCUSS-2] Compression analysis của Adaptive PCHIP — KẾT QUẢ SẴN SÀNG**
-- Huu: "If there is no or low compression then we know it's wrong"
+**[DISCUSS-2] Compression analysis của Adaptive PCHIP — ĐÃ PHÂN TÍCH ĐẦY ĐỦ (04/07/2026)**
+
+**Context:** Huu yêu cầu 3 thứ: (1) compression so với BEAST, (2) 1-CP có được không, (3) "just do a 1/2/3 etc for a sample and see what compression you get."
+
+**Script phân tích:** `tools/analyze_cp_tradeoff.py` — chạy trên 50 video / 1,940 window từ yolo_cleaned_30fps.
+
+#### Kết quả 1/2/3 CP tradeoff (đúng cái Huu yêu cầu)
+
+| N CP | Token/window (17 joint) | MAE (mm) | Ghi chú |
+|------|------------------------|---------|---------|
+| **1** | **86** | **24.3mm** | constant, không có t token |
+| **2** (min hiện tại) | **171** | **12.7mm** | linear interpolation |
+| 3 | 239 | 8.0mm | — |
+| 4 | 307 | 6.4mm | — |
+| 5 | 375 | 5.6mm | — |
+| 6 | 443 | 5.1mm | — |
+| 7 | 511 | 4.6mm | — |
+| **8** (baseline) | **579** | **4.1mm** | tất cả frame |
+
+**Nhận xét:** 1-CP global (mọi joint) = 24.3mm error quá cao. Nhưng 1-CP **chỉ cho joint tĩnh** (quantize start == end) thì error bị giới hạn ≤15.7mm (1 quant step).
+
+#### Kết quả 1-CP static test (53.6% tier-2 joints qualify)
+
+```
+Tier-2 joint-windows (curv < tau_low) : 14,668
+Trong đó, quantized start==end (3 dim): 7,862  (53.6%)
+Avg qualifying joints per window       : ~4.1 joints/window
+Tokens saved by 1-CP                   : ~20 tokens/window
+Current adaptive avg                   : 284 tokens → 264 tokens
+Additional compression                 : +7.1%
+```
+
+**Overhead breakdown (xác nhận 34% overhead):**
+```
+Wrappers (<name> + </name>) :  34 tokens (12%)
+t tokens (<joint_t_N>)      :  62 tokens (22%)
+xyz tokens                  : 187 tokens (66%)
+─────────────────────────────────────────────
+OVERHEAD tổng cộng          :  97 tokens (34%)
+```
+
+#### So sánh với BEAST (từ phân tích 03/07/2026)
+
+**BEAST:** "B-spline Encoded Action Sequence Tokenizer" (KIT, NeurIPS 2025, arXiv 2506.06072). Fixed N CPs, fit bằng ridge regression, claim **4–8× compression** so với binning.
+
+**Tại sao con số của mình trông nhỏ hơn — baseline khác nhau:**
+
+| | Baseline | Compression |
+|---|---|---|
+| **BEAST** | Binning (1 token/timestep/DoF) | 4–8× (75–87% ít token hơn) |
+| **Của mình vs fixed 8-CP** | Fixed 8-CP (đã compressed) | ~2× (50.9% ít hơn) |
+| **Của mình vs raw binning** | 8×17×3 = 408 giá trị raw | ~1.5× |
+
+Root cause gap: **34% token là overhead** tên joint (self-describing) — BEAST có 0% overhead vì decoder hardcode structure. Trade-off có chủ đích: self-describing → LLM học được joint semantics.
+
+#### Tại sao minimum là 2-CP (không phải 1-CP)
+
+1. PCHIP cần ≥2 điểm — polynomial nội suy không thể dùng với 1 điểm
+2. "Curvature thấp" ≠ "Không di chuyển" — joint vẫn có thể drift tuyến tính 10–15mm trong 0.267s. 2-CP bắt được drift; 1-CP thì giả định constant = sai
+
+#### Đề xuất 1-CP của Huu — khả thi, gain là 7%
+
+Grammar 1-CP: nếu `quantize(frame_0) == quantize(frame_7)` cho cả 3 dim:
+```
+# Thay vì 10 tokens (2-CP):
+<pelvis_t_0> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+<pelvis_t_7> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
+
+# Dùng 5 tokens (1-CP, không có t token):
+<pelvis> <pelvis_x_128> <pelvis_y_128> <pelvis_z_128> </pelvis>
+```
+**Gain thực tế: +7.1%** (từ 284 → 264 tokens/window). Cần grammar change + re-run Phase 5 → 6 → 7 → Megatron tokenization.
+
+#### Về window duration dài hơn (Huu: "could compress more for longer duration")
+
+Tăng từ 8 frames (0.267s) lên 16–32 frames:
+- Joint tĩnh vẫn chỉ cần 1-2 CPs → compression tốt hơn
+- **Vấn đề:** 8-frame alignment là cố tình để match Cosmos/AVC-LM chunk size. Đổi window size = Phase 6 merge logic phải thiết kế lại từ đầu
+- Đây là architectural change, cần separate discussion với Huu
+
+#### Câu hỏi cần hỏi Huu để quyết định tiếp
+
+> "Với 1-CP được +7%, và 34% overhead từ self-describing format (unavoidable nếu muốn LLM học joint semantics) — bạn muốn prioritize: (a) implement 1-CP và re-run phase 5–7, hay (b) redesign với window dài hơn và giải quyết alignment?"
+
 - **XONG:** `tools/analyze_pchip_compression.py` — 18,847 file, 1,743,189 window. Kết quả:
   - **Tiết kiệm 50.9% token** so với fixed 8-CP (284.1 token/window vs 579)
   - CP tiers: 55.2% 2-CP / 25.6% 4-CP / 19.2% 8-CP
   - Động nhất: r_knee (33.5% 8-CP), r_wrist (29.4%). Tĩnh nhất: pelvis (100% 2-CP)
-  - Pelvis confirmed tại gốc tọa độ: 500/500 sample trong ±0.1m ✓
-  - Coordinate system: absolute xyz sau root-centering là đúng
 - **MỚI — Vấn đề chất lượng pose (02/07/2026):**
   - Trung bình chỉ **4–7 joint finite/frame** (17 tổng cộng) — 24–41% skeleton
   - **Tay (j11–j16) gần như luôn NaN** — MotionBERT không lift được joint tay (bị che, góc nghiêng)
   - **Lỗi zero-fill ở head_top (j10)** — = (0,0,0) khi không detect, trùng pelvis, tính là finite nhưng sai
   - Ảnh hưởng: model chỉ học được lower body + torso. OK cho pretraining; KHÔNG đủ cho học manipulation cánh tay
-- **Cần làm:** Báo cáo số liệu compression + vấn đề chất lượng pose cho Huu
-
-**So sánh với BEAST (03/07/2026) — context để báo cáo Huu:**
-
-Huu hỏi: *"What does the BEAST paper say about their compression? That will give us a sanity check."* và *"I honestly thought it would be more compression. Why do we have 2-CP as minimum? Can we have 1-CP? Like — relative, no movement."*
-
-**BEAST là gì:** "B-spline Encoded Action Sequence Tokenizer" (KIT, NeurIPS 2025, arXiv 2506.06072). Dùng B-spline với N control points cố định, fit bằng ridge regression. Claim **4–8× compression** so với binning (ví dụ: ACT chunk 100 bước → 15 token = 6.67×).
-
-**Tại sao 50.9% của mình trông nhỏ hơn — baseline khác nhau:**
-
-| | Baseline so sánh | Compression |
-|---|---|---|
-| **BEAST** | Binning (1 token/timestep/DoF) | 4–8× |
-| **Của mình** | Fixed 8-CP (đã compressed) | ~2× |
-
-So với raw binning: 284 token / (8×17×3=408 giá trị raw) = **~1.5×** — kém hơn BEAST nhiều. Nguyên nhân: **34% token là overhead** (wrapper `<joint>`, `</joint>` và t tokens `<joint_t_N>`) để format self-describing cho LLM. BEAST không có overhead vì decoder hardcode cấu trúc. Đây là trade-off có chủ đích: self-describing → LLM học được joint semantics (biết "pelvis" là trung tâm cơ thể, v.v.).
-
-| | Của mình (Adaptive PCHIP) | BEAST |
-|---|---|---|
-| Spline type | PCHIP (exact interpolation) | B-spline (ridge regression) |
-| Số CP | Adaptive: 2/4/8 per joint | Fixed N cho tất cả |
-| Fitting | Curvature heuristic | Least-squares optimal |
-| Token/joint tĩnh | 10 (2 wrapper + 2 t + 6 xyz) | N×3 (N=3 → 9, không overhead) |
-| Overhead | ~97/284 = **34%** | **0%** |
-| Format | Self-describing (tên joint trong token) | Position-indexed (decoder biết vị trí) |
-| Compression vs raw | ~1.5× | 4–8× |
-
-**Tại sao minimum là 2-CP (không phải 1-CP):**
-1. PCHIP cần ≥2 điểm — là polynomial nội suy, 1 điểm không có gì để nội suy
-2. "Curvature thấp" ≠ "Không di chuyển" — joint vẫn có thể drift tuyến tính giữa frame 0 và frame 7 dù dưới tau_low. 2-CP bắt được drift đó (linear interpolation start→end); 1-CP thì giả định constant = sai
-
-**Đề xuất 1-CP của Huu — khả thi và đáng làm:**
-Nếu `quantize(frame_0) == quantize(frame_7)` cho cả 3 dim → emit 1 bộ xyz không có t token:
-```
-# Thay vì 8 tokens:   <pelvis_t_0> <x> <y> <z> <pelvis_t_7> <x> <y> <z>
-# Dùng 3 tokens:      <pelvis_x_128> <pelvis_y_128> <pelvis_z_128>
-```
-Ước tính tiết kiệm: ~4–5 joint/window × 5 token = **20–47 token/window** → thêm **~8–16% compression**. Cần thay đổi grammar Phase 5 + re-run toàn bộ downstream (Phase 5 → 6 → 7 → Megatron).
 
 **[DISCUSS-3] Eval setup**
 - Huu: "We should start eval just to see how things perform with baseline"
@@ -611,6 +653,7 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 | VLA Model v2 (tokenizer đã fix) | `EmpathicRobotics/vla-1.7b-pab-spline-adaptive` | Live |
 | Megatron .bin/.idx (2.84B token) | `/p/data1/mmlaion/shared/vla/tokenized_output/vla_adaptive/` | Local |
 | Data inventory checkpoint | `tools/inventory_checkpoint_v2.json` | Local |
+| **CP tradeoff analysis script** | `tools/analyze_cp_tradeoff.py` | **Local (04/07/2026)** |
 
 ---
 
