@@ -4,7 +4,7 @@ Upload VLA 1.7B adaptive model to HuggingFace.
 
 Usage:
     export HF_TOKEN=hf_...
-    python 3d-human-pose/tools/upload_vla_model.py
+    python tools/upload/upload_vla_model.py
 """
 
 import os

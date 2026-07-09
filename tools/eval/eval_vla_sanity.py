@@ -6,10 +6,10 @@ Run on login node with one GPU:
     module --force purge
     module load Stages/2025 GCC/13.3.0 Python/3.12.3 CUDA/12 PyTorch/2.5.1 torchvision/0.20.1
     source /e/project1/reformo/nguyen38/env_stable_vla/bin/activate
-    python 3d-human-pose/tools/eval_vla_sanity.py
+    python tools/eval/eval_vla_sanity.py
 
 Or specify a different checkpoint:
-    python 3d-human-pose/tools/eval_vla_sanity.py --model-path output_vla/vla_adaptive/hf/iter_0001000
+    python tools/eval/eval_vla_sanity.py --model-path output_vla/vla_adaptive/hf/iter_0001000
 """
 
 import argparse

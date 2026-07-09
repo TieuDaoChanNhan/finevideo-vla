@@ -7,9 +7,9 @@ Two repos:
   tokenizer-vla-qwen3        — Qwen3 base + all VLA tokens (257,897 vocab)
 
 Usage:
-    python tools/upload_tokenizers_v2.py --mode adaptive_v2
-    python tools/upload_tokenizers_v2.py --mode qwen3
-    python tools/upload_tokenizers_v2.py --mode all
+    python tools/upload/upload_tokenizers_v2.py --mode adaptive_v2
+    python tools/upload/upload_tokenizers_v2.py --mode qwen3
+    python tools/upload/upload_tokenizers_v2.py --mode all
 """
 
 import argparse
@@ -147,7 +147,7 @@ tok.save_pretrained("tokenizer-vla-adaptive-v2")
 # vocab size: 156,505
 ```
 
-Script: `tools/build_tokenizers.py` in the
+Script: `tools/tokenizer/build_tokenizers.py` in the
 [finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla) repo.
 
 ---
@@ -278,7 +278,7 @@ tok.save_pretrained("tokenizer-vla-qwen3")
 # vocab size: 257,897
 ```
 
-Full script: `tools/build_tokenizers.py` in the
+Full script: `tools/tokenizer/build_tokenizers.py` in the
 [finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla) repo.
 
 ---

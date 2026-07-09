@@ -452,7 +452,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--fps-json",
         default=None,
-        help="Path to fps_lookup.json from tools/extract_fps.py. "
+        help="Path to fps_lookup.json from tools/extract/extract_fps.py. "
              "If provided, per-video fps is used for kinematics instead of fixed 30.",
     )
     parser.add_argument(

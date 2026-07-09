@@ -7,6 +7,12 @@
 
 ---
 
+## Ghi chú refactor repo (09/07/2026)
+
+`tools/` đã được tách thành các subfolder (`upload/`, `tokenizer/`, `inventory/`, `eval/`, `visualize/`, `analysis/`, `extract/`), đổi tên các thư mục mơ hồ (`multimodal/` → `investigations/mixturevitae_multimodal/`, `data_prep/` → `investigations/mv_omni_seed_conversion/`, `test/` → `manual_checks/`; `dev/` đã archive). **Các path script nhắc tới trong các mục cũ bên dưới vẫn theo cấu trúc `tools/` phẳng trước khi refactor** — vd. `tools/data_inventory.py` giờ là `tools/inventory/data_inventory.py`. Xem `README.md` ở root để biết cấu trúc hiện tại.
+
+---
+
 ## Cập nhật phiên làm việc — 08/07/2026 (đọc phần này trước khi resume)
 
 **Thay đổi từ lần trước:**
@@ -16,16 +22,16 @@
 - **Quyết định team: synthetic/simulation data giới hạn ≤30% tổng training mix** (Huu, dựa trên literature) — áp dụng khi tính tỷ lệ mix abc.bot / MolmoAct2 / Cosmos3-DROID với FineVideo (video người thật).
 - **Nguồn data mới tìm được (07/07/2026, từ chat team)** — xem bảng "Nguồn Data Mới" bên dưới. Đáng chú ý nhất: `abc.bot` (400h robot sim data **kèm physics state** MjData, permissive, có eval env).
 - **Định hướng chia sẻ data đa dự án:** Huu muốn gộp data giữa 3 nhánh song song — omni-vla (repo này), dự án so sánh kiến trúc của joergfranke (qwen3/lfm2.5/olmo3), và world-action-model dạng diffusion của blanchon.jl (video generation + action). `FineVideo-Phase7-Flattened` giờ được dùng chung cho các dự án khác — giữ format càng generic/well-documented càng tốt.
+- ✅ **Đã điều tra `mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` (09/07/2026).** 15 file, ~103GB. Đếm token bằng sample stream (75MB/file, không tải hẳn về máy) qua 2 script mới `tools/peek_multimodal.py` + `tools/count_multimodal_tokens.py`, chạy local (không có JUWELS phiên này). **Kết quả: chủ yếu là text/caption thuần, không phải format VLA token của mình.** Chỉ `train_data_snac.jsonl.gz` và `valid_data_snac.jsonl.gz` có SNAC token thật — nhưng ở dạng **mảng số nguyên thô** (`snac_token: [128266, ...]`), không phải tag chuỗi `<snac_N>` — ước lượng **~3.27 tỷ raw SNAC code** (~3.11B + ~162M). 13 file còn lại là text/caption corpus (~12.4 tỷ token word-count ước lượng, riêng `finevideo_transcripts.jsonl.gz` bị đếm thiếu — xem phần lưu ý bên dưới). Đã báo Huu trên Discord (09/07, 3:51pm) hỏi có muốn thêm không — **đang chờ trả lời**, chưa bắt đầu tích hợp. Chi tiết đầy đủ ở mục "Điều tra MixtureVitae-Backup Multimodal" bên dưới.
 - **Việc điều tra còn treo (Huu giao, chưa làm):**
-  1. `mixture-vitae-backup/MixtureVitae-Backup` — nhánh `multimodal` trên HF. Huu hỏi (05/07) đã biết chưa/upload được không; chưa investigate.
-  2. "finevideo reformulation" tại `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu tự tạo nhưng không nhớ rõ nội dung; cần check overlap với pipeline hiện tại (tránh lặp lại vụ double-count như `valid_with_seed`).
+  1. "finevideo reformulation" tại `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu tự tạo nhưng không nhớ rõ nội dung; cần check overlap với pipeline hiện tại (tránh lặp lại vụ double-count như `valid_with_seed`).
 - **Vấn đề cần xử lý (chưa làm):** nếu mix thẳng toàn bộ MV-Omni (6.93B token, 0 agent token) vào training corpus, tỷ lệ agent (pose) sẽ pha loãng từ 12.2% (chỉ FineVideo v4) xuống còn ~5.2% trong tổng mix. Agent token là điểm khác biệt cốt lõi của dự án — cần cân nhắc dropout MV-Omni (giống cách đã làm với Cosmos/AVC-LM) hoặc oversample record có agent trước khi mix.
 
 **Xếp hạng ưu tiên hiện tại (do JUPITER down + ưu tiên "thêm data trước khi train"):**
 
 | Tier | Việc | Cần cluster? | Impact |
 |---|---|---|---|
-| P0 | Điều tra MixtureVitae-Backup/multimodal | Không | Chưa rõ, có thể có token miễn phí |
+| ✅ | ~~Điều tra MixtureVitae-Backup/multimodal~~ | Không | Xong 09/07 — chủ yếu text, tìm được ~3.27B raw SNAC code; đang chờ Huu quyết định |
 | P0 | Làm rõ "finevideo reformulation" trên leo | Không | Tránh double-count |
 | P0 | Quyết định tỷ lệ mix MV-Omni (fix pha loãng agent) | Không | Bảo vệ tín hiệu pose cốt lõi |
 | P0 | Định nghĩa eval protocol (DISCUSS-3, còn treo) | Không | Bắt buộc trước khi train |
@@ -746,7 +752,7 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 - [ ] Bắt đầu viết captioning pipeline (SmolVLM2 / Qwen2.5-VL trên keyframe)
 - [ ] Điều tra leo seed2 + euro_pat token counts
 - [ ] Lên kế hoạch Cosmos3-DROID pipeline (download strategy, SLURM script)
-- [ ] Điều tra `MixtureVitae-Backup/multimodal` (HF) — Huu hỏi 05/07, chưa làm
+- [x] Điều tra `MixtureVitae-Backup/multimodal` (HF) — **XONG (09/07/2026)**. Chủ yếu text; SNAC token tìm thấy ở 2 file dạng mảng số nguyên thô. Xem mục "Điều tra MixtureVitae-Backup Multimodal". Đang chờ Huu quyết định có thêm không.
 - [ ] Làm rõ "finevideo reformulation" tại `leo:/mnt/sdb/mixture-vitae-working/finevideo` — check overlap với pipeline hiện tại
 - [ ] Quyết định tỷ lệ mix MV-Omni / dropout để tránh pha loãng agent token % (12.2% → ~5.2% nếu mix thẳng)
 - [ ] Scope nguồn data mới: abc.bot, MolmoAct2-BimanualYAM-Dataset, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData (xem bảng "Nguồn Data Mới" ở trên)
@@ -757,3 +763,66 @@ JUSUF:   ccstdl
 JUPITER: reformo
 JUWELS:  laionize
 ```
+
+---
+
+## Điều tra MixtureVitae-Backup Multimodal (09/07/2026)
+
+### Bối cảnh
+
+Việc P0 do Huu giao (hỏi 05/07): điều tra `mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` trên HF — chưa từng được quét trước đó (khác với `valid_with_seed`/`stack_images3_gzip` đã inventory rồi). Chạy trên máy Windows cá nhân (không có JUWELS phiên này), chỉ có CPU, nên dùng cách stream + sample thay vì tải hết 103GB/15 file về.
+
+### Phương pháp
+
+2 script mới, tái dùng `PATTERNS`/`count_tokens`/`_hf_token`/`hf_url`/cơ chế checkpoint từ `tools/data_inventory.py`:
+
+- **`tools/peek_multimodal.py`** — dò cấu trúc, stream vài record/member đầu mỗi file (không tải hẳn) để biết format và có token VLA hay không. Output: `tools/multimodal_peek_report.json`.
+- **`tools/count_multimodal_tokens.py`** — stream HTTP thật (không bao giờ ghi file nén xuống đĩa), giới hạn mỗi file ở `--sample-mb` MB nén (mặc định 75), đếm token dạng tag VLA (regex, giống `data_inventory.py`) cộng thêm mọi mảng số nguyên dạng token (field `*_token`/`*_tokens` — tổng quát hoá, không chỉ riêng `snac_token`), ngoại suy ra full file size. Checkpoint resumable: `tools/multimodal_inventory_checkpoint.json`.
+
+**Bug quan trọng đã fix:** `valid_data_snac.jsonl.gz`, `train_data_snac.jsonl.gz`, và `emo.jsonl.gz` **không phải** JSONL chuẩn (mỗi dòng 1 object gọn) — mà là JSON array pretty-print, 1 record có thể trải dài nhiều dòng. Split theo `\n` đơn giản khiến parse fail âm thầm, ra 0 record. Đã fix bằng cách dùng buffer stream + `json.JSONDecoder().raw_decode()` để lấy đủ JSON value bất kể xuống dòng ở đâu.
+
+Env local: venv Python thường (`tools/env_multimodal_inventory/`, đã gitignore) — chỉ `pip install requests tqdm`, không cần conda. Có hỗ trợ HF token (`tools/.hf_token`, gitignore, được `_hf_token()` đọc) dù repo này thực ra public, không cần auth.
+
+### Kết quả (sample 75MB nén/file, ngoại suy ra full size)
+
+**Không file nào có token dạng tag của mình** (`<seed2_N>`, `<cosmos_N>`, `<avclm_N>`, `<snac_N>`) — xác nhận ở quy mô sample 75MB cho cả 15 file, không chỉ 5 record đầu lúc peek.
+
+**2 file có SNAC token thật, dạng mảng số nguyên thô** (`snac_token: [128266, ...]`), không phải tag chuỗi:
+
+| File | Size | Record sample | Ước lượng raw SNAC code (full) |
+|---|---|---|---|
+| `train_data_snac.jsonl.gz` | 11.1 GB | 131,850 | **~3.11B** |
+| `valid_data_snac.jsonl.gz` | 579 MB | 129,996 | **~162M** |
+| **Tổng** | | | **~3.27 tỷ raw SNAC code** |
+
+Quy mô gần bằng 4.92B SNAC token đã tìm thấy ở MixtureVitae-Omni's `valid_snac` trước đây — một nguồn audio-token thật, chưa từng được đếm.
+
+**13 file còn lại — text/caption corpus thuần** (word-count, ngoại suy):
+
+| File | Ước lượng text token | Nội dung |
+|---|---|---|
+| high_stack.tar.gz | 4.11B | StackExchange QA |
+| valid_text_only.tar.gz | 3.31B | text tổng hợp |
+| stack_maga.tar.gz | 1.65B | StackExchange |
+| emo.jsonl.gz | 1.04B | cặp audio-transcript + image-caption |
+| train_data_snac.jsonl.gz (field `text`) | 865.5M | transcript đi kèm SNAC token ở trên |
+| magalith-10m-florence2.jsonl.gz | 864.4M | caption ảnh |
+| synth_llava2.tar.gz | 162.9M | caption ảnh kiểu LLaVA |
+| clappa.tar.gz | 138.4M | caption video (ứng viên DISCUSS-1) |
+| synth_llava.tar.gz | 93.7M | caption ảnh kiểu LLaVA |
+| low_nemo_maga.tar.gz | 73.7M | text |
+| valid_data_snac.jsonl.gz (field `text`) | 44.1M | transcript đi kèm SNAC token ở trên |
+| youtube.tar.gz | 38.6M | storyline/mô tả video |
+| coco.tar.gz | 10.0M | caption ảnh — **chính xác 100%** (đọc hết trong sample) |
+| europarl.tar.gz | ~0.1M | ⚠️ độ tin cậy thấp, xem lưu ý |
+
+### Lưu ý (chưa xử lý)
+
+1. **`finevideo_transcripts.jsonl.gz` bị đếm thiếu (ra 0).** Field thật tên `transcripts`, không phải `text` — counter chỉ check `text` (giống convention có sẵn của `data_inventory.py`). Cần pass riêng, và — vì đây đúng là transcript FineVideo YouTube — cần check overlap video ID với pipeline của mình (giống rủi ro double-count như vụ `valid_with_seed` đã xử lý trước đây).
+2. **Ước lượng `europarl.tar.gz` gần như vô nghĩa** — member đầu tiên sample được đã là 1 record ~986MB, nên 75MB sample chỉ đọc trọn 1 record. Cần sample lớn hơn nhiều hoặc chạy full-scan riêng.
+3. **Vài archive trộn member text khổng lồ với shard binary `.wds`** (youtube, synth_llava/synth_llava2, stack_maga, high_stack, valid_text_only) — 75MB chỉ chạm được vài chục member trong số rất nhiều, nên ngoại suy giả định mật độ đều trên toàn archive, có thể không đúng. Độ tin cậy thấp hơn các file sample được hàng trăm member nhỏ (coco, low_nemo_maga).
+4. **Mảng số nguyên `snac_token` chưa ở format `<snac_N>` chuỗi của tokenizer mình** — cần bước convert (offset/tag scheme) giống vụ convert MV-Omni `seed→seed2` đã làm, trước khi ~3.27B code này vào được pipeline Megatron.
+
+### Trạng thái
+
+Đã báo Huu trên Discord (09/07/2026, 3:51pm): *"this dataset is mostly text, only train_data_snac.jsonl.gz and valid_data_snac.jsonl.gz have snac tokens ... u want to add it?"* — **đang chờ trả lời.** Chưa bắt đầu tích hợp/tải full file cho tới khi Huu phản hồi.

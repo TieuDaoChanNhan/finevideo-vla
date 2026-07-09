@@ -49,9 +49,9 @@ All datasets under `EmpathicRobotics/`, split 152 train / 8 test shards (95/5, s
 │   ├── seed2/                      Seed2 tokenizer source + vocab
 │   ├── avc_lm_v2/                  AVC-LM BPE vocab (used by pipeline.py)
 │   ├── pretrained_ckpts/           Cosmos model configs (weights gitignored)
-│   └── README.md
+│   └── README.md                   documents which files are production vs. experimental
 │
-├── pipeline/                   # Steps B–H: 3D pose → adaptive tokens → merge → flatten
+├── pipeline_pose/               # Steps B–H: 3D pose → adaptive tokens → merge → flatten
 │   ├── phase1_hrnet_gpu.py         2D pose estimation (HRNet)
 │   ├── phase2_motionbert_gpu.py    3D pose lifting (MotionBERT)
 │   ├── phase2_5_resample_30fps.py  Resample native-fps poses to 30fps
@@ -59,30 +59,35 @@ All datasets under `EmpathicRobotics/`, split 152 train / 8 test shards (95/5, s
 │   ├── phase4_yolo_cleaner.py      YOLO person-presence filter
 │   ├── phase5_adaptive_pchip.py    Adaptive PCHIP per-joint tokeniser (2/4/8 CPs)
 │   ├── phase6_merge_adaptive.py    Inject adaptive <agent> blocks into training_ready
-│   ├── phase7_flatten.py           Flatten merged → Megatron flat JSONL
-│   ├── phase5b_xyzt_tokenizer.py   Legacy: fixed 409-token XYZT format
-│   ├── phase5_interpolation_tokenizer.py  Legacy: opaque 256-token format
-│   ├── merge_xyzt_tokens.py        Legacy: XYZT merge
-│   └── merge_agent_tokens.py       Legacy: opaque token merge
+│   ├── phase7_flatten.py           Flatten merged → Megatron flat JSONL (current: v4)
+│   └── snac_finevideo.py           SNAC audio tokenization
 │
-├── tools/                      # Standalone utilities (see tools/README.md)
-│   ├── expand_vocab.py             Extend GPT-NeoX-20b vocab with all VLA tokens
-│   ├── upload_tokenizer.py         Create + upload HF tokenizer (add_tokens) to HuggingFace
-│   ├── upload_flattened_hf.py      Upload flattened dataset to HuggingFace
-│   ├── upload_vla_agent_hf.py      Upload merged agent dataset to HuggingFace
-│   ├── upload_phase4_hf.py         Upload Phase 4 cleaned poses to HuggingFace
-│   ├── rename_hf_repos.py          Rename HF repos to phase-numbered convention
-│   ├── cleanup_hf_repo.py          Remove leftover folders from HF repo
-│   ├── check_flattened_data.py     Validate flattened Megatron files
-│   ├── check_vocab.py              Verify expanded vocab
-│   ├── decode_agent_tokens.py      Decode agent uint8 tokens → 3D poses
-│   ├── extract_fps.py              Read native fps for all videos
-│   ├── extract_sample.py           Extract sample records
-│   ├── fetch_data.py               Fetch video data from HuggingFace
-│   ├── render_filtered_skeleton.py Render skeleton overlay video
+├── tools/                      # Standalone utilities, grouped by purpose (see tools/README.md)
+│   ├── upload/                     HF upload scripts + dataset cards
+│   ├── tokenizer/                  Vocab expansion, tokenizer build, verification
+│   ├── inventory/                  Token/dataset counting, overlap checks, data validation
+│   ├── eval/                       Model sanity checks, agent-token decoding
+│   ├── visualize/                  Skeleton/pose rendering for visual QA
+│   ├── analysis/                   One-off compression/tradeoff analyses
+│   ├── extract/                    Small per-video data extraction helpers
 │   └── README.md
 │
-├── slurm/                      # SLURM submit scripts
+├── investigations/             # Probing/converting EXTERNAL datasets (not FineVideo) —
+│   │                             separate from the core pipeline above (see investigations/README.md)
+│   ├── mixturevitae_multimodal/    Paused probe of an external HF dataset for SNAC/caption content
+│   └── mv_omni_seed_conversion/    MixtureVitae-Omni <seed_N> → this project's <seed2_N> vocab
+│
+├── manual_checks/               # Interactive debug/inference scripts — NOT an automated test suite
+│                                  (see manual_checks/README.md)
+│
+├── archive/                     # Deprecated code, kept for reference only, nothing here runs
+│   ├── pipeline_pose_deprecated/   Legacy XYZT / opaque-256 tokenizer formats (superseded)
+│   ├── slurm_deprecated/           SLURM scripts for the legacy formats above
+│   ├── tools_deprecated/           One-off scripts that already ran to completion
+│   ├── dev_deprecated/             Old single-video dev/demo scripts (stale references)
+│   └── root_notes_deprecated/      Stray leftover files, kept just in case
+│
+├── slurm/                      # SLURM submit scripts (all invoke pipeline_pose/*.py)
 │   ├── submit_hrnet.sh             Phase 1
 │   ├── submit_motionbert.sh        Phase 2
 │   ├── submit_phase2_5.sh          Phase 2.5
@@ -90,16 +95,16 @@ All datasets under `EmpathicRobotics/`, split 152 train / 8 test shards (95/5, s
 │   ├── submit_yolo.sh              Phase 4
 │   ├── submit_phase5_adaptive.sh   Phase 5 (adaptive PCHIP)
 │   ├── submit_merge_adaptive.sh    Phase 6 (merge)
-│   ├── submit_phase5b.sh           Legacy: Phase 5b (XYZT)
-│   ├── submit_merge_xyzt.sh        Legacy: XYZT merge
-│   ├── submit_beast.sh             Legacy: Phase 5
-│   ├── submit_phase5_resume.sh     Legacy: Phase 5 resume
-│   └── submit_integration.sh       Legacy: merge
+│   ├── submit_merge_adaptive_v2.sh Phase 6 v2 (+ SNAC injection)
+│   ├── submit_phase7_flatten.sh    Phase 7
+│   ├── submit_phase7_v3.sh         Phase 7 v3
+│   ├── submit_phase7_v4.sh         Phase 7 v4 (current)
+│   └── submit_snac_finevideo.sh    SNAC audio tokenization
 │
-├── dev/                        # Single-video dev/demo scripts
 ├── envs/                       # Conda environment YAML specs
-├── vocab/                      # vocab.json (GPT-NeoX-20b) + vocab_expanded.json
+├── vocab/                      # gpt-neox-20b-vocab.json (base) + vocab_expanded.json
 ├── samples/                    # Sample outputs for inspection
+├── documents/                  # Reference PDFs / Discord export chat logs
 ├── setup_motionbert.sh         # Activate env for Steps B–H
 └── setup_hrnet_gpu.sh          # Activate env for Step B (HRNet only)
 ```
@@ -162,7 +167,7 @@ Step J   tokenize_vla_adaptive.sbatch          (4 nodes, Ray-distributed)
          All VLA tokens are atomic (added via add_tokens, not manual JSON).
          → /p/data1/mmlaion/shared/vla/tokenized_output/vla_adaptive/
 
-Step K   tools/upload_flattened_hf.py
+Step K   tools/upload/upload_flattened_hf.py
          Compress + upload to EmpathicRobotics/FineVideo-Phase7-Flattened
 ```
 
@@ -302,7 +307,7 @@ All data lives under `$DATA = /e/data1/datasets/playground/mmlaion/shared/nguyen
 
 ## Vocabulary & Tokenizer
 
-`tools/expand_vocab.py` extends the GPT-NeoX-20b base (`vocab/vocab.json`) with:
+`tools/tokenizer/expand_vocab.py` extends the GPT-NeoX-20b base (`vocab/gpt-neox-20b-vocab.json`) with:
 
 | Token range | Count |
 |-------------|-------|
@@ -321,8 +326,8 @@ Output: `vocab/vocab_expanded.json` (JSON lookup only).
 **Important:** The vocab JSON alone does not make BPE tokenizers treat these as atomic tokens. A separate HuggingFace tokenizer was created using `tokenizer.add_tokens(special_tokens=True)` and published at [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive). This tokenizer must be used for Megatron-LM tokenization — the base GPT-NeoX-20b tokenizer will incorrectly split tokens like `<seed2_1137>` into sub-pieces.
 
 ```bash
-python tools/check_vocab.py       # verify vocab_size (rounds to nearest 128 for Megatron)
-python tools/upload_tokenizer.py  # create + upload HF tokenizer
+python tools/tokenizer/check_vocab.py       # verify vocab_size (rounds to nearest 128 for Megatron)
+python tools/upload/upload_tokenizer.py     # create + upload HF tokenizer
 ```
 
 ---
@@ -335,25 +340,26 @@ python pipeline_pose/phase7_flatten.py
 
 # Upload flattened dataset to HuggingFace
 export HF_TOKEN='hf_...'
-python tools/upload_flattened_hf.py
+python tools/upload/upload_flattened_hf.py
 
 # Upload the VLA tokenizer to HuggingFace
-python tools/upload_tokenizer.py
+python tools/upload/upload_tokenizer.py
 
 # Upload merged agent dataset to HuggingFace
-python tools/upload_vla_agent_hf.py
-
-# Remove leftover folders from HF repo
-python tools/cleanup_hf_repo.py
+python tools/upload/upload_vla_agent_hf.py
 
 # Decode a random agent token block from a final_vla file
-python tools/decode_agent_tokens.py --seed 42
+python tools/eval/decode_agent_tokens.py --seed 42
 
 # Sanity-check a flat Megatron dataset
-python tools/check_flattened_data.py
+python tools/inventory/check_flattened_data.py
+
+# Count tokens (per modality) for a new external HF dataset before deciding to integrate it
+python tools/inventory/peek_multimodal.py --only some_file.jsonl.gz
+python tools/inventory/count_multimodal_tokens.py --sample-mb 75
 
 # Render a skeleton-only video from a states JSONL
-python tools/render_filtered_skeleton.py \
+python tools/visualize/render_filtered_skeleton.py \
     --video-real videos/sample.mp4 \
     --jsonl outputs/states_jsonl/sample_states.jsonl \
     --output outputs/skeleton.mp4

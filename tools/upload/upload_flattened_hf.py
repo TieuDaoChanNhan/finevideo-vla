@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """
-Upload final merged VLA-Agent adaptive dataset to HuggingFace.
+Upload flattened Megatron-LM shards to EmpathicRobotics/FineVideo-Phase7-Flattened.
 
-Compresses 160 rank JSONL files into gzipped train/test shards,
-then uploads to EmpathicRobotics/FineVideo-Phase5-AgentTokens.
+  - 160 shards split 95/5 train/test (seed 42)
+  - gzip compressed in parallel
+  - uploaded via huggingface_hub
+
+v4 (default): seed2 + cosmos(50%) + agent + snac, 371,888 records, 5.217B tokens
+  Per-chunk temporal ordering: [seed2?][cosmos?][agent?][snac?] per 8-frame chunk
+  Speech in ### Speech: header (not scattered into token sequence)
+  source: megatron_dataset_v4/flat_final_vla_adaptive_v2_rank_*.jsonl
 
 Usage:
     export HF_TOKEN='hf_...'
-    python tools/upload_vla_agent_hf.py [--source-dir PATH] [--upload-dir PATH]
+    python tools/upload/upload_flattened_hf.py
+    python tools/upload/upload_flattened_hf.py --skip-compress   # reuse existing .gz files
+    python tools/upload/upload_flattened_hf.py --skip-upload     # compress only, no push
 """
 
 import argparse
@@ -20,7 +28,7 @@ import shutil
 from huggingface_hub import HfApi, login
 
 
-REPO_ID = "EmpathicRobotics/FineVideo-Phase5-AgentTokens"
+REPO_ID = "EmpathicRobotics/FineVideo-Phase7-Flattened"
 TOTAL_SHARDS = 160
 TEST_RATIO = 0.05
 SEED = 42
@@ -63,15 +71,20 @@ def process_and_compress(file_list, prefix, target_dir, source_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Upload final VLA-Agent adaptive dataset to HuggingFace."
+        description="Upload flattened adaptive shards to HuggingFace."
     )
     parser.add_argument(
         "--source-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/final_dataset_adaptive",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v4",
     )
     parser.add_argument(
         "--upload-dir",
-        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/hf_upload_adaptive",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/hf_upload_flattened_v4",
+    )
+    parser.add_argument(
+        "--shard-prefix",
+        default="flat_final_vla_adaptive_v2_rank",
+        help="Filename stem before _{i}.jsonl (v3 uses 'flat_final_vla_adaptive_v2_rank')",
     )
     parser.add_argument(
         "--skip-compress", action="store_true",
@@ -83,7 +96,12 @@ def main():
     )
     args = parser.parse_args()
 
-    all_shards = [f"final_vla_adaptive_rank_{i}.jsonl" for i in range(TOTAL_SHARDS)]
+    train_dir = os.path.join(args.upload_dir, "train")
+    test_dir = os.path.join(args.upload_dir, "test")
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
+
+    all_shards = [f"{args.shard_prefix}_{i}.jsonl" for i in range(TOTAL_SHARDS)]
 
     print("Verifying all shards exist...")
     missing = [f for f in all_shards if not os.path.exists(os.path.join(args.source_dir, f))]
@@ -91,25 +109,27 @@ def main():
         raise FileNotFoundError(f"Missing {len(missing)} shards, first: {missing[0]}")
     print(f"All {TOTAL_SHARDS} shards found.")
 
-    train_dir = os.path.join(args.upload_dir, "data")
-    os.makedirs(train_dir, exist_ok=True)
-
     random.seed(SEED)
-    shuffled = list(all_shards)
-    random.shuffle(shuffled)
+    random.shuffle(all_shards)
 
-    test_count = max(1, int(TOTAL_SHARDS * TEST_RATIO))
-    test_files = shuffled[:test_count]
-    train_files = shuffled[test_count:]
-    print(f"Train: {len(train_files)} shards | Test: {len(test_files)} shards")
+    test_count = int(TOTAL_SHARDS * TEST_RATIO)
+    test_files = all_shards[:test_count]
+    train_files = all_shards[test_count:]
+    print(f"Train: {len(train_files)} | Test: {len(test_files)}")
 
     if not args.skip_compress:
         process_and_compress(train_files, "train", train_dir, args.source_dir)
-        process_and_compress(test_files, "test", train_dir, args.source_dir)
+        process_and_compress(test_files, "test", test_dir, args.source_dir)
         print("Compression complete.")
 
-    actual = len([f for f in os.listdir(train_dir) if f.endswith(".jsonl.gz")])
-    print(f"Compressed files ready: {actual}")
+    expected_train = len(train_files)
+    expected_test = len(test_files)
+    actual_train = len([f for f in os.listdir(train_dir) if f.endswith(".jsonl.gz")])
+    actual_test = len([f for f in os.listdir(test_dir) if f.endswith(".jsonl.gz")])
+    if actual_train != expected_train:
+        raise ValueError(f"Expected {expected_train} train shards, found {actual_train}")
+    if actual_test != expected_test:
+        raise ValueError(f"Expected {expected_test} test shards, found {actual_test}")
 
     if args.skip_upload:
         print("Skipping upload (--skip-upload). Files in:", args.upload_dir)
@@ -124,14 +144,14 @@ def main():
     api = HfApi()
     api.create_repo(repo_id=REPO_ID, repo_type="dataset", exist_ok=True)
 
-    readme_path = os.path.join(os.path.dirname(__file__), "vla_agent_dataset_card.md")
+    readme_path = os.path.join(os.path.dirname(__file__), "vla_flattened_dataset_card.md")
     if os.path.exists(readme_path):
         api.upload_file(
             path_or_fileobj=readme_path,
             path_in_repo="README.md",
             repo_id=REPO_ID,
             repo_type="dataset",
-            commit_message="Update dataset card for adaptive PCHIP format",
+            commit_message="Update dataset card for v4: per-chunk temporal ordering, 5.217B tokens",
         )
         print("Uploaded dataset card.")
 
@@ -139,7 +159,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload adaptive PCHIP VLA-Agent dataset (160 ranks, ~40K videos, ~657GB)",
+        commit_message="Upload v4: per-chunk temporal ordering, seed2+cosmos(50%)+agent+snac, 371,888 records, 5.217B tokens",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")

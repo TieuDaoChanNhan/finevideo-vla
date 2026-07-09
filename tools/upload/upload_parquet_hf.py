@@ -7,7 +7,7 @@ Features:
   - Uploads README.md as the dataset card.
 
 Usage:
-    python tools/upload_parquet_hf.py \
+    python tools/upload/upload_parquet_hf.py \
         --parquet-dir /e/scratch/reformo/nguyen38/parquet_3d_shards_30fps \
         --repo        EmpathicRobotics/FineVideo-Phase2-3DPose \
         --token       YOUR_HF_TOKEN   # or set HF_TOKEN env var

@@ -11,9 +11,9 @@ Two outputs:
   all      — both
 
 Usage:
-    python tools/build_tokenizers.py --mode current
-    python tools/build_tokenizers.py --mode qwen3
-    python tools/build_tokenizers.py --mode all
+    python tools/tokenizer/build_tokenizers.py --mode current
+    python tools/tokenizer/build_tokenizers.py --mode qwen3
+    python tools/tokenizer/build_tokenizers.py --mode all
 """
 
 import argparse

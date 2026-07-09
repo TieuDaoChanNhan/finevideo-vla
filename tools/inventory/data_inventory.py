@@ -129,11 +129,16 @@ def save_checkpoint(path: str, state: dict):
 def _hf_token() -> str:
     tok = os.environ.get('HF_TOKEN', '')
     if not tok:
-        for candidate in [os.path.expanduser('~/.huggingface/token'),
+        local_token_file = os.path.join(SCRIPT_DIR, '.hf_token')
+        for candidate in [local_token_file,
+                          os.path.expanduser('~/.huggingface/token'),
                           os.path.expanduser('~/.cache/huggingface/token')]:
             if os.path.exists(candidate):
-                tok = open(candidate).read().strip()
-                break
+                lines = [ln.strip() for ln in open(candidate).read().splitlines()]
+                lines = [ln for ln in lines if ln and not ln.startswith('#')]
+                if lines:
+                    tok = lines[0]
+                    break
     return tok
 
 

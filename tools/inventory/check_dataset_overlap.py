@@ -4,16 +4,19 @@ Check overlap between 3 datasets by YouTube video ID:
   - omni_valid       (hf_snac/):   6 jsonl.gz, metadata.params.id = YouTube ID
   - ontocord/VALID   (head.txt):   head sample only (full dataset not downloaded)
 
-Run from: /p/data1/mmlaion/nguyen38/3d-human-pose/
+Run from anywhere — output/input paths below are resolved relative to this file.
 """
 
 import tarfile, gzip, json, os, re, sys
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT  = SCRIPT_DIR.parents[1]  # tools/inventory/ -> tools/ -> repo root
+
 CACHE = Path("/p/data1/mmlaion/nguyen38/inventory_cache")
 SHARDS_DIR = CACHE / "hf_shards"
 SNAC_DIR   = CACHE / "hf_snac"
-HEAD_FILE  = Path("/p/data1/mmlaion/nguyen38/3d-human-pose/multimodal/head.txt")
+HEAD_FILE  = REPO_ROOT / "investigations" / "mixturevitae_multimodal" / "head.txt"
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
@@ -200,7 +203,7 @@ def main():
         "only_in_seed_ids": sorted(only_in_seed)[:1000],  # cap to avoid huge file
         "only_in_omni_ids": sorted(only_in_omni)[:1000],
     }
-    out_path = Path("/p/data1/mmlaion/nguyen38/3d-human-pose/tools/dataset_overlap_results.json")
+    out_path = SCRIPT_DIR / "dataset_overlap_results.json"
     with open(out_path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"\nResults saved to: {out_path}")

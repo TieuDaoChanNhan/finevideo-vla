@@ -7,6 +7,12 @@
 
 ---
 
+## Repo Reorg Note (Jul 9, 2026)
+
+`tools/` was split into subfolders (`upload/`, `tokenizer/`, `inventory/`, `eval/`, `visualize/`, `analysis/`, `extract/`) and ambiguously-named dirs were renamed (`multimodal/` → `investigations/mixturevitae_multimodal/`, `data_prep/` → `investigations/mv_omni_seed_conversion/`, `test/` → `manual_checks/`; `dev/` archived). **Script paths referenced below in older entries reflect the pre-reorg flat `tools/` structure** — e.g. `tools/data_inventory.py` is now `tools/inventory/data_inventory.py`. See the updated root `README.md` for the current layout.
+
+---
+
 ## Session Update — July 8, 2026 (read this first to resume)
 
 **What changed since last session:**
@@ -16,16 +22,16 @@
 - **Team decision: cap synthetic/simulation data at ≤30% of total training mix** (Huu, from text literature guidance) — applies when deciding how much of abc.bot / MolmoAct2 / Cosmos3-DROID sim data to mix against real FineVideo human video.
 - **New data source candidates identified (Jul 7, 2026 team chat)** — see "New Data Candidates" table below. Most promising: `abc.bot` (400h robot sim data **with physics state** MjData, permissive, has eval env).
 - **Multi-project data sharing direction:** Huu wants to pool data across 3 parallel efforts — this repo's omni-vla work, joergfranke's architecture comparison project (qwen3/lfm2.5/olmo3 baselines), and blanchon.jl's diffusion-based world-action-model (video generation + action). `FineVideo-Phase7-Flattened` is now being used as shared input across projects — keep the format generic/well-documented.
+- ✅ **`mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` investigated (Jul 9, 2026).** 15 files, ~103GB. Sample-based token count (75MB/file, streamed — no full download) via new `tools/peek_multimodal.py` + `tools/count_multimodal_tokens.py`, run locally (no JUWELS access this session). **Result: mostly plain text/caption data, not our VLA token format.** Only `train_data_snac.jsonl.gz` and `valid_data_snac.jsonl.gz` carry real SNAC audio tokens — as **raw integer arrays** (`snac_token: [128266, ...]`), not `<snac_N>` string tags — extrapolated **~3.27B raw SNAC codes** total (~3.11B + ~162M). The other 13 files are text/caption corpora (~12.4B word-count tokens extrapolated, `finevideo_transcripts.jsonl.gz` undercounted — see caveats below). Posted findings to Huu on Discord (Jul 9, 3:51pm) asking if he wants it added — **awaiting his reply**, do not start integration yet. Full detail in "MixtureVitae-Backup Multimodal Investigation" section below.
 - **Pending investigation tasks (assigned by Huu, not yet done):**
-  1. `mixture-vitae-backup/MixtureVitae-Backup` — `multimodal` branch on HF. Huu asked (Jul 5) if we knew about it / could upload; not yet investigated.
-  2. "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu created this at some point but doesn't recall exactly what it is; need to check for overlap with our own pipeline (avoid a repeat of the `valid_with_seed` double-counting issue).
+  1. "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu created this at some point but doesn't recall exactly what it is; need to check for overlap with our own pipeline (avoid a repeat of the `valid_with_seed` double-counting issue).
 - **Open concern (not yet acted on):** naively mixing all of MV-Omni (6.93B tokens, 0 agent tokens) into the training corpus dilutes the agent (pose) token ratio from 12.2% (FineVideo v4 alone) down to ~5.2% of the combined mix. Since agent tokens are the project's core differentiator, consider dropout on MV-Omni (same treatment as Cosmos/AVC-LM) or oversampling agent-bearing records before combining.
 
 **Current priority ranking (given JUPITER down + "more data before training" preference):**
 
 | Tier | Task | Needs cluster? | Impact |
 |---|---|---|---|
-| P0 | Investigate MixtureVitae-Backup/multimodal | No | Unknown, possibly free tokens |
+| ✅ | ~~Investigate MixtureVitae-Backup/multimodal~~ | No | Done Jul 9 — mostly text, ~3.27B raw SNAC codes found; awaiting Huu's go/no-go |
 | P0 | Clarify "finevideo reformulation" on leo | No | Avoid double-counting |
 | P0 | Decide MV-Omni mix ratio (agent dilution fix) | No | Protects core pose signal |
 | P0 | Define eval protocol (DISCUSS-3, still open) | No | Required before any training run |
@@ -772,7 +778,7 @@ Estimated gain: ~4–5 qualifying joints/window × 5 tokens saved ≈ 20–47 to
 - [ ] Start writing captioning pipeline (SmolVLM2/Qwen2.5-VL trên FineVideo keyframes)
 - [ ] Investigate leo seed2 + euro_pat token counts
 - [ ] Plan Cosmos3-DROID pipeline (download strategy, SLURM script)
-- [ ] Investigate `MixtureVitae-Backup/multimodal` (HF) — Huu asked Jul 5, not yet done
+- [x] Investigate `MixtureVitae-Backup/multimodal` (HF) — **DONE (Jul 9, 2026)**. Mostly text; SNAC tokens found in 2 files as raw int arrays. See "MixtureVitae-Backup Multimodal Investigation" section. Awaiting Huu's decision on whether to add.
 - [ ] Clarify "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — check overlap with own pipeline
 - [ ] Decide MV-Omni mix ratio / dropout to avoid diluting agent token % (12.2% → ~5.2% if mixed naively)
 - [ ] Scope new data candidates: abc.bot, MolmoAct2-BimanualYAM-Dataset, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData (see "New Data Candidates" table above)
@@ -883,3 +889,66 @@ Log: `tools/overlap_run.log` | Kết quả JSON: `tools/dataset_overlap_results.
 - **stack_images3_gzip** — 313K token seed2. Quá nhỏ nhưng không tốn gì thêm nếu đã có sẵn.
 
 **Bỏ valid_with_seed.** 1.1 TB đã download có thể xóa để giải phóng storage.
+
+---
+
+## MixtureVitae-Backup Multimodal Investigation (Jul 9, 2026)
+
+### Background
+
+P0 item from Huu (asked Jul 5): investigate `mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` on HF — never scanned before (separate from `valid_with_seed` / `stack_images3_gzip`, which were already inventoried). Run locally on a Windows dev machine (no JUWELS access this session), CPU-only, so the approach was streaming sample-based counting rather than a full download — 103GB total across 15 files.
+
+### Method
+
+Two new scripts, both reusing `PATTERNS`/`count_tokens`/`_hf_token`/`hf_url`/checkpoint machinery from `tools/data_inventory.py`:
+
+- **`tools/peek_multimodal.py`** — structural probe, streams just the first few records/members per file (no full download) to discover format and flag VLA-token presence. Output: `tools/multimodal_peek_report.json`.
+- **`tools/count_multimodal_tokens.py`** — true HTTP streaming (never writes the compressed file to disk), caps each file at `--sample-mb` compressed MB (default 75), counts VLA-tag tokens (regex, same as `data_inventory.py`) plus any raw integer token arrays (`*_token`/`*_tokens` fields — generalizes beyond just `snac_token`), extrapolates to full file size. Resumable checkpoint: `tools/multimodal_inventory_checkpoint.json`.
+
+**Key implementation fix:** `valid_data_snac.jsonl.gz`, `train_data_snac.jsonl.gz`, and `emo.jsonl.gz` are **not** true JSONL (one compact object per line) — they're a pretty-printed JSON array where a single record can span many lines. Naive newline-splitting silently produced zero parsed records. Fixed by switching to a streaming buffer + `json.JSONDecoder().raw_decode()` approach that pulls complete top-level JSON values regardless of embedded newlines.
+
+Local env: plain Python venv (`tools/env_multimodal_inventory/`, gitignored) — `pip install requests tqdm`, no conda needed. HF token support added (`tools/.hf_token`, gitignored, read by `_hf_token()`) though this specific repo turned out to be public (no auth required).
+
+### Results (75MB compressed sample per file, extrapolated to full size)
+
+**No file contains our tagged VLA tokens** (`<seed2_N>`, `<cosmos_N>`, `<avclm_N>`, `<snac_N>`) — confirmed at the 75MB-sample scale across all 15 files, not just the initial 5-record peek.
+
+**2 files carry real SNAC audio tokens, as raw integer arrays** (`snac_token: [128266, ...]`), not tag strings:
+
+| File | Size | Sample records | Extrapolated raw SNAC codes |
+|---|---|---|---|
+| `train_data_snac.jsonl.gz` | 11.1 GB | 131,850 | **~3.11B** |
+| `valid_data_snac.jsonl.gz` | 579 MB | 129,996 | **~162M** |
+| **Total** | | | **~3.27B raw SNAC codes** |
+
+Comparable in scale to the 4.92B SNAC tokens already found in MixtureVitae-Omni's `valid_snac` — a real, previously-uncounted audio-token resource.
+
+**13 remaining files — plain text/caption corpora** (word-count, extrapolated):
+
+| File | Extrapolated text tokens | Content |
+|---|---|---|
+| high_stack.tar.gz | 4.11B | StackExchange QA |
+| valid_text_only.tar.gz | 3.31B | mixed text |
+| stack_maga.tar.gz | 1.65B | StackExchange |
+| emo.jsonl.gz | 1.04B | audio-transcript + image-caption pairs |
+| train_data_snac.jsonl.gz (`text` field) | 865.5M | transcript alongside the SNAC tokens above |
+| magalith-10m-florence2.jsonl.gz | 864.4M | image captions |
+| synth_llava2.tar.gz | 162.9M | LLaVA-style image captions |
+| clappa.tar.gz | 138.4M | video captions (DISCUSS-1 candidate) |
+| synth_llava.tar.gz | 93.7M | LLaVA-style image captions |
+| low_nemo_maga.tar.gz | 73.7M | text |
+| valid_data_snac.jsonl.gz (`text` field) | 44.1M | transcript alongside the SNAC tokens above |
+| youtube.tar.gz | 38.6M | video storyline/description |
+| coco.tar.gz | 10.0M | image captions — **exact** (fully consumed within sample) |
+| europarl.tar.gz | ~0.1M | ⚠️ low confidence, see caveats |
+
+### Caveats (not yet resolved)
+
+1. **`finevideo_transcripts.jsonl.gz` undercounted (shows 0).** Real field is `transcripts`, not `text` — the counter only checks `text` (matching `data_inventory.py`'s existing convention). Needs a dedicated pass, and — since it's literally FineVideo YouTube transcripts — a video-ID overlap check against our own pipeline (same class of risk as the `valid_with_seed` double-counting issue already resolved once).
+2. **`europarl.tar.gz` estimate is close to meaningless** — first sampled member was a single ~986MB record, so the 75MB sample only completed 1 record. Needs a much larger sample or a targeted full scan.
+3. **Several archives mix huge text members with binary `.wds` shards** (youtube, synth_llava/synth_llava2, stack_maga, high_stack, valid_text_only) — 75MB only reached a handful of members out of many, so extrapolation assumes uniform density across the archive, which may not hold. Lower confidence than files sampled with hundreds of small members (coco, low_nemo_maga).
+4. **Raw `snac_token` integer arrays are not in our tokenizer's `<snac_N>` string format** — would need a conversion step (offset/tag scheme) similar to the MV-Omni `seed→seed2` conversion already done, before these ~3.27B codes could enter our Megatron pipeline.
+
+### Status
+
+Posted to Huu on Discord (Jul 9, 2026, 3:51pm): *"this dataset is mostly text, only train_data_snac.jsonl.gz and valid_data_snac.jsonl.gz have snac tokens ... u want to add it?"* — **awaiting his reply.** Do not start integration/download of the full files until he responds.

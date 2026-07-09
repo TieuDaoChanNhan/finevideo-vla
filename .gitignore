@@ -6,6 +6,12 @@ env_hrnet_datasets_v1/
 miniforge3/
 env_pose/
 
+# Local venvs (Windows dev machine)
+tools/inventory/env_multimodal_inventory/
+
+# Local secrets (Windows dev machine)
+tools/inventory/.hf_token
+
 # Model weights / checkpoints
 hrnet_storage/
 *.pt
@@ -14,13 +20,13 @@ hrnet_storage/
 *.safetensors
 *.jit
 
-# Prototype pipeline — model weights downloaded at runtime
-prototype_pipeline/pretrained_ckpts/*/autoencoder.jit
-prototype_pipeline/pretrained_ckpts/*/encoder.jit
-prototype_pipeline/pretrained_ckpts/*/decoder.jit
-prototype_pipeline/seed2/model.safetensors
-prototype_pipeline/seed2/ae.safetensors
-prototype_pipeline/output_pretty.jsonl
+# pipeline_video — model weights downloaded at runtime (renamed from prototype_pipeline/)
+pipeline_video/pretrained_ckpts/*/autoencoder.jit
+pipeline_video/pretrained_ckpts/*/encoder.jit
+pipeline_video/pretrained_ckpts/*/decoder.jit
+pipeline_video/seed2/model.safetensors
+pipeline_video/seed2/ae.safetensors
+pipeline_video/output_pretty.jsonl
 
 # Large runtime artifacts
 sample_with_agent.json

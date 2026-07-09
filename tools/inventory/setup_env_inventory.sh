@@ -1,6 +1,6 @@
 #!/bin/bash
 # Create a minimal venv for data_inventory.py on JUWELS.
-# Run once: bash tools/setup_env_inventory.sh
+# Run once: bash tools/inventory/setup_env_inventory.sh
 
 set -e
 ENV=/p/data1/mmlaion/nguyen38/env_inventory

@@ -11,8 +11,8 @@ Also reports:
   - Token overhead breakdown (wrappers + t tokens vs xyz payload)
 
 Usage:
-    python tools/analyze_cp_tradeoff.py
-    python tools/analyze_cp_tradeoff.py --samples 300 --data-dir /path/to/yolo_cleaned_30fps
+    python tools/analysis/analyze_cp_tradeoff.py
+    python tools/analysis/analyze_cp_tradeoff.py --samples 300 --data-dir /path/to/yolo_cleaned_30fps
 """
 
 import argparse

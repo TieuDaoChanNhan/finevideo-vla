@@ -2,8 +2,8 @@
 Extract native FPS for every video in videos_staging/ and write
 outputs/fps_lookup.json  →  { video_id: fps_float, ... }
 
-Run from 3d-human-pose/ working directory:
-    python tools/extract_fps.py \
+Run from repo root:
+    python tools/extract/extract_fps.py \
         --video-dir /e/data1/datasets/playground/mmlaion/shared/nguyen38/videos_staging \
         --output    outputs/fps_lookup.json \
         --workers   32

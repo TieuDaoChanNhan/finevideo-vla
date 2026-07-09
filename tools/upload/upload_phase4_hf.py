@@ -11,7 +11,7 @@ Each output line: {"video_id": str, "window_id": int, "states": [8][17][3]}
 
 Usage:
     export HF_TOKEN='hf_...'
-    python tools/upload_phase4_hf.py [--source-dir PATH] [--upload-dir PATH]
+    python tools/upload/upload_phase4_hf.py [--source-dir PATH] [--upload-dir PATH]
 """
 
 import argparse

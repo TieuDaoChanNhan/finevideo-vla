@@ -4,7 +4,7 @@ Push dataset cards (README.md) to all five HuggingFace dataset repos.
 
 Usage:
     export HF_TOKEN='hf_...'
-    python tools/push_dataset_cards.py
+    python tools/upload/push_dataset_cards.py
 """
 
 import os

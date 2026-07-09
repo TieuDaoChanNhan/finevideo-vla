@@ -15,9 +15,9 @@ Fixed 8-CP baseline:
   17 joints * 34 = 578 tokens/window  (+1 for <fps_30> = 579 total)
 
 Usage:
-    python tools/analyze_pchip_compression.py
-    python tools/analyze_pchip_compression.py --files 500   # sample 500 files
-    python tools/analyze_pchip_compression.py --data-dir /path/to/agent_tokens_adaptive
+    python tools/analysis/analyze_pchip_compression.py
+    python tools/analysis/analyze_pchip_compression.py --files 500   # sample 500 files
+    python tools/analysis/analyze_pchip_compression.py --data-dir /path/to/agent_tokens_adaptive
 """
 
 import argparse

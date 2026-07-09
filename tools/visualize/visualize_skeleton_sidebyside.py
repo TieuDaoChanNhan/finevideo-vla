@@ -12,10 +12,10 @@ Output: MP4 with left = raw video, right = video + skeleton overlay.
 Uses imageio + PIL (available in env_tools). No cv2 needed.
 
 Usage:
-    python tools/visualize_skeleton_sidebyside.py --list-available
-    python tools/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA
-    python tools/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA --flip-y
-    python tools/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA --max-frames 300
+    python tools/visualize/visualize_skeleton_sidebyside.py --list-available
+    python tools/visualize/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA
+    python tools/visualize/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA --flip-y
+    python tools/visualize/visualize_skeleton_sidebyside.py --video-id 001bwvuSYyA --max-frames 300
 """
 
 import argparse

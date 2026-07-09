@@ -6,6 +6,12 @@
 
 ---
 
+## Repo Reorg Note (Jul 9, 2026)
+
+`tools/` was split into subfolders (`upload/`, `tokenizer/`, `inventory/`, `eval/`, `visualize/`, `analysis/`, `extract/`) and ambiguously-named dirs were renamed (`multimodal/` → `investigations/mixturevitae_multimodal/`, `data_prep/` → `investigations/mv_omni_seed_conversion/`, `test/` → `manual_checks/`; `dev/` archived). **Script paths referenced below in older sections reflect the pre-reorg flat `tools/` structure** — e.g. `tools/data_inventory.py` is now `tools/inventory/data_inventory.py`. See the updated root `README.md` for the current layout.
+
+---
+
 ## Pre-training Blockers (Jul 2, 2026, updated Jul 8, 2026)
 
 Three items must be resolved before the next training run (per Huu's directive):
@@ -1177,7 +1183,7 @@ See Section 2.2 (Phase 5) for the full analysis. Bottom line: the targeted, stat
 
 ### Pending investigation tasks (assigned, not yet done)
 
-1. `mixture-vitae-backup/MixtureVitae-Backup` — `multimodal` branch on HF (Huu asked Jul 5).
+1. ✅ ~~`mixture-vitae-backup/MixtureVitae-Backup` — `multimodal` branch on HF (Huu asked Jul 5).~~ **Investigated Jul 9, 2026** — see Section 16 below. Awaiting Huu's go/no-go before any integration.
 2. "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — unclear scope, check for overlap with this project's own pipeline before using.
 3. MV-Omni mix ratio — naively combining all of MV-Omni (6.93B tokens, 0 agent tokens) with FineVideo v4 would dilute the agent token share from 12.2% to ~5.2% of the combined corpus. Needs a dropout or oversampling strategy before mixing, since agent (3D pose) tokens are the project's core differentiator.
 
@@ -1190,3 +1196,66 @@ See Section 2.2 (Phase 5) for the full analysis. Bottom line: the targeted, stat
 | P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData; investigate leo seed2 + euro_pat | No | New sources, size TBD |
 | P3 | Cosmos3-DROID pipeline run; full captioning run; Megatron re-tokenize combined corpus; train v0.3 | GPU (JUPITER) | Blocked until cluster back + data ready |
 | P4 (deferred) | 1-CP, Moss-Audio V2, Qwen3 migration, PAB-Spline angle spec, Isaac Sim | — | Explicitly held off per team decisions |
+
+---
+
+## 16. MixtureVitae-Backup Multimodal Investigation (Jul 9, 2026)
+
+### Background
+
+Investigated the P0 item from Huu (asked Jul 5): `mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` on HF — a folder never scanned before, distinct from the `valid_with_seed`/`stack_images3_gzip` sections already covered by `tools/data_inventory.py`. Run locally on a Windows dev machine without JUWELS access this session — CPU only, so the approach was sample-based streaming rather than a full 103GB download.
+
+### Method
+
+Two new scripts, reusing `PATTERNS`/`count_tokens`/`_hf_token`/`hf_url`/checkpoint machinery from `tools/data_inventory.py` (imported, not duplicated):
+
+- **`tools/peek_multimodal.py`** — structural probe. Streams just the first few records/members per file (no full download, no local temp file) to discover format and flag VLA-tag-token presence before writing full parsing logic.
+- **`tools/count_multimodal_tokens.py`** — true HTTP streaming (never writes the compressed file to disk). Caps each file at `--sample-mb` compressed MB (default 75). Counts VLA-tag tokens via the same regex as `data_inventory.py`, plus any raw integer token arrays (any `*_token`/`*_tokens` field holding a list of ints — generalized, not hardcoded to `snac_token`). Extrapolates sampled counts to full file size. Resumable via an atomic JSON checkpoint (`tools/multimodal_inventory_checkpoint.json`).
+
+**Implementation bug found and fixed:** `valid_data_snac.jsonl.gz`, `train_data_snac.jsonl.gz`, and `emo.jsonl.gz` are not true JSONL (one compact object per line) — they're a pretty-printed JSON array where a single record can span many physical lines. Naive newline-splitting silently produced zero parsed records (every line failed `json.loads`, caught by a broad except and skipped). Fixed by switching to a streaming text buffer combined with `json.JSONDecoder().raw_decode()`, which pulls complete top-level JSON values from the buffer regardless of embedded newlines.
+
+Local environment: plain Python venv (`tools/env_multimodal_inventory/`, gitignored), `pip install requests tqdm` — no conda, no torch/datasets/pandas needed, matching the existing `tools/setup_env_inventory.sh` convention for this class of script. HF token support added (`tools/.hf_token`, gitignored, read by `_hf_token()`) though this particular repo turned out to be public — no auth was required for any of the runs.
+
+### Results (75MB compressed sample per file, extrapolated to full file size)
+
+**No tagged VLA tokens found anywhere** — `<seed2_N>`, `<cosmos_N>`, `<avclm_N>`, `<snac_N>` all zero across all 15 files, confirmed at the 75MB-sample scale (not just the initial 5-record peek).
+
+**2 files carry real SNAC audio tokens, as raw integer arrays** (`snac_token: [128266, ...]`), not `<snac_N>` tag strings:
+
+| File | Size | Sample records | Extrapolated raw SNAC codes |
+|---|---|---|---|
+| `train_data_snac.jsonl.gz` | 11.1 GB | 131,850 | **~3.11B** |
+| `valid_data_snac.jsonl.gz` | 579 MB | 129,996 | **~162M** |
+| **Total** | | | **~3.27B raw SNAC codes** |
+
+Comparable in scale to the 4.92B SNAC tokens already found in MixtureVitae-Omni's `valid_snac` (Section 13 data inventory) — a real, previously-uncounted audio-token resource.
+
+**13 remaining files — plain text/caption corpora** (word-count, extrapolated):
+
+| File | Extrapolated text tokens | Content |
+|---|---|---|
+| high_stack.tar.gz | 4.11B | StackExchange QA |
+| valid_text_only.tar.gz | 3.31B | mixed text |
+| stack_maga.tar.gz | 1.65B | StackExchange |
+| emo.jsonl.gz | 1.04B | audio-transcript + image-caption pairs |
+| train_data_snac.jsonl.gz (`text` field) | 865.5M | transcript alongside the SNAC tokens above |
+| magalith-10m-florence2.jsonl.gz | 864.4M | image captions |
+| synth_llava2.tar.gz | 162.9M | LLaVA-style image captions |
+| clappa.tar.gz | 138.4M | video captions (Section 13 DISCUSS-1 candidate) |
+| synth_llava.tar.gz | 93.7M | LLaVA-style image captions |
+| low_nemo_maga.tar.gz | 73.7M | text |
+| valid_data_snac.jsonl.gz (`text` field) | 44.1M | transcript alongside the SNAC tokens above |
+| youtube.tar.gz | 38.6M | video storyline/description |
+| coco.tar.gz | 10.0M | image captions — **exact** (fully consumed within the sample) |
+| europarl.tar.gz | ~0.1M | low confidence — see caveats |
+
+### Caveats
+
+1. **`finevideo_transcripts.jsonl.gz` undercounted (reports 0).** Its real field is `transcripts`, not `text` — the counter only checks `text` (matching the existing `data_inventory.py` convention). Needs a dedicated pass, and — since it's literally FineVideo YouTube transcripts — a video-ID overlap check against this project's own pipeline (same class of risk as the `valid_with_seed` double-counting issue already resolved once, Section 13).
+2. **`europarl.tar.gz`'s estimate is close to meaningless.** The first sampled member was a single ~986MB record, so the 75MB sample budget only completed 1 full record. Needs a much larger sample or a dedicated full scan.
+3. **Several archives mix huge text members with binary `.wds` shards** (youtube, synth_llava/synth_llava2, stack_maga, high_stack, valid_text_only) — 75MB only reached a handful of members out of many, so extrapolation assumes uniform density across the archive, which may not hold. Lower confidence than files sampled with hundreds of small members (coco, low_nemo_maga).
+4. **Raw `snac_token` integer arrays are not in this project's tokenizer's `<snac_N>` string format.** Would need a conversion step (offset/tag scheme) similar to the MV-Omni `seed→seed2` conversion already done (Section 13) before these ~3.27B codes could enter the Megatron pipeline.
+
+### Status
+
+Findings posted to Huu on Discord (Jul 9, 2026, 3:51pm): *"this dataset is mostly text, only train_data_snac.jsonl.gz and valid_data_snac.jsonl.gz have snac tokens ... u want to add it?"* — **awaiting his reply.** No integration or full download has started pending his decision.

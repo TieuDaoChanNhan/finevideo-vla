@@ -13,7 +13,7 @@ Videos with no 30fps .npy or no fps entry are kept with original joints_3d
 and fps=0.0 so the shard is never silently dropped.
 
 Run locally (fast enough, pure CPU):
-    python tools/rebuild_parquet_fps.py \
+    python tools/extract/rebuild_parquet_fps.py \
         --input-dir  /e/scratch/reformo/nguyen38/parquet_3d_shards \
         --output-dir /e/scratch/reformo/nguyen38/parquet_3d_shards_30fps \
         --npy-dir    outputs/3d_npy_30fps \
