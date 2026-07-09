@@ -1,9 +1,43 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 04/07/2026  
-**Cluster:** JUPITER (JSC), partition `booster`, GPU GH200  
+**Cập nhật lần cuối:** 08/07/2026  
+**Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **hiện đang DOWN, xem phần Cập nhật bên dưới**  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
+
+---
+
+## Cập nhật phiên làm việc — 08/07/2026 (đọc phần này trước khi resume)
+
+**Thay đổi từ lần trước:**
+- ✅ **Phase 7 v4 đã upload lên HF** — `EmpathicRobotics/FineVideo-Phase7-Flattened` live với data v4 (371,888 record, 5.217B token). Đã share cho Huu/joergfranke trên Discord (07/07) làm dataset sẵn sàng tokenize.
+- ✅ **1-CP — CHỐT quyết định: hoãn.** Confirm với Huu trên Discord (08/07): giữ nguyên format adaptive 2/4/8-CP hiện tại. Gain chỉ +7.1% (ước tính từ sample 50 video), re-run Phase 5→7 tốn thời gian không đáng. Huu OK để báo cáo paper với con số "compression giảm hơn 50%" (so với fixed 8-CP) là đủ. **Chỉ quay lại nếu sau này data cho thấy cần thiết.** Đã thử chạy full-dataset investigation (18,847 video) nhưng bị gián đoạn do JUWELS sập — chưa resume, chưa có kế hoạch làm tiếp.
+- ⚠ **Cluster JSC sập (từ ~06/07/2026):** JUPITER down hoàn toàn. JUWELS booster + JURECA có GPU nhưng hạn chế ("to the extent Jenia lets us"). Huu ước tính: chính thức 1 tuần, thực tế có thể 2 tuần. Việc bị block: Megatron re-tokenize quy mô lớn, train v0.3, chạy 1-CP full dataset, pipeline Cosmos3-DROID.
+- **Quyết định team: synthetic/simulation data giới hạn ≤30% tổng training mix** (Huu, dựa trên literature) — áp dụng khi tính tỷ lệ mix abc.bot / MolmoAct2 / Cosmos3-DROID với FineVideo (video người thật).
+- **Nguồn data mới tìm được (07/07/2026, từ chat team)** — xem bảng "Nguồn Data Mới" bên dưới. Đáng chú ý nhất: `abc.bot` (400h robot sim data **kèm physics state** MjData, permissive, có eval env).
+- **Định hướng chia sẻ data đa dự án:** Huu muốn gộp data giữa 3 nhánh song song — omni-vla (repo này), dự án so sánh kiến trúc của joergfranke (qwen3/lfm2.5/olmo3), và world-action-model dạng diffusion của blanchon.jl (video generation + action). `FineVideo-Phase7-Flattened` giờ được dùng chung cho các dự án khác — giữ format càng generic/well-documented càng tốt.
+- **Việc điều tra còn treo (Huu giao, chưa làm):**
+  1. `mixture-vitae-backup/MixtureVitae-Backup` — nhánh `multimodal` trên HF. Huu hỏi (05/07) đã biết chưa/upload được không; chưa investigate.
+  2. "finevideo reformulation" tại `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu tự tạo nhưng không nhớ rõ nội dung; cần check overlap với pipeline hiện tại (tránh lặp lại vụ double-count như `valid_with_seed`).
+- **Vấn đề cần xử lý (chưa làm):** nếu mix thẳng toàn bộ MV-Omni (6.93B token, 0 agent token) vào training corpus, tỷ lệ agent (pose) sẽ pha loãng từ 12.2% (chỉ FineVideo v4) xuống còn ~5.2% trong tổng mix. Agent token là điểm khác biệt cốt lõi của dự án — cần cân nhắc dropout MV-Omni (giống cách đã làm với Cosmos/AVC-LM) hoặc oversample record có agent trước khi mix.
+
+**Xếp hạng ưu tiên hiện tại (do JUPITER down + ưu tiên "thêm data trước khi train"):**
+
+| Tier | Việc | Cần cluster? | Impact |
+|---|---|---|---|
+| P0 | Điều tra MixtureVitae-Backup/multimodal | Không | Chưa rõ, có thể có token miễn phí |
+| P0 | Làm rõ "finevideo reformulation" trên leo | Không | Tránh double-count |
+| P0 | Quyết định tỷ lệ mix MV-Omni (fix pha loãng agent) | Không | Bảo vệ tín hiệu pose cốt lõi |
+| P0 | Định nghĩa eval protocol (DISCUSS-3, còn treo) | Không | Bắt buộc trước khi train |
+| P0 | Chốt tỷ lệ mix text/instruction data (DISCUSS-1) | Không | Ảnh hưởng khả năng steer robot |
+| P1 | Viết code pipeline captioning | Không (chỉ cần GPU lúc chạy) | Cao nhất — ×4 record, fix root cause 2 |
+| P1 | Viết code ego-centric perspective converter | Không (chỉ cần GPU lúc chạy) | ×2 diversity pose data, miễn phí |
+| P1 | Mix MV-Omni vào Megatron format | Chỉ cần CPU | +6.93B token, vocab đã sẵn sàng |
+| P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData | Không | Nguồn robot/video mới, chưa rõ size |
+| P2 | Điều tra leo seed2 + euro_pat | Không | Chưa rõ |
+| P3 | Chạy pipeline Cosmos3-DROID | GPU | Data domain robot thật đầu tiên |
+| P3 | Chạy captioning full, Megatron re-tokenize corpus gộp, train v0.3 | GPU (JUPITER) | Block đến khi cluster lên + data đủ |
+| P4 (hoãn) | 1-CP, Moss-Audio V2, Qwen3 migration, PAB-Spline angle spec, Isaac Sim | — | Đã quyết định hoãn theo team |
 
 ---
 
@@ -393,6 +427,8 @@ Grammar 1-CP: nếu `quantize(frame_0) == quantize(frame_7)` cho cả 3 dim:
 ```
 **Gain thực tế: +7.1%** (từ 284 → 264 tokens/window). Cần grammar change + re-run Phase 5 → 6 → 7 → Megatron tokenization.
 
+**CHỐT QUYẾT ĐỊNH (08/07/2026):** Hoãn. Đã confirm với Huu trên Discord — giữ nguyên format adaptive 2/4/8-CP. Đã thử chạy full-dataset validation (18,847 video) nhưng bị gián đoạn do JUWELS sập, chưa resume. Chỉ quay lại nếu sau này data cho thấy cần thiết — gain +7.1% không đáng để re-run toàn bộ Phase 5→7 ngay lúc này. Cho mục đích paper, con số "compression giảm hơn 50%" (so với fixed 8-CP) là đủ để báo cáo.
+
 #### Về window duration dài hơn (Huu: "could compress more for longer duration")
 
 Tăng từ 8 frames (0.267s) lên 16–32 frames:
@@ -519,6 +555,22 @@ python pipeline_pose/phase7_flatten.py \
 - Huu đề cập có dataset trên leo cluster: seed2 + euro_pat
 - Cần đếm token trước khi commit storage/compute
 
+**Nguồn Data Mới (07/07/2026 — từ chat team)**
+
+Tìm được khi mở rộng scope tìm data VLA. Chưa đếm token/giờ dữ liệu hay check license cho cái nào.
+
+| Nguồn | Nội dung | Ghi chú |
+|---|---|---|
+| `abc.bot` (Amazon) | 400h robot recording **trong simulation**, có physics state (MjData) | Đáng chú ý nhất — permissive, có eval env, cùng embodiment xuyên suốt. blanchon.jl: "indeed perfect" |
+| `allenai/MolmoAct2-BimanualYAM-Dataset` | 2 TB, robot tay đôi YAM | Cần check license + embodiment có tương thích không |
+| `MiG-NJU/OmniVideo-100K` | Video dataset | Chưa scope |
+| `mlfoundations/MINT-1T-HTML` | Text/HTML dataset lớn | Chưa scope — có thể dùng cho language mix (DISCUSS-1), không phải video |
+| `genrobot2025/Gen-EgoData` | Robot data góc nhìn egocentric | Chưa scope |
+| `finevla.xlang.ai` | Có thể là VLA dataset | Chưa tìm được HF link — có thể chưa release |
+| `mira-wm.com` | World model reference (Kyutai vừa release cái tương tự) | Reference/cảm hứng, không hẳn là nguồn data |
+
+**Ràng buộc team:** synthetic/simulation data (abc.bot, MolmoAct2, Cosmos3-DROID...) giới hạn **≤30% tổng training mix** — team consensus (Huu, dựa trên literature), để giữ cân bằng nghiêng về video người/robot thật.
+
 **Ưu tiên 8 — Re-training v0.2**
 
 Sau khi hoàn thành ưu tiên 1, 2, 4: ước tính **10–20B token** có sẵn.
@@ -636,6 +688,9 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 | Encode SNAC 1 lần/activity rồi chia chunk | Encode từng chunk 0.267s sẽ mất audio context + chậm vì nhiều call nhỏ. Encode 1 lần + chia đều vừa chính xác vừa nhanh. | T6/2026 |
 | SNAC cho TẤT CẢ activity, không chỉ activity có agent | 86% activity không có agent vẫn có seed2+cosmos → thêm SNAC dạy audio↔video binding. Chỉ dùng 14% (agent-only) = lãng phí 86% GPU run. | T6/2026 |
 | valid_with_seed KHÔNG dùng (overlap confirmed) | Overlap check: 86.9% video đã có trong omni_valid. 4,141 video unique chỉ có seed2 (~700K token) — không đủ bù cho 1.1 TB storage. omni_valid là superset gần như hoàn toàn. | 30/06/2026 |
+| 1-CP: hoãn, giữ nguyên adaptive 2/4/8-CP | Gain +7.1% (ước tính từ sample) không đáng để re-run toàn bộ Phase 5→7 ngay lúc này; quay lại sau nếu cần | 08/07/2026 |
+| Synthetic/sim data giới hạn ≤30% tổng training mix | Team consensus (Huu), dựa trên literature; giữ cân bằng nghiêng về video thật | 07/07/2026 |
+| Moss-Audio Tokenizer V2: nếu dùng thì phải giới hạn | Huu: ở 400 token/giây sẽ overwhelm dataset nếu dùng rộng cho omni-modal pretraining; chỉ nên dùng đoạn ngắn chi tiết cao rồi tiếp nối SNAC rate thấp hơn, hoặc dùng riêng nếu không cần bind với ngôn ngữ | 02/07/2026 |
 
 ---
 
@@ -679,11 +734,7 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
   - Full-chain: 69,811 (18.8%) | Snac-only: 302,044 (81.2%) | Bad: 0
   - seed2 332.6M | cosmos 3.88B | snac 363M | agent windows 2,148,474 | avclm 0 ✓
 - [x] **Phase 7 v4 — fix temporal alignment** — **HOÀN THÀNH (02/07/2026)**. Per-chunk ordering, speech trong header, 5.217B token → `megatron_dataset_v4/`
-- [ ] **Upload Phase 7 v4 lên HF** → `EmpathicRobotics/FineVideo-Phase7-Flattened`:
-  ```bash
-  export HF_TOKEN='hf_...'
-  python tools/upload_flattened_hf.py
-  ```
+- [x] **Upload Phase 7 v4 lên HF** — **HOÀN THÀNH (07/07/2026)**. `EmpathicRobotics/FineVideo-Phase7-Flattened` live với data v4. Đã share cho Huu/joergfranke trên Discord làm dataset sẵn sàng tokenize.
   Source: `megatron_dataset_v4/` | Dataset card đã cập nhật: `tools/vla_flattened_dataset_card.md`
 - [ ] **Megatron re-tokenize** `megatron_dataset_v4/` với `tokenizer-vla-adaptive-v2` (156,505 vocab) → `.bin/.idx` → train v0.3
 - [x] **Upload tokenizers** — **HOÀN THÀNH (01/07/2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
@@ -695,3 +746,14 @@ Script `tools/check_dataset_overlap.py` so sánh video ID của `valid_with_seed
 - [ ] Bắt đầu viết captioning pipeline (SmolVLM2 / Qwen2.5-VL trên keyframe)
 - [ ] Điều tra leo seed2 + euro_pat token counts
 - [ ] Lên kế hoạch Cosmos3-DROID pipeline (download strategy, SLURM script)
+- [ ] Điều tra `MixtureVitae-Backup/multimodal` (HF) — Huu hỏi 05/07, chưa làm
+- [ ] Làm rõ "finevideo reformulation" tại `leo:/mnt/sdb/mixture-vitae-working/finevideo` — check overlap với pipeline hiện tại
+- [ ] Quyết định tỷ lệ mix MV-Omni / dropout để tránh pha loãng agent token % (12.2% → ~5.2% nếu mix thẳng)
+- [ ] Scope nguồn data mới: abc.bot, MolmoAct2-BimanualYAM-Dataset, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData (xem bảng "Nguồn Data Mới" ở trên)
+
+### Cluster account mapping (07/07/2026 — dùng khi submit job)
+```
+JUSUF:   ccstdl
+JUPITER: reformo
+JUWELS:  laionize
+```

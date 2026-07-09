@@ -6,13 +6,15 @@
 
 ---
 
-## Pre-training Blockers (Jul 2, 2026)
+## Pre-training Blockers (Jul 2, 2026, updated Jul 8, 2026)
 
 Three items must be resolved before the next training run (per Huu's directive):
 
-1. **Language data mix** — add ~few billion tokens of instruction/caption data alongside FineVideo v4 + MV-Omni. Candidates: clappa, synthetic COCO, robot SFT datasets, multilingual instruction.
-2. **PCHIP compression analysis** — quantify token saving of adaptive vs fixed 8-CP; confirm coordinate system (absolute xyz vs delta-to-pelvis).
-3. **Eval setup** — define baseline eval protocol (MPJPE, modality transition, instruction-following) before training.
+1. **Language data mix** — add ~few billion tokens of instruction/caption data alongside FineVideo v4 + MV-Omni. Candidates: clappa, synthetic COCO, robot SFT datasets, multilingual instruction. **Still open** — need to count tokens of candidates and decide mix ratio.
+2. **PCHIP compression analysis** — quantify token saving of adaptive vs fixed 8-CP; confirm coordinate system (absolute xyz vs delta-to-pelvis). **Done** — 50.9% saving vs fixed 8-CP confirmed (Section 2.2, Phase 5). 1-CP follow-up investigated and **deferred** (see Phase 5 section below).
+3. **Eval setup** — define baseline eval protocol (MPJPE, modality transition, instruction-following) before training. **Still open.**
+
+**Additional blocker as of Jul 8, 2026: JSC cluster outage.** JUPITER down since ~Jul 6, 2026. JUWELS booster + JURECA have partial GPU availability. ETA per Huu: officially 1 week, realistically ~2 weeks. This blocks Megatron re-tokenization at scale and any training run regardless of data readiness.
 
 ---
 
@@ -167,6 +169,10 @@ The gap is explained by overhead: our format is **self-describing** (joint name 
 ```
 
 Estimated impact: ~55% of joint-windows at tier 2-CP; if ~half qualify as truly static → ~4–5 joints/window × 5 tokens saved ≈ **20–47 tokens/window** → additional ~8–16% compression on top of current 50.9%. Grammar change required (decoder distinguishes 1-CP by absence of `<joint_t_N>` after open tag). Would break backward compatibility with existing Phase 5 output — requires re-run of Phase 5 and all downstream phases.
+
+**Validated estimate (Jul 3–4, 2026):** `tools/analyze_cp_tradeoff.py` on 50 videos / 1,940 windows confirmed the targeted (static-only) 1-CP approach is safe — it only collapses a joint to 1-CP when `quantize(frame_0) == quantize(frame_7)`, meaning no additional reconstruction error is introduced (by construction, any drift is below the quantization step). Measured: 53.6% of tier-2 (already low-curvature) joint-windows qualify, ~4.1 qualifying joints/window, saving ~20 tokens/window (284 → 264 avg), for **+7.1% additional compression**. This is distinct from naively forcing 1-CP on *every* joint (the raw N=1 row in the sweep table above), which gives a much worse 24.3mm MAE because it also collapses genuinely moving joints — that global approach was never proposed for production use.
+
+**Final decision (Jul 8, 2026): deferred.** Confirmed with Huu via Discord — keep the current adaptive 2/4/8-CP format in production. A full-dataset validation run (18,847 videos) was attempted but interrupted by the JUWELS cluster outage and not resumed. The +7.1% gain does not justify a full Phase 5→6→7 re-run at this time; revisit only if later evidence shows it's necessary. For reporting purposes (e.g. a paper), "compression reduces token count by more than 50% vs fixed 8-CP" is the number the team is comfortable citing as-is.
 
 **Previous iterations (superseded):**
 - `phase5_interpolation_tokenizer.py` — 256 opaque uint8 tokens per chunk (scale + anchor + motion CPs). Abandoned because tokens were not self-describing.
@@ -526,7 +532,7 @@ All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, see
 | [EmpathicRobotics/FineVideo-Phase2-3DPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase2-3DPose) | 3D pose NPY from MotionBERT (after Phase 2) | ~40K videos | ~259 GB | NumPy arrays |
 | [EmpathicRobotics/FineVideo-Phase4-YOLOPose](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase4-YOLOPose) | YOLO-cleaned 3D poses (after Phase 3+4, raw floats) | millions of windows | ~107 GB | `{video_id, window_id, states: float[8][17][3]}` |
 | [EmpathicRobotics/FineVideo-Phase5-AgentTokens](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase5-AgentTokens) | Full hierarchical merged dataset with agent tokens (after Phase 5+6) | ~399K activities | ~657 GB | Hierarchical JSON |
-| [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | Flat Megatron-LM JSONL (after Phase 7, agent-only, with modality dropout + augmentation) | 69,844 | ~19 GB | `{"text": "### Title: ... <seed2_N> ... <fps_30> <pelvis> ..."}` |
+| [EmpathicRobotics/FineVideo-Phase7-Flattened](https://huggingface.co/datasets/EmpathicRobotics/FineVideo-Phase7-Flattened) | **v4 (live Jul 7, 2026)** — flat Megatron-LM JSONL, per-chunk temporal ordering, agent OR snac required, modality dropout + augmentation | 371,888 | 5.217B tokens | `{"text": "### Title: ... ### Speech: ... <seed2_N> <cosmos_N> <fps_30> <pelvis> ... <snac_N> ..."}` |
 | [EmpathicRobotics/tokenizer-vla-adaptive](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive) | GPT-NeoX-20b + 93,938 VLA tokens (v1, no SNAC) | — | 144,215 vocab | HF tokenizer dir |
 | [EmpathicRobotics/tokenizer-vla-adaptive-v2](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive-v2) | GPT-NeoX-20b + VLA + 12,290 SNAC tokens (v2) | — | **156,505 vocab** | HF tokenizer dir |
 | [EmpathicRobotics/tokenizer-vla-qwen3](https://huggingface.co/EmpathicRobotics/tokenizer-vla-qwen3) | Qwen3 base + all 106,228 VLA tokens incl. SNAC | — | **257,897 vocab** | HF tokenizer dir |
@@ -540,7 +546,7 @@ All datasets compressed with gzip (level 5), split 152 train / 8 test (95/5, see
 
 ### What's in each dataset
 
-**FineVideo-Phase7-Flattened** — Use this for LLM pretraining. Each record is a single activity with all modalities flattened into one text string, with modality dropout (99% AVC-LM, 90% Cosmos) and text augmentation applied. Only activities containing 3D pose agent tokens are included.
+**FineVideo-Phase7-Flattened** — Use this for LLM pretraining. **As of v4 (Jul 7, 2026)**, each record is a single activity with all modalities flattened in per-chunk temporal order (`[seed2?][cosmos?][agent?][snac?]` per 8-frame chunk), speech moved to a dedicated `### Speech:` header, modality dropout (100% AVC-LM, 50% Cosmos) and text augmentation applied. Records require `<agent>` OR `<snac>` (not agent-only like earlier versions) — 18.8% are full-chain (seed2+cosmos+agent+snac), 81.2% are partial-chain (seed2+cosmos+snac only).
 
 **FineVideo-Phase5-AgentTokens** — Use this if you need the full structure. Each record is a full video with scenes, activities, timestamps (`chunk_timing`), speech transcripts, and all modality tokens in their original hierarchical form. No dropout or augmentation — all data preserved. You can extract timestamps, filter by modality, or re-flatten with custom logic.
 
@@ -1134,3 +1140,53 @@ She brings the knife down in a smooth chopping motion on a red bell pepper.
 **GitHub:** [TieuDaoChanNhan/finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla)
 
 All pipeline scripts, SLURM jobs, upload tools, vocab, and documentation are in this repo. See `README.md` for setup instructions and detailed usage.
+
+---
+
+## 15. Status Update — July 8, 2026
+
+### Infrastructure
+
+JSC cluster outage since ~Jul 6, 2026: JUPITER fully down, JUWELS booster + JURECA have partial GPU availability. ETA per Huu: officially 1 week, realistically ~2 weeks. Blocks large-scale Megatron re-tokenization, training v0.3, full-dataset 1-CP validation, and the Cosmos3-DROID GPU pipeline.
+
+Cluster account mapping (confirmed Jul 7, 2026):
+```
+JUSUF:   ccstdl
+JUPITER: reformo
+JUWELS:  laionize
+```
+
+### Team direction: multi-project data sharing
+
+Huu is pooling data across three parallel efforts: this repo's omni-VLA work, joergfranke's architecture comparison project (baselines: qwen3, lfm2.5, olmo3, nemotron on ~2T-token comparison runs once JUPITER is back), and blanchon.jl's diffusion-based world-action-model (video generation + action, targeting a "fast WAM"/"Cosmos Policy"-style architecture). `FineVideo-Phase7-Flattened` is now used as shared input across projects. Longer-term idea discussed: bridge the discrete-token LLM (this project) and the diffusion world-action-model via a llava-like cross-attention connector. Team also agreed synthetic/simulation data should be capped at **≤30% of total training mix**, citing literature guidance.
+
+### New data source candidates (from Jul 7, 2026 team discussion, not yet scoped)
+
+| Source | What | Notes |
+|---|---|---|
+| `abc.bot` (Amazon) | 400h robot recordings in simulation, includes physics state (MjData) | Most promising — permissive, has an eval environment, consistent embodiment |
+| `allenai/MolmoAct2-BimanualYAM-Dataset` | 2 TB, bimanual YAM arm robot data | Check license + embodiment compatibility |
+| `MiG-NJU/OmniVideo-100K` | Video dataset | Not yet scoped |
+| `mlfoundations/MINT-1T-HTML` | Large text/HTML dataset | Not yet scoped — likely relevant to the language/instruction mix, not video |
+| `genrobot2025/Gen-EgoData` | Egocentric robot data | Not yet scoped |
+| `finevla.xlang.ai` | Possible VLA dataset | HF link not found — may be unreleased |
+
+### 1-CP: final decision — deferred
+
+See Section 2.2 (Phase 5) for the full analysis. Bottom line: the targeted, static-only 1-CP variant is technically safe (no added reconstruction error) and gives +7.1% additional compression on top of the existing 50.9% savings, but the team (confirmed with Huu on Discord, Jul 8) decided to **defer** implementation — the gain doesn't justify a full Phase 5→6→7 re-run right now, especially with the cluster down. Revisit only if later evidence shows it's necessary.
+
+### Pending investigation tasks (assigned, not yet done)
+
+1. `mixture-vitae-backup/MixtureVitae-Backup` — `multimodal` branch on HF (Huu asked Jul 5).
+2. "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — unclear scope, check for overlap with this project's own pipeline before using.
+3. MV-Omni mix ratio — naively combining all of MV-Omni (6.93B tokens, 0 agent tokens) with FineVideo v4 would dilute the agent token share from 12.2% to ~5.2% of the combined corpus. Needs a dropout or oversampling strategy before mixing, since agent (3D pose) tokens are the project's core differentiator.
+
+### Current priority ranking (data-first, cluster-down-aware)
+
+| Tier | Task | Needs cluster? | Impact |
+|---|---|---|---|
+| P0 | Investigate MixtureVitae-Backup/multimodal, clarify finevideo reformulation, decide MV-Omni mix ratio, define eval protocol, decide language-data mix ratio | No | Unblocks planning decisions |
+| P1 | Write captioning pipeline code; write ego-centric perspective converter; mix MV-Omni into Megatron format | No / CPU only | Highest — captioning fixes root cause 2 (modality transitions); MV-Omni is +6.93B tokens at near-zero cost |
+| P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData; investigate leo seed2 + euro_pat | No | New sources, size TBD |
+| P3 | Cosmos3-DROID pipeline run; full captioning run; Megatron re-tokenize combined corpus; train v0.3 | GPU (JUPITER) | Blocked until cluster back + data ready |
+| P4 (deferred) | 1-CP, Moss-Audio V2, Qwen3 migration, PAB-Spline angle spec, Isaac Sim | — | Explicitly held off per team decisions |

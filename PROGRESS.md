@@ -1,9 +1,43 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 2, 2026  
-**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes  
+**Last updated:** July 8, 2026  
+**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **currently DOWN, see Infrastructure Status below**  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
+
+---
+
+## Session Update — July 8, 2026 (read this first to resume)
+
+**What changed since last session:**
+- ✅ **Phase 7 v4 uploaded to HF** — `EmpathicRobotics/FineVideo-Phase7-Flattened` is now live with the v4 data (371,888 records, 5.217B tokens). Shared with Huu/joergfranke on Discord (Jul 7) as the ready-to-tokenize dataset.
+- ✅ **1-CP decision FINALIZED — deferred.** Confirmed with Huu on Discord (Jul 8): stick with current adaptive 2/4/8-CP format. Gain from 1-CP is only +7.1% (sample-based estimate, 50 videos) and re-running Phase 5→7 costs time. Huu's framing for eventual paper: "our compression decreases the data by more than 50%" is good enough to report as-is. **Revisit only if data later shows it's necessary.** Full-dataset 1-CP investigation (18,847 videos) was attempted but interrupted by the JUWELS outage — not resumed, not currently planned.
+- ⚠ **JSC cluster outage (started ~Jul 6, 2026):** JUPITER fully down. JUWELS booster + JURECA have partial GPU availability ("to the extent Jenia lets us"). Huu's ETA: officially 1 week, realistically expect 2. This blocks: Megatron re-tokenization at scale, training v0.3, full 1-CP dataset run, Cosmos3-DROID GPU pipeline.
+- **Team decision: cap synthetic/simulation data at ≤30% of total training mix** (Huu, from text literature guidance) — applies when deciding how much of abc.bot / MolmoAct2 / Cosmos3-DROID sim data to mix against real FineVideo human video.
+- **New data source candidates identified (Jul 7, 2026 team chat)** — see "New Data Candidates" table below. Most promising: `abc.bot` (400h robot sim data **with physics state** MjData, permissive, has eval env).
+- **Multi-project data sharing direction:** Huu wants to pool data across 3 parallel efforts — this repo's omni-vla work, joergfranke's architecture comparison project (qwen3/lfm2.5/olmo3 baselines), and blanchon.jl's diffusion-based world-action-model (video generation + action). `FineVideo-Phase7-Flattened` is now being used as shared input across projects — keep the format generic/well-documented.
+- **Pending investigation tasks (assigned by Huu, not yet done):**
+  1. `mixture-vitae-backup/MixtureVitae-Backup` — `multimodal` branch on HF. Huu asked (Jul 5) if we knew about it / could upload; not yet investigated.
+  2. "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — Huu created this at some point but doesn't recall exactly what it is; need to check for overlap with our own pipeline (avoid a repeat of the `valid_with_seed` double-counting issue).
+- **Open concern (not yet acted on):** naively mixing all of MV-Omni (6.93B tokens, 0 agent tokens) into the training corpus dilutes the agent (pose) token ratio from 12.2% (FineVideo v4 alone) down to ~5.2% of the combined mix. Since agent tokens are the project's core differentiator, consider dropout on MV-Omni (same treatment as Cosmos/AVC-LM) or oversampling agent-bearing records before combining.
+
+**Current priority ranking (given JUPITER down + "more data before training" preference):**
+
+| Tier | Task | Needs cluster? | Impact |
+|---|---|---|---|
+| P0 | Investigate MixtureVitae-Backup/multimodal | No | Unknown, possibly free tokens |
+| P0 | Clarify "finevideo reformulation" on leo | No | Avoid double-counting |
+| P0 | Decide MV-Omni mix ratio (agent dilution fix) | No | Protects core pose signal |
+| P0 | Define eval protocol (DISCUSS-3, still open) | No | Required before any training run |
+| P0 | Decide text/instruction data mix ratio (DISCUSS-1) | No | Steerability |
+| P1 | Write captioning pipeline code | No (GPU only to run) | Highest — ×4 records, fixes root cause 2 |
+| P1 | Write ego-centric perspective converter | No (GPU only to run) | 2× pose diversity, free |
+| P1 | Mix MV-Omni into Megatron format | CPU only | +6.93B tokens, vocab already ready |
+| P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData | No | New robot/video sources, TBD size |
+| P2 | Investigate leo seed2 + euro_pat | No | TBD |
+| P3 | Cosmos3-DROID pipeline run | GPU | First real robot-domain data |
+| P3 | Full captioning run, Megatron re-tokenize combined corpus, train v0.3 | GPU (JUPITER) | Blocked until cluster back + data ready |
+| P4 (deferred) | 1-CP, Moss-Audio V2, Qwen3 migration, PAB-Spline angle spec, Isaac Sim | — | Explicitly held off per team decisions |
 
 ---
 
@@ -481,6 +515,22 @@ python pipeline_pose/phase7_flatten.py \
 - Check what's on the `leo` cluster: seed2 + euro_pat datasets mentioned by Huu
 - Quantify token counts before committing storage/compute
 
+**New Data Candidates (Jul 7, 2026 — from team Discord)**
+
+Found while scoping VLA data sources broadly. None yet scoped for token/hour counts or license fit.
+
+| Source | What | Notes |
+|---|---|---|
+| `abc.bot` (Amazon) | 400h robot recordings **in simulation**, includes physics state (MjData) | Most promising — permissive, has eval env, same embodiment throughout. blanchon.jl: "indeed perfect" |
+| `allenai/MolmoAct2-BimanualYAM-Dataset` | 2 TB, bimanual YAM arm robot data | Check license + embodiment compatibility |
+| `MiG-NJU/OmniVideo-100K` | Video dataset | Not yet scoped |
+| `mlfoundations/MINT-1T-HTML` | Large text/HTML dataset | Not yet scoped — likely for language mix (DISCUSS-1), not video |
+| `genrobot2025/Gen-EgoData` | Egocentric robot data | Not yet scoped |
+| `finevla.xlang.ai` | Possible VLA dataset | HF link not found yet — may be unreleased |
+| `mira-wm.com` | World model reference (Kyutai released similar) | Reference/inspiration, not necessarily a data source |
+
+**Team constraint:** synthetic/simulation data (abc.bot, MolmoAct2, Cosmos3-DROID, etc.) capped at **≤30% of total training mix** — decided by team consensus (Huu, citing literature), to keep the balance toward real human/robot video.
+
 **Priority 8 — First re-training run (v0.2)**
 - After items 1, 2, 4 are done: estimated **10–20B tokens** available
 - Continue training from current checkpoint (2032 iter) with new data + adjusted dropout
@@ -562,6 +612,9 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | SNAC injection in Phase 6, not Phase 7 | Phase 6 already does per-chunk injection; Phase 7 is stateless flatten. Keeping injection in Phase 6 means Phase 7 needs no external lookups. | Jun 2026 |
 | SNAC chunk alignment: encode full activity once, split by count | Encoding per-chunk (0.267s segments) would lose audio context + slow due to many small calls. Encode once, split evenly preserves context and is accurate (SNAC rate is constant). | Jun 2026 |
 | SNAC for ALL activities, not just agent ones | Only 14% of activities have agent tokens. Other 86% still have seed2+cosmos — adding SNAC teaches seed2→cosmos→snac transitions. Filtering to agent-only wastes most of the GPU run. | Jun 2026 |
+| 1-CP compression: deferred, keep adaptive 2/4/8-CP | +7.1% gain (sample-based) doesn't justify full Phase 5→7 re-run right now; revisit later if needed | Jul 8, 2026 |
+| Synthetic/sim data capped at ≤30% of total training mix | Team consensus (Huu), citing literature guidance; keeps balance toward real video | Jul 7, 2026 |
+| Moss-Audio Tokenizer V2 usage: keep limited even if adopted | Huu: at 400 tok/s it would overwhelm the dataset if used broadly for omni-modal pretraining; only viable as a short high-detail segment followed by lower-rate SNAC, or standalone if not binding to language | Jul 2, 2026 |
 
 ---
 
@@ -572,7 +625,7 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | Tokenizer v1 (144,215 vocab, GPT-NeoX) | `EmpathicRobotics/tokenizer-vla-adaptive` | Live |
 | **Tokenizer v2 (156,505 vocab, GPT-NeoX + SNAC)** | `EmpathicRobotics/tokenizer-vla-adaptive-v2` | **Live (Jul 1, 2026)** |
 | **Tokenizer Qwen3 (257,897 vocab)** | `EmpathicRobotics/tokenizer-vla-qwen3` | **Live (Jul 1, 2026)** |
-| FineVideo-Phase7-Flattened v4 (371,888 records, 5.217B tokens) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | **Pending upload** |
+| FineVideo-Phase7-Flattened v4 (371,888 records, 5.217B tokens) | `EmpathicRobotics/FineVideo-Phase7-Flattened` | **Live (Jul 7, 2026)** |
 | FineVideo-Phase5-AgentTokens (~399K activities) | `EmpathicRobotics/FineVideo-Phase5-AgentTokens` | Live |
 | FineVideo-Phase4-YOLOPose (millions of windows) | `EmpathicRobotics/FineVideo-Phase4-YOLOPose` | Live |
 | VLA Model v1 (broken tokenizer) | `EmpathicRobotics/vla-1.7b-pab-spline-25b-test` | Live (deprecated) |
@@ -681,6 +734,8 @@ How 1-CP would work: if `quantize(frame_0) == quantize(frame_7)` for all 3 dims 
 
 Estimated gain: ~4–5 qualifying joints/window × 5 tokens saved ≈ 20–47 tokens/window → **additional ~8–16% compression**. Requires grammar change + re-run of Phase 5 and all downstream phases.
 
+**FINAL DECISION (Jul 8, 2026):** Deferred. Confirmed with Huu on Discord — keep the current adaptive 2/4/8-CP format as-is. Full-dataset validation run (18,847 videos) was started but interrupted by the JUWELS outage; not resumed. Revisit only if later data shows it's necessary — the +7.1% gain doesn't justify a full Phase 5→7 re-run right now. For paper purposes, "compression decreases the data by more than 50%" (vs fixed 8-CP) is the number to report.
+
 **[DISCUSS-3] Eval setup**
 - Huu: "We should start eval just to see how things perform with baseline"
 - Need to define eval tasks BEFORE training, not after
@@ -703,11 +758,7 @@ Estimated gain: ~4–5 qualifying joints/window × 5 tokens saved ≈ 20–47 to
   - Token counts: seed2 332.6M | cosmos 3.88B | snac 363M | agent windows 2,148,474 | avclm 0 ✓
   - Sample: `samples/after_flatten_v3.json` | Upload script updated: `tools/upload_flattened_hf.py`
 - [x] **Phase 7 v4 — temporal alignment fix** — **COMPLETE (Jul 2, 2026)**. Per-chunk ordering fixed, speech in headers, 5.217B tokens → `megatron_dataset_v4/`. See stats above.
-- [ ] **Upload Phase 7 v4 to HF** → `EmpathicRobotics/FineVideo-Phase7-Flattened`:
-  ```bash
-  export HF_TOKEN='hf_...'
-  python tools/upload_flattened_hf.py
-  ```
+- [x] **Upload Phase 7 v4 to HF** — **COMPLETE (Jul 7, 2026)**. `EmpathicRobotics/FineVideo-Phase7-Flattened` live with v4 data. Shared with Huu/joergfranke on Discord as the ready-to-tokenize dataset.
   Source: `megatron_dataset_v4/` | Upload dir: `hf_upload_flattened_v4/` | Dataset card: `tools/vla_flattened_dataset_card.md` (updated for v4)
 - [ ] **Megatron re-tokenize** `megatron_dataset_v4/` with `tokenizer-vla-adaptive-v2` (156,505 vocab) → new `.bin/.idx` → train v0.3
 - [x] **Upload tokenizers** — **COMPLETE (Jul 1, 2026)**. `EmpathicRobotics/tokenizer-vla-adaptive-v2` (156,505) + `EmpathicRobotics/tokenizer-vla-qwen3` (257,897), cả hai Live với model card đầy đủ
@@ -721,6 +772,17 @@ Estimated gain: ~4–5 qualifying joints/window × 5 tokens saved ≈ 20–47 to
 - [ ] Start writing captioning pipeline (SmolVLM2/Qwen2.5-VL trên FineVideo keyframes)
 - [ ] Investigate leo seed2 + euro_pat token counts
 - [ ] Plan Cosmos3-DROID pipeline (download strategy, SLURM script)
+- [ ] Investigate `MixtureVitae-Backup/multimodal` (HF) — Huu asked Jul 5, not yet done
+- [ ] Clarify "finevideo reformulation" at `leo:/mnt/sdb/mixture-vitae-working/finevideo` — check overlap with own pipeline
+- [ ] Decide MV-Omni mix ratio / dropout to avoid diluting agent token % (12.2% → ~5.2% if mixed naively)
+- [ ] Scope new data candidates: abc.bot, MolmoAct2-BimanualYAM-Dataset, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData (see "New Data Candidates" table above)
+
+### Cluster account mapping (Jul 7, 2026 — for when submitting jobs)
+```
+JUSUF:   ccstdl
+JUPITER: reformo
+JUWELS:  laionize
+```
 
 ---
 
