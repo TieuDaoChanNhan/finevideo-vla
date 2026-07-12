@@ -184,11 +184,30 @@ def build_chunk_timing(
     video_tokens: str,
     snac_by_chunk: Dict = None,
 ) -> List[dict]:
-    """Build per-chunk timing array with modality presence flags."""
-    timing = []
-    seed2_matches = list(re.finditer(r"<seed2>", video_tokens or ""))
-    cosmos_matches = list(re.finditer(r"<cosmos>", video_tokens or ""))
+    """Build per-chunk timing array with modality presence flags.
 
+    has_seed2 is attributed by *string position*: a <seed2> tag belongs to
+    chunk i if it appears between the end of chunk (i-1)'s <avc_lm> block and
+    the end of chunk i's <avc_lm> block, matching the temporal interleaving
+    order tokens are actually written in by pipeline_video/pipeline.py
+    (seed2 checked once per frame, before the frame is added to the
+    cosmos/avc_lm buffer). A prior version compared the chunk index
+    positionally against the *total* seed2 tag count (`i < len(seed2_matches)`),
+    which since seed2 fires at 1fps vs. avc_lm's 3.75/sec meant has_seed2 was
+    true for an artificial prefix of chunks and false for the rest of the
+    activity, rather than reflecting per-chunk presence.
+
+    has_cosmos/has_avc_lm are both hardcoded True: cosmos and avc_lm are
+    encoded together at the same 8-frame cadence as this chunk loop itself
+    (pipeline_video/pipeline.py), so every iteration already corresponds to
+    a chunk that has both — no position check needed (verified empirically:
+    0 flips across 2,563 real activities before this fix too).
+    """
+    timing = []
+    avc_ends = [m.end() for m in AVC_PATTERN.finditer(video_tokens or "")]
+    seed2_positions = [m.start() for m in re.finditer(r"<seed2>", video_tokens or "")]
+
+    prev_end = 0
     for i in range(avc_count):
         rel_start = chunk_starts[i] if i < len(chunk_starts) else i * CHUNK_SIZE
         abs_frame = abs_start + rel_start
@@ -202,13 +221,17 @@ def build_chunk_timing(
         )
         has_snac = bool(snac_by_chunk and snac_by_chunk.get(str(i)))
 
+        this_end = avc_ends[i] if i < len(avc_ends) else len(video_tokens or "")
+        has_seed2 = any(prev_end <= p < this_end for p in seed2_positions)
+        prev_end = this_end
+
         timing.append({
             "chunk_idx": i,
             "abs_frame": abs_frame,
             "start_sec": start_sec,
             "end_sec": end_sec,
-            "has_seed2": i < len(seed2_matches),
-            "has_cosmos": i < len(cosmos_matches),
+            "has_seed2": has_seed2,
+            "has_cosmos": True,
             "has_avc_lm": True,
             "has_agent": has_agent,
             "has_snac": has_snac,

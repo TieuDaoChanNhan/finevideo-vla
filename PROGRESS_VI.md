@@ -1,15 +1,65 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 08/07/2026  
+**Cập nhật lần cuối:** 12/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **hiện đang DOWN, xem phần Cập nhật bên dưới**  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
 
 ---
 
-## Ghi chú refactor repo (09/07/2026)
+## Cập nhật phiên làm việc — 12/07/2026 (đọc phần này trước khi resume)
 
-`tools/` đã được tách thành các subfolder (`upload/`, `tokenizer/`, `inventory/`, `eval/`, `visualize/`, `analysis/`, `extract/`), đổi tên các thư mục mơ hồ (`multimodal/` → `investigations/mixturevitae_multimodal/`, `data_prep/` → `investigations/mv_omni_seed_conversion/`, `test/` → `manual_checks/`; `dev/` đã archive). **Các path script nhắc tới trong các mục cũ bên dưới vẫn theo cấu trúc `tools/` phẳng trước khi refactor** — vd. `tools/data_inventory.py` giờ là `tools/inventory/data_inventory.py`. Xem `README.md` ở root để biết cấu trúc hiện tại.
+**Chủ đề chính: (1) fix bug `chunk_timing` ở Phase 6, (2) thiết kế xong pipeline captioning.**
+
+### 1. Bug `has_seed2`/`has_cosmos` trong `chunk_timing` — ĐÃ FIX, ĐÃ RE-RUN FULL DATASET
+
+- **Phát hiện:** `phase6_merge_adaptive.py` tính `has_seed2`/`has_cosmos` bằng `i < len(seed2_matches)` — so sánh **chỉ số chunk** với **tổng số tag đếm được cả activity**, không phải check per-chunk thật. Vì seed2 chỉ 1fps trong khi chunk là 3.75/giây, field này đúng cho 1 đoạn đầu rồi sai (`False`) mãi cho phần còn lại — tạo đúng 1 lần "tắt" giả mỗi activity, không phản ánh nội dung thật (đã verify: 2,558/2,558 activity mẫu đều là ON→OFF, không bao giờ OFF→ON, ở timestamp ngẫu nhiên 0.27s–638s).
+- **Fix:** tính lại bằng vị trí ký tự thật trong chuỗi `video_tokens` — tag `<seed2>`/`<cosmos>` thuộc về chunk nào thì dựa vào nó nằm giữa 2 mốc kết thúc `<avc_lm>` liên tiếp nào (khớp đúng thứ tự thời gian thật tokens được ghi ra bởi `pipeline_video/pipeline.py`). `has_cosmos`/`has_avc_lm` đơn giản hóa thành `True` cố định (luôn đúng, verify 0 flip trên toàn bộ sample).
+- **Không cần chạy lại Phase 7** — đã verify bằng diff `video_tokens` byte-for-byte (0 khác biệt) + grep code: `phase7_flatten.py` không đọc `chunk_timing` ở đâu cả. Chỉ Phase 6 output (metadata) bị ảnh hưởng, không đụng gì tới model đã train hay Megatron data hiện có.
+- **Đã re-run full dataset:** SLURM job `14102737`, 32/32 task COMPLETED, 0 lỗi → `final_dataset_adaptive_v3/` (160 file, giữ nguyên v2 để so sánh). Script mới: `slurm/submit_merge_adaptive_v3.sh`.
+- **QA đã verify ở cả 2 mức:** (a) 1 file (2,563 activity): agent/snac injected khớp 100% với v2 → xác nhận content không đổi; `has_seed2` giờ flip ~53/activity đúng nhịp periodic. (b) 15 file ngẫu nhiên trên toàn dataset (34,732 activity, phủ khắp 40,804 video): `has_seed2` flip TB 54.53/activity, **0/34,732 (0.00%) activity có `has_seed2` sai suốt (luôn False)** — fix ổn định ở quy mô lớn.
+- **Từ nay dùng `final_dataset_adaptive_v3/` làm input chuẩn** cho mọi việc liên quan `chunk_timing` (kể cả bước captioning bên dưới).
+
+### 2. Pipeline Captioning — THIẾT KẾ ĐÃ CHỐT (chưa code full-scale, mới có prototype)
+
+**Bối cảnh:** Huu yêu cầu (chat 11/07) làm frame caption cho toàn bộ FineVideo keyframe, để fix root cause #2 (model thiếu language anchor để biết khi nào chuyển modality).
+
+**Anchor point — điểm được chọn để caption (quan trọng, đã qua nhiều vòng debug):**
+- **KHÔNG** dùng "bất kỳ trong 5 flag `has_seed2/cosmos/avc_lm/agent/snac` đổi" như dự định ban đầu — đã đo trên data thật: `cosmos`/`avc_lm` không bao giờ đổi trong activity; `seed2` (dù đã fix bug) vẫn đổi ~54 lần/activity nhưng đây chỉ là nhịp kỹ thuật (1fps) không phải nội dung đổi thật.
+- **CHỈ dùng:** (1) frame đầu activity (mở đầu ngữ cảnh) + (2) mỗi lần `has_agent` đổi (người xuất hiện/biến mất — sự kiện nội dung thật, có ví dụ xác nhận: người đứng→ngồi đúng lúc agent bật). Hàm: `select_anchor_points(chunk_timing, min_gap_sec=5.0)` trong `tools/analysis/caption_prototype.py`.
+- **`min_gap_sec=5.0` (debounce):** cần thiết vì `has_agent` cũng chập chờn (không sạch 100%) ở cảnh đông người/chuyển động nhanh (bóng rổ, võ thuật) — do YOLO detect noisy frame-to-frame (vấn đề chất lượng data đã biết từ trước), không phải bug mới, không cần sửa Phase 6. Debounce này chỉ là filter ở bước CHỌN điểm caption, không đụng data gốc.
+- **Đã đo mật độ thật:** TB ~1.86 caption/activity (ở gap 2s) — thấp hơn nhiều mục tiêu "×4 record" ghi trong doc gốc; 82.8% activity chỉ có đúng 1 caption (frame mở đầu, không có agent event nào). **Đây là hạn chế đã biết, chưa giải quyết** — cân nhắc thêm phương án bổ sung caption định kỳ mỗi N giây cho activity không có agent-transition (chưa chốt N, để sau).
+
+**Model — đã test 3 model, chốt Qwen2.5-VL-3B-Instruct:**
+| Model | Kết quả test |
+|---|---|
+| **Qwen2.5-VL-3B-Instruct** ✅ CHỐT | Không hallucinate ở mọi test (kể cả batch 96 caption). Native trong `transformers` (không rủi ro tương thích). Prompt: `"Describe what the person is doing in one short sentence."` |
+| Florence-2-base | `<DETAILED_CAPTION>` mode hallucinate rõ (vd bịa "he appears to be a psycholinguist"). Đổi sang `<CAPTION>` mode thì hết hallucinate + nhanh hơn Qwen 3.5x + hết bị cụt câu — nhưng cần env riêng (`transformers==4.49.0`, torchvision phải cùng index CPU) vì code custom (`trust_remote_code`) không tương thích bản `transformers` mới. Env test: `env_caption_test/` (có thể xóa nếu không dùng). |
+| SmolVLM2-2.2B-Instruct | **Chậm hơn Qwen2.5-VL 2x trên CPU** (27.7s vs 14.0s/caption, ngược lý thuyết "nhanh cho edge") + có 1 hallucination rõ (bịa "holding a book" cho 1 frame nền trắng trơn) → loại. |
+
+**Lý do chọn Qwen2.5-VL dù chậm hơn Florence-2 trên CPU:** tốc độ CPU không phải yếu tố quyết định vì full-scale bắt buộc chạy GPU (bất kỳ model nào cũng cần); ưu tiên chất lượng/không-hallucinate + không rủi ro tương thích thư viện dài hạn.
+
+**Full pipeline đã thiết kế (chưa code, sẽ làm ở phiên sau):**
+```
+final_dataset_adaptive_v3/ 
+    → [A1] Task list generation (CPU) — quét chunk_timing, tính anchor points mọi activity
+    → [A2] SLURM array job — mở video trong videos_staging/, extract frame, Qwen2.5-VL caption
+         → outputs/captions/{video_id}_captions.jsonl
+    → [B1] Mở rộng phase6_merge_adaptive.py thêm --captions-dir (giống cách --snac-tokens-dir đã làm)
+         chèn <caption>...</caption> NGAY TRƯỚC <cosmos> của đúng chunk (không cắt giữa block nào,
+         không lặp lại lỗi speech-giữa-token đã fix ở v3→v4)
+         → final_dataset_adaptive_v4/
+    → [B2] phase7_flatten.py (như cũ) → megatron_dataset_v5/ → tokenize → train
+```
+Caption là text tiếng Anh thường, tokenize BPE bình thường — **không cần mở rộng vocab**.
+
+**Hạ tầng:** bước A2 (caption thật) sẽ chạy **CPU** (nhiều CPU core hợp lý hơn máy 2×4090 hiện có) — quyết định của Van Khue (12/07), chưa cần GPU ngay.
+
+**Phát hiện phụ trong lúc debug (đáng nhớ cho lần sau):**
+- Video gốc FineVideo đã có sẵn local: `videos_staging/` (chú ý có "s", khác `video_staging/` rỗng) — 43,751 mp4, `/p/data1/mmlaion/shared/nguyen38/data/videos_staging/`, tên file = `{video_id}.mp4`. Không cần JUPITER hay stream từ HF.
+- **HumanoidBench đã đọc + đánh giá KHÔNG phù hợp** làm eval benchmark hiện tại — benchmark closed-loop RL (MuJoCo, Unitree H1 + Shadow Hands, action space 61-dim joint-angle) trong khi model mình sinh ra pose xyz người thật 17-khớp H36M, không có góc khớp/bàn tay. Chỉ liên quan tới Priority 12 "Isaac Sim/H1" đã hoãn từ trước, không phải DISCUSS-3 hiện tại.
+- Home directory (`~/.cache`) có quota nhỏ hơn nhiều so với `/p/data1` (project storage, 388TB trống) — luôn set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` khi tải model lớn để tránh lỗi "Disk quota exceeded".
+- HF Hub's Xet download backend đôi khi lỗi transient (`Background writer channel closed`) — set `HF_HUB_DISABLE_XET=1` để fallback về HTTP download thường nếu gặp.
 
 ---
 
@@ -36,7 +86,7 @@
 | P0 | Quyết định tỷ lệ mix MV-Omni (fix pha loãng agent) | Không | Bảo vệ tín hiệu pose cốt lõi |
 | P0 | Định nghĩa eval protocol (DISCUSS-3, còn treo) | Không | Bắt buộc trước khi train |
 | P0 | Chốt tỷ lệ mix text/instruction data (DISCUSS-1) | Không | Ảnh hưởng khả năng steer robot |
-| P1 | Viết code pipeline captioning | Không (chỉ cần GPU lúc chạy) | Cao nhất — ×4 record, fix root cause 2 |
+| P1 | Code full-scale pipeline captioning (thiết kế đã chốt 12/07, xem session update) | Không (CPU, theo quyết định 12/07) | Cao nhất — fix root cause 2 (mật độ thực tế ~1.86 caption/activity, chưa đạt ×4 như dự tính ban đầu) |
 | P1 | Viết code ego-centric perspective converter | Không (chỉ cần GPU lúc chạy) | ×2 diversity pose data, miễn phí |
 | P1 | Mix MV-Omni vào Megatron format | Chỉ cần CPU | +6.93B token, vocab đã sẵn sàng |
 | P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData | Không | Nguồn robot/video mới, chưa rõ size |

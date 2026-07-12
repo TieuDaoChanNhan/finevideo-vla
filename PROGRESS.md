@@ -1,9 +1,65 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 8, 2026  
+**Last updated:** July 12, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **currently DOWN, see Infrastructure Status below**  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
+
+---
+
+## Session Update — July 12, 2026 (read this first to resume)
+
+**Two main threads this session: (1) fixed a `chunk_timing` bug in Phase 6, (2) finalized the captioning pipeline design.**
+
+### 1. `has_seed2`/`has_cosmos` bug in `chunk_timing` — FIXED, FULL DATASET RE-RUN COMPLETE
+
+- **Bug found:** `phase6_merge_adaptive.py` computed `has_seed2`/`has_cosmos` as `i < len(seed2_matches)` — comparing the **chunk index** against the **total tag count for the whole activity**, not a real per-chunk check. Since seed2 fires at 1fps while chunks occur at 3.75/sec, this flag was true for an artificial prefix of chunks then false for the rest — a single fake "off" transition per activity, not reflecting real content (verified: 2,558/2,558 sampled activities were ON→OFF only, never OFF→ON, at random timestamps 0.27s–638s).
+- **Fix:** recompute using real string positions in `video_tokens` — a `<seed2>`/`<cosmos>` tag is attributed to whichever chunk's span it falls between (bounded by consecutive `<avc_lm>` block ends), matching the true temporal write order from `pipeline_video/pipeline.py`. `has_cosmos`/`has_avc_lm` simplified to hardcoded `True` (always correct, verified 0 flips across the whole sample).
+- **No Phase 7 re-run needed** — verified via byte-for-byte `video_tokens` diff (0 differences) + code grep: `phase7_flatten.py` never reads `chunk_timing`. Only Phase 6's metadata output is affected; existing trained models and Megatron data are untouched.
+- **Full dataset re-run done:** SLURM job `14102737`, 32/32 tasks COMPLETED, 0 errors → `final_dataset_adaptive_v3/` (160 files, kept v2 for comparison). New script: `slurm/submit_merge_adaptive_v3.sh`.
+- **QA verified at two scales:** (a) 1 file (2,563 activities): agent/snac injection counts match v2 exactly (content unchanged); `has_seed2` now flips ~53/activity at the correct periodic rate. (b) 15 random files across the full dataset (34,732 activities, spanning all 40,804 videos): `has_seed2` flips 54.53/activity on average, **0/34,732 (0.00%) activities have `has_seed2` stuck False the whole time** — fix is stable at scale.
+- **`final_dataset_adaptive_v3/` is now the standard input** for anything touching `chunk_timing` (including the captioning work below).
+
+### 2. Captioning pipeline — DESIGN FINALIZED (prototype only, full-scale not yet coded)
+
+**Context:** Huu asked (Jul 11 chat) for frame captions on all FineVideo keyframes, to fix root cause #2 (model lacks a language anchor for knowing when to switch modality).
+
+**Anchor point selection (took several debugging rounds to get right):**
+- **NOT** "any of the 5 flags `has_seed2/cosmos/avc_lm/agent/snac` changes" as originally planned — measured on real data: `cosmos`/`avc_lm` never vary within an activity; `seed2` (even after the bugfix above) still flips ~54x/activity, but that's purely its 1fps technical cadence, not a real content change.
+- **Only using:** (1) the activity's first frame (opening context) + (2) every time `has_agent` flips (a person genuinely appears/disappears — confirmed with a real example: person transitions from standing to sitting exactly when agent turns on). Function: `select_anchor_points(chunk_timing, min_gap_sec=5.0)` in `tools/analysis/caption_prototype.py`.
+- **`min_gap_sec=5.0` debounce:** needed because `has_agent` itself flickers in busy/high-motion scenes (sports, martial arts) due to noisy frame-to-frame YOLO detection (a known pre-existing data quality issue, not a new bug — no Phase 6 change needed). This debounce only affects which points THIS script chooses to caption, not the stored data.
+- **Measured density:** ~1.86 captions/activity avg (at 2s gap) — well short of the "×4 records" target in the original doc; 82.8% of activities get only 1 caption (opening frame, no agent event ever occurs). **This is a known, unresolved limitation** — may need a periodic supplemental caption (every N seconds) for activities with no agent transition; N not yet decided.
+
+**Model — tested 3, settled on Qwen2.5-VL-3B-Instruct:**
+| Model | Test result |
+|---|---|
+| **Qwen2.5-VL-3B-Instruct** ✅ CHOSEN | No hallucinations in any test (including a 96-caption batch). Natively supported in `transformers` (no compatibility risk). Prompt: `"Describe what the person is doing in one short sentence."` |
+| Florence-2-base | `<DETAILED_CAPTION>` mode clearly hallucinates (e.g. invented "he appears to be a psycholinguist"). Switching to `<CAPTION>` mode fixed the hallucination + was 3.5x faster than Qwen + no more truncation — but needs a separate env (`transformers==4.49.0`, torchvision must match the CPU index) since its custom code (`trust_remote_code`) isn't compatible with newer `transformers`. Test env: `env_caption_test/` (can be deleted if unused going forward). |
+| SmolVLM2-2.2B-Instruct | **2x SLOWER than Qwen2.5-VL on CPU** (27.7s vs 14.0s/caption — contradicts the "fast, edge-oriented" expectation) plus 1 clear hallucination (invented "holding a book" for a plain white intro-slate frame) → rejected. |
+
+**Why Qwen2.5-VL despite being slower than Florence-2 on CPU:** CPU speed isn't the deciding factor since the full-scale run must happen on GPU regardless of model choice; prioritized quality/no-hallucination + long-term library compatibility over CPU-only speed.
+
+**Full pipeline design (not yet coded, next session):**
+```
+final_dataset_adaptive_v3/ 
+    → [A1] Task list generation (CPU) — scan chunk_timing, compute anchor points per activity
+    → [A2] SLURM array job — open video from videos_staging/, extract frame, Qwen2.5-VL caption
+         → outputs/captions/{video_id}_captions.jsonl
+    → [B1] Extend phase6_merge_adaptive.py with --captions-dir (same pattern as --snac-tokens-dir)
+         inject <caption>...</caption> RIGHT BEFORE <cosmos> for that chunk (never mid-block,
+         avoids repeating the v3→v4 speech-interleaving bug)
+         → final_dataset_adaptive_v4/
+    → [B2] phase7_flatten.py (unchanged) → megatron_dataset_v5/ → tokenize → train
+```
+Captions are plain English text, tokenized as regular BPE — **no vocab expansion needed**.
+
+**Infra:** step A2 (real captioning run) will use **CPU** (many cores judged more practical than the available 2×4090 machine) — Van Khue's call (Jul 12), no GPU needed yet.
+
+**Side findings worth remembering:**
+- FineVideo source videos are already staged locally: `videos_staging/` (note the "s" — distinct from an empty `video_staging/`) — 43,751 mp4s, `/p/data1/mmlaion/shared/nguyen38/data/videos_staging/`, filenames = `{video_id}.mp4`. No JUPITER or HF streaming needed.
+- **Read and evaluated HumanoidBench — NOT a fit** for the current eval need. It's a closed-loop RL benchmark (MuJoCo, Unitree H1 + Shadow Hands, 61-dim joint-angle action space) whereas our model outputs raw xyz human pose (17 H36M joints, no angles/hands). Only relevant to the already-deferred Priority 12 "Isaac Sim/H1" work, not DISCUSS-3.
+- Home directory (`~/.cache`) has a much smaller quota than `/p/data1` (project storage, 388TB free) — always set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` before downloading large models to avoid "Disk quota exceeded".
+- HF Hub's Xet download backend occasionally fails transiently (`Background writer channel closed`) — set `HF_HUB_DISABLE_XET=1` to fall back to plain HTTP download if this happens.
 
 ---
 
@@ -36,7 +92,7 @@
 | P0 | Decide MV-Omni mix ratio (agent dilution fix) | No | Protects core pose signal |
 | P0 | Define eval protocol (DISCUSS-3, still open) | No | Required before any training run |
 | P0 | Decide text/instruction data mix ratio (DISCUSS-1) | No | Steerability |
-| P1 | Write captioning pipeline code | No (GPU only to run) | Highest — ×4 records, fixes root cause 2 |
+| P1 | Code the full-scale captioning pipeline (design finalized Jul 12, see session update) | No (CPU, per Jul 12 decision) | Highest — fixes root cause 2 (measured density ~1.86 captions/activity, short of the original ×4 target) |
 | P1 | Write ego-centric perspective converter | No (GPU only to run) | 2× pose diversity, free |
 | P1 | Mix MV-Omni into Megatron format | CPU only | +6.93B tokens, vocab already ready |
 | P2 | Scope abc.bot, MolmoAct2-BimanualYAM, OmniVideo-100K, MINT-1T-HTML, Gen-EgoData | No | New robot/video sources, TBD size |

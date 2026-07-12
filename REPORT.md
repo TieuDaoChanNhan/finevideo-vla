@@ -243,6 +243,16 @@ Dry run on `training_ready_rank_0.jsonl` (254 videos, ~5 min):
 | Agent injected | 2,148,474 (5.5% — expected, only ~18K videos have Phase 5 output) |
 | Output | `FineVideo-VLA/final_dataset_adaptive_v2/` — 160 files |
 
+**⚠ Correction (Jul 12, 2026): the "chunk_timing flags all correct ✓" claim above (Jul 1 dry run) was wrong for `has_seed2`/`has_cosmos`.**
+
+`build_chunk_timing()` computed `has_seed2`/`has_cosmos` as `i < len(seed2_matches)` — comparing the chunk loop index against the *total* count of `<seed2>`/`<cosmos>` tags found anywhere in the activity's `video_tokens`, not a real per-chunk positional check. Since seed2 fires at 1fps while avc_lm/cosmos chunks occur at 3.75/sec, `len(seed2_matches)` is always much smaller than the chunk count — so `has_seed2` came out `True` for an artificial prefix of chunks and `False` for the rest of the activity, a single fake ON→OFF transition per activity rather than reflecting real per-chunk presence. Verified empirically: 2,558/2,558 sampled activities showed exactly one ON→OFF flip (never OFF→ON), at wildly inconsistent timestamps (0.27s–638s) depending only on activity length. `has_cosmos` shared the same buggy formula but the bug never manifested, because cosmos fires at the same per-chunk rate as avc_lm, so `len(cosmos_matches) ≈ avc_count` and the comparison was true almost everywhere anyway.
+
+**Fix (Jul 12, 2026):** attribute each `<seed2>`/`<cosmos>` tag to a chunk by its *string position* — a tag belongs to chunk `i` if it falls between the end of chunk `(i-1)`'s `<avc_lm>` block and the end of chunk `i`'s, matching the real temporal write order from `pipeline_video/pipeline.py` (seed2 checked once per frame, before that frame is added to the cosmos/avc_lm buffer). `has_cosmos`/`has_avc_lm` were simplified to hardcoded `True` (verified always correct — 0 flips in 34,732 sampled activities from the fixed re-run, spanning all 40,804 videos).
+
+**Impact assessment — no re-tokenization needed:** `chunk_timing` is metadata only. `phase7_flatten.py` never reads it (confirmed by code search across the repo — the only consumers were `phase6_merge_adaptive.py` itself, `snac_finevideo.py` (which only uses `chunk_idx`/`start_sec`/`end_sec`, never `has_seed2`/`has_cosmos`), and the new captioning prototype scripts written this session). A byte-for-byte diff of `video_tokens` between v2 and the fixed re-run (v3) showed 0 differences on a sample file — the actual token content injected into training data is untouched. **All existing trained models, Megatron `.bin/.idx` files, and `FineVideo-Phase7-Flattened` uploads remain valid** — this bug only matters for new work that reads `chunk_timing` directly, i.e. the captioning pipeline (§2.5c below).
+
+**Re-run (Jul 12, 2026):** SLURM job `14102737` (`slurm/submit_merge_adaptive_v3.sh`), 32/32 tasks COMPLETED, 0 errors → `final_dataset_adaptive_v3/` (160 files; `final_dataset_adaptive_v2/` kept for comparison/rollback). Aggregate stats from worker logs matched v2 exactly: 40,804 videos, 398,775 activities, 2,148,474 agent blocks injected, 38,824,718 SNAC tokens injected — confirming content parity. `final_dataset_adaptive_v3/` is now the standard input for anything that reads `chunk_timing`.
+
 ### 2.4 Flatten (Phase 7)
 **Script:** `pipeline_pose/phase7_flatten.py`
 
@@ -512,6 +522,58 @@ python tools/build_tokenizers.py --mode current   # GPT-NeoX v2 only
 python tools/build_tokenizers.py --mode qwen3     # Qwen3 only
 python tools/build_tokenizers.py --mode all       # both
 ```
+
+### 2.5c Captioning Pipeline (design finalized Jul 12, 2026 — not yet coded at full scale)
+
+**Goal:** add a natural-language caption at key points in the token sequence, so the model has a language anchor for when/why the modality mix is about to change — root cause #2 for the model's inability to self-transition between modalities during inference.
+
+**Prototype scripts:** `tools/analysis/caption_prototype.py` (core building blocks: `extract_frame`, `select_anchor_points`, model loaders/callers for Qwen2.5-VL / Florence-2 / SmolVLM2), plus one-off batch/visual-QA scripts in the same directory (`caption_prototype_batch.py`, `caption_prototype_visual.py`, `caption_prototype_visual_batch.py`, `caption_florence2_visual_batch.py`, `caption_model_compare.py`, `caption_final_compare.py`).
+
+**Anchor point selection — `select_anchor_points(chunk_timing, min_gap_sec=5.0)`:**
+
+The original plan was to caption at every point where any of the 5 `chunk_timing` flags (`has_seed2/cosmos/avc_lm/agent/snac`) changes. Measured on real data this doesn't work: `has_cosmos`/`has_avc_lm` never vary within an activity (they're encoded at the same fixed 8-frame cadence as the chunk grid itself), and `has_seed2` — even after the §2.3 bugfix — still flips ~54x/activity purely because seed2 fires at a fixed 1fps rate; that's a technical cadence, not a content change. The only flag that reflects a genuine visual event is `has_agent` (a person detected/not detected by YOLO in Phase 4). Final design: caption the activity's first chunk (opening context) plus every chunk where `has_agent` flips, with a `min_gap_sec=5.0` debounce — because `has_agent` itself flickers frame-to-frame in busy/high-motion scenes (sports, martial arts) due to noisy YOLO detection (a known pre-existing data-quality issue, not a bug requiring a Phase 6 fix). The debounce only affects which points get captioned; it doesn't touch stored `chunk_timing` data.
+
+**Known limitation:** this design gives ~1.86 captions/activity on average (measured at a 2s debounce gap; slightly lower at 5s) — far short of the "×4 records" impact originally targeted. 82.8% of activities get exactly 1 caption (the opening frame only, no agent event ever occurs in that activity). Possible future fix: add a periodic supplemental caption every N seconds for activities with no agent transition — N not yet decided.
+
+**Model selection — Qwen2.5-VL-3B-Instruct chosen after testing 3 candidates:**
+
+| Model | Result |
+|---|---|
+| **Qwen2.5-VL-3B-Instruct** (chosen) | No hallucinations across all tests (including a 96-caption batch across 10 videos). Natively supported in `transformers` — no compatibility risk. Prompt: `"Describe what the person is doing in one short sentence."` CPU speed: ~11-14s/caption. |
+| Florence-2-base | `<DETAILED_CAPTION>` task mode hallucinates (e.g. "he appears to be a psycholinguist" for a bearded man with glasses — reproducible, not sampling noise, since generation used deterministic beam search with no `temperature`/`do_sample`). Switching to `<CAPTION>` task mode eliminated the hallucination, cut generation time to ~1.5-3s/caption (3.5x faster than Qwen), and fixed truncation (raised `max_new_tokens` 48→64). Requires a separate venv (`env_caption_test/`, `transformers==4.49.0`, torchvision reinstalled from the CPU wheel index) because its `trust_remote_code=True` custom modeling code breaks under newer `transformers` (`AttributeError: 'Florence2LanguageConfig' object has no attribute 'forced_bos_token_id'`). |
+| SmolVLM2-2.2B-Instruct | 2x *slower* than Qwen2.5-VL on CPU in this environment (27.7s vs 14.0s/caption average) — contradicts its "fast, edge-oriented" reputation, likely due to an unoptimized CPU code path in this transformers version. Also hallucinated once (invented "holding a book and reading it" for a plain white intro-slate frame with no book). Rejected. |
+
+Rationale for choosing Qwen2.5-VL-3B despite losing the CPU speed benchmark to Florence-2: the full-scale captioning run must happen on GPU regardless of model choice (CPU is too slow for 43,751 videos with any of these models), so CPU-only speed differences are not decisive; quality/no-hallucination and long-term library-compatibility risk were weighted higher.
+
+**Full production pipeline (designed, not yet implemented):**
+
+```
+final_dataset_adaptive_v3/ (chunk_timing-fixed, see §2.3)
+    → [A1] Task list generation (CPU): scan chunk_timing for every activity,
+            compute anchor points via select_anchor_points(), write a
+            {video_id: [{activity_id, chunk_idx, start_sec, has_agent}, ...]}
+            task list (same pattern as snac_task_list.json)
+    → [A2] SLURM array job: each worker loads Qwen2.5-VL-3B once, opens
+            videos_staging/{video_id}.mp4, extracts a frame per anchor point,
+            captions it → outputs/captions/{video_id}_captions.jsonl
+    → [B1] Extend phase6_merge_adaptive.py with a --captions-dir flag
+            (same pattern as --snac-tokens-dir), injecting
+            <caption>...</caption> immediately BEFORE the <cosmos> block of
+            the anchor chunk (chunk-boundary insertion only — never mid-block,
+            avoiding a repeat of the v3→v4 speech-interleaving bug in §2.4)
+            → final_dataset_adaptive_v4/
+    → [B2] phase7_flatten.py (unchanged) → megatron_dataset_v5/ → tokenize → train
+```
+
+Captions are plain English sentences — regular BPE tokenization, no vocab expansion required.
+
+**Infra note (Jul 12, 2026):** the real captioning run (step A2) will use CPU (many cores) rather than the available 2×GPU (RTX 4090) test machine — Van Khue's call, no GPU access needed yet for this step.
+
+**Side findings from this session:**
+- FineVideo source videos are already staged locally at `/p/data1/mmlaion/shared/nguyen38/data/videos_staging/` (43,751 mp4s, named `{video_id}.mp4` — note the directory name has an "s"; a similarly-named but empty `video_staging/` also exists, don't confuse them). No JUPITER dependency or HF streaming needed for frame extraction.
+- Read and evaluated `HumanoidBench` (arXiv 2403.10506) as a candidate eval benchmark — **not a fit** for the current model. It's a closed-loop RL/control benchmark (MuJoCo simulation, Unitree H1 + two Shadow Hands, 61-dim joint-position action space at 50Hz) whereas this project's agent tokens are xyz world positions for 17 H36M human joints with no joint angles or hand/finger data. Only relevant to the already-deferred Priority 12 (Isaac Sim / H1 sim-to-real), not the near-term eval-protocol discussion (DISCUSS-3).
+- Home directory quota is much smaller than `/p/data1` project storage — set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` before downloading large HF models to avoid `OSError: [Errno 122] Disk quota exceeded`.
+- `huggingface_hub`'s Xet download backend can fail transiently (`RuntimeError: ... Background writer channel closed`) — set `HF_HUB_DISABLE_XET=1` to fall back to plain HTTP downloads.
 
 ### 2.6 Megatron-LM Tokenization (Phase 8)
 **Script:** `/p/data1/mmlaion/nguyen38/mv-scale/tokenize_vla_adaptive.sbatch`
