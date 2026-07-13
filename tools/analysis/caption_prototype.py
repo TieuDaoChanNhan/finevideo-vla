@@ -26,14 +26,16 @@ FLORENCE_MODEL_ID = "microsoft/Florence-2-base"
 SMOLVLM2_MODEL_ID = "HuggingFaceTB/SmolVLM2-2.2B-Instruct"
 
 
-def select_anchor_points(chunk_timing, min_gap_sec=2.0):
+def select_anchor_points(chunk_timing, min_gap_sec=2.0, target_count=4):
     """Caption anchor points, final design (agreed with Van Khue):
-    the first chunk of the activity (opening context) plus every chunk where
-    has_agent flips relative to the previous chunk (a person genuinely
-    appears/disappears). has_seed2/has_cosmos/has_avc_lm are NOT used here:
-    cosmos/avc_lm never vary within an activity, and has_seed2 (even after
-    the phase6 chunk_timing fix) flips ~54x/activity purely because seed2
-    fires at a fixed 1fps rate -- a technical cadence, not a content change.
+
+    Step 1 (primary signal): the first chunk of the activity (opening context)
+    plus every chunk where has_agent flips relative to the previous chunk (a
+    person genuinely appears/disappears). has_seed2/has_cosmos/has_avc_lm are
+    NOT used here: cosmos/avc_lm never vary within an activity, and has_seed2
+    (even after the phase6 chunk_timing fix) flips ~54x/activity purely
+    because seed2 fires at a fixed 1fps rate -- a technical cadence, not a
+    content change.
 
     min_gap_sec debounces has_agent itself: in busy/multi-person scenes
     (sports, crowds) YOLO detection flickers frame-to-frame even though a
@@ -42,9 +44,23 @@ def select_anchor_points(chunk_timing, min_gap_sec=2.0):
     dropped (person's real presence/absence hasn't had time to change
     meaningfully). This only affects which points this script chooses to
     caption -- it does not alter has_agent or any stored chunk_timing data.
+
+    Step 2 (periodic supplement, added 2026-07-12): measured on real data,
+    step 1 alone gives only ~1.86 captions/activity and 82.8% of activities
+    get just the opening frame (no agent event ever occurs), far short of the
+    "x4 records" density target. If step 1 produced fewer than target_count
+    points, evenly-spaced target timestamps across the activity duration are
+    snapped to the nearest actual chunk and appended, skipping any candidate
+    that duplicates an already-kept chunk_idx or lands within min_gap_sec of
+    an already-kept point. This never removes or overrides step-1 (real
+    content-based) points -- it only fills gaps. If step 1 already reached
+    target_count, step 2 is a no-op. Pass target_count=None to disable step 2
+    and get the original agent-transition-only behavior.
     """
     if not chunk_timing:
         return []
+
+    # Step 1 -- agent-transition (unchanged)
     pts = [chunk_timing[0]]
     prev_agent = chunk_timing[0]["has_agent"]
     last_kept_sec = chunk_timing[0]["start_sec"]
@@ -55,6 +71,23 @@ def select_anchor_points(chunk_timing, min_gap_sec=2.0):
                 continue
             pts.append(c)
             last_kept_sec = c["start_sec"]
+
+    # Step 2 -- periodic supplement to reach target_count
+    if target_count is not None and len(pts) < target_count:
+        activity_start = chunk_timing[0]["start_sec"]
+        duration = chunk_timing[-1]["end_sec"] - activity_start
+        kept_idxs = {c["chunk_idx"] for c in pts}
+        for i in range(target_count):
+            target_sec = activity_start + i * duration / target_count
+            cand = min(chunk_timing, key=lambda c: abs(c["start_sec"] - target_sec))
+            if cand["chunk_idx"] in kept_idxs:
+                continue
+            if any(abs(cand["start_sec"] - p["start_sec"]) < min_gap_sec for p in pts):
+                continue
+            pts.append(cand)
+            kept_idxs.add(cand["chunk_idx"])
+        pts.sort(key=lambda c: c["chunk_idx"])
+
     return pts
 
 

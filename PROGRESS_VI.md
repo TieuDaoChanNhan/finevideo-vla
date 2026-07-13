@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 12/07/2026  
+**Cập nhật lần cuối:** 13/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **hiện đang DOWN, xem phần Cập nhật bên dưới**  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
 
@@ -60,6 +60,69 @@ Caption là text tiếng Anh thường, tokenize BPE bình thường — **khôn
 - **HumanoidBench đã đọc + đánh giá KHÔNG phù hợp** làm eval benchmark hiện tại — benchmark closed-loop RL (MuJoCo, Unitree H1 + Shadow Hands, action space 61-dim joint-angle) trong khi model mình sinh ra pose xyz người thật 17-khớp H36M, không có góc khớp/bàn tay. Chỉ liên quan tới Priority 12 "Isaac Sim/H1" đã hoãn từ trước, không phải DISCUSS-3 hiện tại.
 - Home directory (`~/.cache`) có quota nhỏ hơn nhiều so với `/p/data1` (project storage, 388TB trống) — luôn set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` khi tải model lớn để tránh lỗi "Disk quota exceeded".
 - HF Hub's Xet download backend đôi khi lỗi transient (`Background writer channel closed`) — set `HF_HUB_DISABLE_XET=1` để fallback về HTTP download thường nếu gặp.
+
+### 3. A1 code xong + chạy full dataset + validate kỹ. A2 code xong + smoke test OK — đang chờ quyết định CPU/GPU (tiếp phiên 12/07, cùng ngày)
+
+**`select_anchor_points()` thêm bước "periodic supplement":**
+- Vấn đề: chỉ agent-transition cho ~1.4-1.86 caption/activity, phần lớn activity chỉ có 1 caption (frame mở đầu).
+- Đã thống nhất và code: sau bước agent-transition, nếu chưa đủ `target_count=4` điểm thì bổ sung thêm điểm cách đều theo thời gian, snap về chunk gần nhất, debounce chống trùng với điểm đã có. Sửa trong `tools/analysis/caption_prototype.py` — chữ ký mới `select_anchor_points(chunk_timing, min_gap_sec=2.0, target_count=4)`.
+- Kèm sửa bug phân loại trong `caption_florence2_visual_batch.py` (đổi `len(pts) > 1` → check `has_agent` flip thật, vì periodic supplement làm số điểm không còn phản ánh đúng "có sự kiện thật hay không").
+
+**Bug quan trọng phát hiện khi test A1 trên data thật — đã fix:** `duration` trong periodic supplement tính bằng `end_sec` **tuyệt đối** thay vì tương đối so với activity → activity bắt đầu muộn (VD giây 590 trong video dài) bị tính mốc thời gian sai hoàn toàn ra ngoài phạm vi, supplement gần như vô hiệu. Fix: trừ `activity_start` trước khi chia. Verify trên 2563 activity thật: % activity đạt `target_count=4` tăng từ 10.4% → 54.8%.
+
+**A1 (`tools/analysis/generate_caption_tasks.py`) — CODE XONG, ĐÃ CHẠY FULL DATASET 160/160 SHARD:**
+- Đọc `final_dataset_adaptive_v3/`, tính anchor points mọi activity bằng `select_anchor_points()`, ghi task list ra `outputs/caption_tasks/*.jsonl` (mỗi dòng: video_id, video_path, scene_id, activity_id, chunk_idx, start_sec, has_agent).
+- Chạy: 13 shard qua SLURM array (job `14103227`, sau đó bị hủy giữa chừng vì thấy chạy nhanh hơn dự kiến), 147 shard còn lại chạy trực tiếp login node (`--skip-existing` để resume) — hoàn tất 160/160.
+- **Kết quả:** 40,798 video, 372,385 activity, **912,998 task point**, avg **2.45 caption/activity**, 0 video thiếu mp4 local.
+- **Validate kỹ (theo yêu cầu user, đã làm đầy đủ):** 100% task point hợp lệ schema/type/`video_path` tồn tại; 0 activity trùng `chunk_idx`; 0 activity vi phạm debounce 5s; đối chiếu ngược 5 shard ngẫu nhiên (11,576 activity, 28,156 điểm) — tính lại từ `chunk_timing` gốc khớp 100% với output đã lưu, 0 activity thiếu/thừa. Diagnostic sample lưu ở `logs/a1_smoke_test_samples.json` (gitignored).
+- Submit script: `slurm/submit_caption_tasks.sh`.
+
+**Đính chính hiểu về mục tiêu "×4":** đọc lại `REPORT.md` (dòng 1104, 1134) — ×4 gốc trong spec là mục tiêu của **captioning + perspective framing cộng lại** (nhân tổng số RECORD training lên ~4 lần), **không phải** "mỗi activity phải có đúng 4 caption" như đang đo. Đo thực tế: avg 2.45/activity chỉ đạt 61.3% nếu so với ×4 hiểu theo nghĩa hẹp (caption/activity) — nguyên nhân gốc: ~59% activity trong FineVideo ngắn hơn 15s, về mặt hình học không thể nhét 4 điểm cách nhau ≥5s (debounce). **Quyết định: giữ nguyên `target_count=4, min_gap_sec=5.0`, KHÔNG hạ gap để ép đạt số** — vì hạ gap sẽ tạo caption gần giống hệt nhau cho clip tĩnh ngắn, không thêm tín hiệu ngôn ngữ mới, chỉ tốn thêm compute A2. Muốn thật sự tiến gần ×4 thì đòn bẩy đúng là làm perspective framing (roadmap riêng, chưa code), không phải vắt thêm từ caption density.
+
+**A2 (`pipeline_pose/caption_finevideo.py`) — CODE XONG, SMOKE TEST OK, CHƯA CHẠY FULL:**
+- Đọc task list A1 (gộp theo video), mở video, extract frame tại `start_sec`, caption bằng Qwen2.5-VL-3B-Instruct (model đã chốt từ phiên trước) → ghi `outputs/captions/{video_id}_captions.jsonl`.
+- Theo đúng pattern đã dùng cho `pipeline_pose/snac_finevideo.py`: model load 1 lần/worker, video chia kiểu stride `all_vids[task_id::num_tasks]`, mỗi video 1 file output để resume an toàn (skip nếu đã tồn tại).
+- Smoke test (video `A1UVeD9UB1I`, giây 248.0): caption ra hợp lý — *"The person is arranging jewelry on a box."* khớp `text_prompt` gốc *"Woman opens a gift box."*
+- **Bug hạ tầng phát hiện + fix:** ban đầu chưa giới hạn số thread PyTorch → 2 tiến trình test chạy song song trên login node (80 core) tự tranh nhau, kết quả 57.6s/caption (chậm ~4x so với thật). Đã thêm `OMP_NUM_THREADS`/`MKL_NUM_THREADS`/`OPENBLAS_NUM_THREADS`/`torch.set_num_threads()` khớp `SLURM_CPUS_PER_TASK` (mặc định 4) để 32 worker không tranh nhau khi chạy job thật.
+- **Đo throughput sạch (4 thread, không tranh chấp, 3 lần lặp): ~13.8s/caption** (12.9/15.2/13.4s) — khớp mức 10-15s ghi trong `REPORT.md`.
+- **Ước tính full run:** 912,998 task × 13.8s ≈ **3,500 CPU-giờ**. Với 32 worker (như job SNAC trước) → **~109 giờ/worker (~4.6 ngày)**, cần **~5 lần resubmit** nếu giữ `--time=24:00:00`. An toàn resubmit nhờ skip-existing per-video.
+- Submit script đã viết: `slurm/submit_caption_finevideo.sh` — **CHƯA SUBMIT**, đang chờ quyết định CPU/GPU.
+
+**Câu hỏi mở — quyết định đầu phiên sau:**
+- CPU (32 worker, ~4.6 ngày, script đã sẵn sàng submit ngay) vs GPU (máy 2×4090, chưa đo thật lần nào trong phiên này).
+- Ước tính lý thuyết (CHƯA đo thật): GPU không batch có thể **không nhanh hơn** 32 CPU (chỉ 2-way song song vs 32-way, dù mỗi request nhanh hơn); muốn GPU thắng rõ rệt cần xử lý theo batch (nhiều ảnh/1 lần forward) — `caption_frame()` hiện tại chỉ xử lý 1 ảnh/lần, chưa có code batch.
+- Nếu chọn GPU: cần viết bản batch cho `caption_frame()` + cần thông tin truy cập máy 2×4090 để đo thật trước khi quyết định.
+- **B1/B2 (chèn caption vào `final_dataset_adaptive_v4/`, re-run Phase 7) vẫn CHƯA BẮT ĐẦU** — chờ A2 chạy xong (toàn bộ hoặc một phần đủ lớn).
+
+### 4. Đã chốt CPU, đã SUBMIT full run A2, đã xác nhận chạy đúng (13/07/2026)
+
+**Quyết định:** CPU, theo Van Khue — chọn phương án sẵn sàng ngay, không cần chờ code batch cho GPU.
+
+**Lần submit đầu (job `14104070`) FAIL — cả 32/32 task đều crash khi load model.** Nguyên nhân: `slurm/submit_caption_finevideo.sh` đặt `HF_CACHE=/p/scratch/laionize/nguyen38/hf_cache`, thư mục này KHÔNG có weight của Qwen2.5-VL-3B-Instruct (chỉ có `bert-base-uncased` và `snac_24khz`) — compute node không có internet (`HF_HUB_OFFLINE=1`), nên `from_pretrained()` bị lỗi `OSError: We couldn't connect to huggingface.co ... Qwen/Qwen2.5-VL-3B-Instruct is not the path to a directory containing config.json`. Cache đúng — chính là cache đã dùng khi smoke test ngày 12/07 — nằm ở `/p/data1/mmlaion/nguyen38/hf_cache` (có sẵn `models--Qwen--Qwen2.5-VL-3B-Instruct`, 7.1GB), khớp với lưu ý env gotcha đã ghi ở dưới ("luôn set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache`").
+
+**Fix:** đổi `HF_CACHE` trong `slurm/submit_caption_finevideo.sh` thành `/p/data1/mmlaion/nguyen38/hf_cache`.
+
+**Resubmit thành job `14104104` — ĐÃ XÁC NHẬN CHẠY ĐÚNG.** Cả 32/32 task vào trạng thái `R` (running), model load sạch trong ~44-45s/worker (không còn lỗi HF offline), caption đầu tiên xuất hiện chỉ sau ~5 phút kể từ lúc submit. Đã kiểm tra mẫu output (`.../captions/-0-6Som0MGY_captions.jsonl`, 10 caption) — đúng schema JSON, caption chất lượng tốt/cụ thể (VD: *"The person is pouring sulfuric acid into an energy drink can."*, *"The person is using a blue dropper to apply coconut oil onto a surface."*).
+
+**Trạng thái cuối phiên: job `14104104` đang chạy, 32/32 task active, ETA ~4.6 ngày (theo ước tính chi phí 12/07), sẽ cần resubmit nhiều lần vì `--time=24:00:00`.** Phiên sau nên: (1) check `squeue -u nguyen38` xem job `14104104` (hoặc job resubmit kế tiếp — cùng script, an toàn chạy lại nhờ skip-existing per-video) còn chạy hay đã timeout cần resubmit, (2) khi `outputs/captions/*.jsonl` đã phủ được một phần đáng kể (target 912,998 task point / 40,798 video), có thể bắt đầu B1 (mở rộng `phase6_merge_adaptive.py` thêm `--captions-dir`) — B1 không nhất thiết phải chờ A2 xong 100%, chỉ cần đủ coverage để bắt đầu prototype.
+
+**Đã thêm cơ chế auto-chaining, không cần resubmit tay:** `slurm/submit_caption_finevideo.sh` giờ nhận thêm tham số job-id tuỳ chọn và submit với `--dependency=afterany:<id>`, in ra job id mới để nối tiếp dễ dàng. Đã nối thêm 5 job sau `14104104`: `14104104 → 14104155 → 14104156 → 14104157 → 14104158 → 14104159` (6 job × 24h = ~6 ngày coverage). Đã xác nhận các job đang xếp hàng với lý do `(Dependency)` qua `squeue --start`. Nếu chuỗi vẫn chưa đủ, nối thêm bằng `bash slurm/submit_caption_finevideo.sh 14104159`.
+
+**Kiểm tra chất lượng caption (333+ file output, ~340 dòng mẫu): tốt nhìn chung, phát hiện 1 loại hallucination.** Đa số caption khớp tốt với `text_prompt` gốc. Phát hiện 1 hallucination rõ: video `-Gq3DJyhJ3I` (soccer highlights) có caption *"performing a complex mathematical operation..."* tại t=0.0s — frame thật (đã check bằng `cv2`) gần như đen tuyệt đối (fade-in đầu video), model bịa nội dung thay vì trả lời "không nhìn thấy gì" như nó làm đúng ở chỗ khác. **Đánh giá là rủi ro nhỏ, hạn chế đã biết của Qwen2.5-VL** (khớp tỷ lệ ~1/30-96 đo được lúc chọn model), không phải bug pipeline — không chặn tiến độ. Có thể cân nhắc fix nhỏ cho B1 sau này (không gấp): check độ sáng trung bình frame, bỏ qua/đánh dấu caption trên frame gần đen trước khi inject vào training data.
+
+### 5. Khảo sát 6 dataset permissive + bắt đầu download MINT-1T-HTML (13/07/2026, làm song song trong lúc A2 chạy)
+
+Đã tìm hiểu 6 dataset ứng viên còn chưa scope từ chat team 07/07. Chi tiết đầy đủ ở `REPORT.md` §17 — tóm tắt:
+- **`mira-wm.com` — bỏ** — không phải data robot/pose, đây là world model cho game Rocket League (video + keyboard action + game state). Không liên quan project.
+- **`finevla.xlang.ai` — hoãn** — bộ 47,159 trajectory train thật chưa public (GitHub repo ghi "Coming soon"); chỉ có benchmark eval 500 video (`xlangai/RoboFine-bench`) tải được.
+- **`nvidia/Cosmos3-DROID` — hoãn, chờ quyết định kiến trúc** — xác nhận thật (707GB, 71,907 episode robot teleop thật, format LeRobotDataset v3.0), nhưng là robot joint-space action, khác hẳn xyz human-pose token hiện tại. Cần thiết kế tokenizer riêng trước khi dùng được, không chỉ là tải về.
+- **`MiG-NJU/OmniVideo-100K` — hoãn** — data video QA, không có pose/action, chỉ làm loãng thêm tỷ lệ agent-token (rủi ro đã ghi nhận với MV-Omni).
+- **`genrobot2025/Gen-EgoData` — hoãn** — cấu trúc gần giống nhất (egocentric video+pose+action) nhưng rất nhỏ (500 sample, 47.6GB), format `.mcap` cần toolkit riêng, license CC-BY-SA (share-alike).
+- **`mlfoundations/MINT-1T-HTML` — đang tải.** Bù đắp trực tiếp cho khoảng trống ngôn ngữ DISCUSS-1 (5.217B token FineVideo gần như 100% là token modality riêng, gần như không có text thường). **Đính chính kích thước: đo thực tế 2.89TB (6,159 shard parquet), không phải 5.91TB như dataset card ghi** (số đó tính cho cả project MINT-1T gồm cả PDF/ArXiv, không có trong repo HTML-only này). **Phát hiện về schema: cột `images` chỉ là URL, không phải bytes ảnh thật** — phần text dùng ngay được, nhưng muốn lấy ảnh thật cho ý tưởng "seed2 token từ ảnh" thì cần crawl riêng từng URL, khả năng cao tỷ lệ link chết cao (nguồn blog từ 2011).
+
+**Insight quan trọng về framework (đáng nhớ cho việc scope dataset sau này):** nguồn video thô (pipeline HRNet→MotionBERT→PCHIP tự xử lý được từ đầu) rẻ để tích hợp; nguồn đã có pose/action sẵn (DROID joint-space, Gen-EgoData `.mcap`) là bài toán retargeting, không phải bài toán data-ingestion — đừng đầu tư thời gian tải trước khi có quyết định rõ ràng về việc có thêm modality robot-action riêng hay không.
+
+**Trạng thái download:** `tools/extract/download_mint1t_html.py` (script mới, dùng `huggingface_hub.snapshot_download`, 16 worker, tự retry, resumable) chạy trong tmux session `mint1t`, log tại `logs/download_mint1t_html.log`, đích `/p/data1/mmlaion/shared/vla/mint1t_html/`. Cuối phiên: 249/6,159 file, 204GB/2.89TB (~7%), ETA ~10 giờ từ lúc bắt đầu, không lỗi. **Việc tiếp theo:** để chạy xong, rồi sample-tokenize cột `texts` bằng tokenizer riêng của project (giống cách đã làm với MixtureVitae, §13) để biết số token thật trước khi quyết định cần bao nhiêu cho DISCUSS-1.
 
 ---
 

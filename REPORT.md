@@ -533,7 +533,7 @@ python tools/build_tokenizers.py --mode all       # both
 
 The original plan was to caption at every point where any of the 5 `chunk_timing` flags (`has_seed2/cosmos/avc_lm/agent/snac`) changes. Measured on real data this doesn't work: `has_cosmos`/`has_avc_lm` never vary within an activity (they're encoded at the same fixed 8-frame cadence as the chunk grid itself), and `has_seed2` — even after the §2.3 bugfix — still flips ~54x/activity purely because seed2 fires at a fixed 1fps rate; that's a technical cadence, not a content change. The only flag that reflects a genuine visual event is `has_agent` (a person detected/not detected by YOLO in Phase 4). Final design: caption the activity's first chunk (opening context) plus every chunk where `has_agent` flips, with a `min_gap_sec=5.0` debounce — because `has_agent` itself flickers frame-to-frame in busy/high-motion scenes (sports, martial arts) due to noisy YOLO detection (a known pre-existing data-quality issue, not a bug requiring a Phase 6 fix). The debounce only affects which points get captioned; it doesn't touch stored `chunk_timing` data.
 
-**Known limitation:** this design gives ~1.86 captions/activity on average (measured at a 2s debounce gap; slightly lower at 5s) — far short of the "×4 records" impact originally targeted. 82.8% of activities get exactly 1 caption (the opening frame only, no agent event ever occurs in that activity). Possible future fix: add a periodic supplemental caption every N seconds for activities with no agent transition — N not yet decided.
+**Known limitation (as originally measured, since addressed — see §2.5d below):** this design gave ~1.86 captions/activity on average (measured at a 2s debounce gap; slightly lower at 5s) — far short of the "×4 records" impact originally targeted. 82.8% of activities got exactly 1 caption (the opening frame only, no agent event ever occurs in that activity).
 
 **Model selection — Qwen2.5-VL-3B-Instruct chosen after testing 3 candidates:**
 
@@ -543,9 +543,9 @@ The original plan was to caption at every point where any of the 5 `chunk_timing
 | Florence-2-base | `<DETAILED_CAPTION>` task mode hallucinates (e.g. "he appears to be a psycholinguist" for a bearded man with glasses — reproducible, not sampling noise, since generation used deterministic beam search with no `temperature`/`do_sample`). Switching to `<CAPTION>` task mode eliminated the hallucination, cut generation time to ~1.5-3s/caption (3.5x faster than Qwen), and fixed truncation (raised `max_new_tokens` 48→64). Requires a separate venv (`env_caption_test/`, `transformers==4.49.0`, torchvision reinstalled from the CPU wheel index) because its `trust_remote_code=True` custom modeling code breaks under newer `transformers` (`AttributeError: 'Florence2LanguageConfig' object has no attribute 'forced_bos_token_id'`). |
 | SmolVLM2-2.2B-Instruct | 2x *slower* than Qwen2.5-VL on CPU in this environment (27.7s vs 14.0s/caption average) — contradicts its "fast, edge-oriented" reputation, likely due to an unoptimized CPU code path in this transformers version. Also hallucinated once (invented "holding a book and reading it" for a plain white intro-slate frame with no book). Rejected. |
 
-Rationale for choosing Qwen2.5-VL-3B despite losing the CPU speed benchmark to Florence-2: the full-scale captioning run must happen on GPU regardless of model choice (CPU is too slow for 43,751 videos with any of these models), so CPU-only speed differences are not decisive; quality/no-hallucination and long-term library-compatibility risk were weighted higher.
+Rationale for choosing Qwen2.5-VL-3B despite losing the CPU speed benchmark to Florence-2: quality/no-hallucination and long-term library-compatibility risk were weighted higher than raw CPU speed. (Note: an earlier draft of this section assumed the full run "must happen on GPU regardless of model choice" — superseded by Van Khue's Jul 12 decision to run A2 on CPU, and by the real cost measurement in §2.5d below.)
 
-**Full production pipeline (designed, not yet implemented):**
+**Full production pipeline:**
 
 ```
 final_dataset_adaptive_v3/ (chunk_timing-fixed, see §2.3)
@@ -553,17 +553,37 @@ final_dataset_adaptive_v3/ (chunk_timing-fixed, see §2.3)
             compute anchor points via select_anchor_points(), write a
             {video_id: [{activity_id, chunk_idx, start_sec, has_agent}, ...]}
             task list (same pattern as snac_task_list.json)
+            STATUS: DONE, see §2.5d.
     → [A2] SLURM array job: each worker loads Qwen2.5-VL-3B once, opens
             videos_staging/{video_id}.mp4, extracts a frame per anchor point,
             captions it → outputs/captions/{video_id}_captions.jsonl
+            STATUS: coded + smoke-tested, full run not started, see §2.5d.
     → [B1] Extend phase6_merge_adaptive.py with a --captions-dir flag
             (same pattern as --snac-tokens-dir), injecting
             <caption>...</caption> immediately BEFORE the <cosmos> block of
             the anchor chunk (chunk-boundary insertion only — never mid-block,
             avoiding a repeat of the v3→v4 speech-interleaving bug in §2.4)
             → final_dataset_adaptive_v4/
+            STATUS: not started.
     → [B2] phase7_flatten.py (unchanged) → megatron_dataset_v5/ → tokenize → train
+            STATUS: not started.
 ```
+
+### 2.5d A1/A2 implementation, validation, and cost measurement (Jul 12, 2026, later same day)
+
+**`select_anchor_points()` extended with a periodic-supplement step** to fix the §2.5c density limitation: after the agent-transition step, if fewer than `target_count=4` points were found, evenly-spaced supplemental points are added across the activity duration, snapped to the nearest real chunk, debounced (`min_gap_sec`) against already-kept points. New signature: `select_anchor_points(chunk_timing, min_gap_sec=2.0, target_count=4)` in `tools/analysis/caption_prototype.py`.
+
+**Bug found and fixed:** the supplement's `duration` was computed from the chunk's **absolute** `end_sec` instead of relative to the activity's own start_sec — activities starting late in a long video got target timestamps computed far outside their actual span, making the supplement silently a no-op for them. Fixed by subtracting `activity_start` first. Verified on 2,563 real activities: % reaching `target_count=4` rose from 10.4% → 54.8%.
+
+**A1 (`tools/analysis/generate_caption_tasks.py`) run on the full dataset** (160/160 shards; 13 via a since-cancelled SLURM array job `14103227`, 147 directly on the login node with `--skip-existing`). Result: 40,798 videos, 372,385 activities, **912,998 task points**, avg **2.45 captions/activity**. Validated end-to-end: 100% schema/type/video_path-exists checks pass; 0 duplicate `chunk_idx` per activity; 0 debounce violations; a 5-shard cross-check (11,576 activities, 28,156 points) recomputing from source `chunk_timing` matched the saved output 100%, with 0 missing/orphan activities.
+
+**Re-scoped the "×4" target:** re-reading §13 (below) clarifies the original ×4 figure was the combined effect of captioning *and* perspective framing multiplying total training record count — not "4 captions per activity." Measured avg 2.45/activity is 61.3% of the narrow (captions-per-activity) reading; root cause is structural, not a bug: ~59% of activities are under 15s, which cannot geometrically fit 4 points ≥5s apart. Decision: keep `target_count=4, min_gap_sec=5.0` — lowering the gap to force the number up would add near-duplicate captions on short static clips (compute cost with no real language-signal gain), not the correct lever for the ×4 goal.
+
+**A2 (`pipeline_pose/caption_finevideo.py`) coded**, following the same worker-split/resume pattern as `snac_finevideo.py` (model loaded once per worker; videos striped `all_vids[task_id::num_tasks]`; one output file per video for safe resume). Smoke test (video `A1UVeD9UB1I`, t=248.0s) produced a sensible caption ("The person is arranging jewelry on a box.") matching the source `text_prompt` ("Woman opens a gift box.").
+
+**Infra bug found and fixed:** no PyTorch thread limit was set, so two concurrent local test runs on an 80-core shared login node oversubscribed each other, producing 57.6s/caption (~4x the true rate). Added `OMP_NUM_THREADS`/`MKL_NUM_THREADS`/`OPENBLAS_NUM_THREADS`/`torch.set_num_threads()` pinned to `SLURM_CPUS_PER_TASK` (default 4) to prevent the eventual 32 SLURM workers from oversubscribing each other the same way.
+
+**Clean CPU throughput measured (4 threads, no contention, 3 repeats): ~13.8s/caption** (12.9/15.2/13.4s) — consistent with the §2.5c CPU estimate. **Full-run cost: 912,998 tasks × 13.8s ≈ 3,500 CPU-hours.** With 32 workers (matching the SNAC job's scale) → ~109h/worker (~4.6 days), needing ~5 resubmits at `--time=24:00:00`; safe to resubmit via per-video skip-existing. Submit script `slurm/submit_caption_finevideo.sh` written but **not yet submitted** — open decision for next session is CPU (ready now, ~4.6 days) vs GPU (2×4090 machine, unmeasured; a decisive GPU win likely requires implementing batched inference in `caption_frame()`, which does not exist yet — currently one image per forward pass).
 
 Captions are plain English sentences — regular BPE tokenization, no vocab expansion required.
 
@@ -574,6 +594,20 @@ Captions are plain English sentences — regular BPE tokenization, no vocab expa
 - Read and evaluated `HumanoidBench` (arXiv 2403.10506) as a candidate eval benchmark — **not a fit** for the current model. It's a closed-loop RL/control benchmark (MuJoCo simulation, Unitree H1 + two Shadow Hands, 61-dim joint-position action space at 50Hz) whereas this project's agent tokens are xyz world positions for 17 H36M human joints with no joint angles or hand/finger data. Only relevant to the already-deferred Priority 12 (Isaac Sim / H1 sim-to-real), not the near-term eval-protocol discussion (DISCUSS-3).
 - Home directory quota is much smaller than `/p/data1` project storage — set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` before downloading large HF models to avoid `OSError: [Errno 122] Disk quota exceeded`.
 - `huggingface_hub`'s Xet download backend can fail transiently (`RuntimeError: ... Background writer channel closed`) — set `HF_HUB_DISABLE_XET=1` to fall back to plain HTTP downloads.
+
+### 2.5e A2 full run: CPU decided, submitted, and confirmed working (Jul 13, 2026)
+
+**Decision:** CPU chosen (Van Khue) over the unmeasured GPU/batching path — `slurm/submit_caption_finevideo.sh` was ready to go, so no reason to wait on the GPU-batching investigation described in §2.5d's open question.
+
+**First submit (job `14104070`) failed 32/32 tasks at model load.** `slurm/submit_caption_finevideo.sh` pointed `HF_CACHE` at `/p/scratch/laionize/nguyen38/hf_cache`, which only contains `bert-base-uncased` and `snac_24khz` — not the Qwen2.5-VL-3B-Instruct weights used by A2. Since compute nodes run with `HF_HUB_OFFLINE=1` (no internet), `Qwen2_5_VLForConditionalGeneration.from_pretrained()` raised `OSError: We couldn't connect to 'https://huggingface.co' ... Qwen/Qwen2.5-VL-3B-Instruct is not the path to a directory containing a file named config.json` in every one of the 32 array tasks. The correct cache — the one actually used for the §2.5d smoke test — is `/p/data1/mmlaion/nguyen38/hf_cache` (confirmed present: `models--Qwen--Qwen2.5-VL-3B-Instruct`, 7.1GB), consistent with the general env note already in §2.5d ("set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache`... to avoid Disk quota exceeded" — the same path serves double duty as the correct model cache location).
+
+**Fix + resubmit:** changed `HF_CACHE` in `slurm/submit_caption_finevideo.sh` to `/p/data1/mmlaion/nguyen38/hf_cache`, resubmitted as job `14104104`. Confirmed working: all 32/32 array tasks reached running state, each worker's model load completed cleanly in ~44-45s with no offline errors, and per-video output files began appearing within ~5 minutes. Spot-checked one output file (`-0-6Som0MGY_captions.jsonl`, 10 lines) — well-formed JSON matching the documented schema, captions qualitatively specific and accurate to the source video content (e.g. *"The person is pouring sulfuric acid into an energy drink can."*, *"The person is using a blue dropper to apply coconut oil onto a surface."*).
+
+**End-of-session status:** job `14104104` running with all 32 workers active, ETA ~4.6 days per the §2.5d cost estimate (912,998 tasks × 13.8s / 32 workers), will need ~5 resubmits at the `--time=24:00:00` limit — safe via per-video skip-existing. Next actions: monitor/resubmit job `14104104` until `outputs/captions/` covers all 40,798 videos, then start B1 (`--captions-dir` flag on `phase6_merge_adaptive.py`) — B1 does not strictly require 100% A2 completion, only enough coverage to prototype against.
+
+**Auto-chaining set up so no manual resubmission is needed:** `slurm/submit_caption_finevideo.sh` extended to accept an optional `$1` job id and pass `--dependency=afterany:$1` to `sbatch` (prints the new job id on stdout for easy chaining). Submitted a 5-job chain after `14104104`: `14104104 → 14104155 → 14104156 → 14104157 → 14104158 → 14104159`, each starting only once the previous one's full array exits (success, failure, or timeout) — 6 jobs × 24h = 144h (~6 days) of coverage, comfortably above the ~4.6-day estimate. Confirmed via `squeue --start`: all 5 queued jobs show `(Dependency)` as their wait reason.
+
+**Spot-check of live output (333+ files, ~340 sampled captions) — quality holds up at scale, one hallucination class found:** captions are specific and match source `text_prompt` content well (e.g. a Freemasons' Hall museum video correctly captioned *"standing in front of an open door with a sign that says 'We're Open Free Admission Library Museum Shop Tours'"*, matching the source activity "Entering Freemasons' Hall"). **One clear hallucination found:** video `-Gq3DJyhJ3I` (a soccer/Frankie de Jong video) got the caption *"The person is performing a complex mathematical operation involving fractions, exponents, and square roots"* at t=0.0s — completely unrelated to the actual source content ("Soccer players playing a match, a goal is scored"). Extracted the real frame at t=0.0s with `cv2` to check: it's a **near-black fade-in frame** (very low mean pixel intensity), and the model hallucinated content instead of saying "not visible" (which it does correctly elsewhere, e.g. *"The person is not visible in the image"* on a similar dark/empty frame in another video). **Assessed as a known, low-severity Qwen2.5-VL limitation** (consistent with the ~1-in-30-96 hallucination rate measured during model selection in §2.5c), not a pipeline bug — does not block the full run. **Possible future mitigation for B1** (not implemented, low priority): compute mean pixel intensity of each extracted frame in `caption_finevideo.py` and skip/flag captioning on near-black frames before they're injected into training data.
 
 ### 2.6 Megatron-LM Tokenization (Phase 8)
 **Script:** `/p/data1/mmlaion/nguyen38/mv-scale/tokenize_vla_adaptive.sbatch`
@@ -1321,3 +1355,46 @@ Comparable in scale to the 4.92B SNAC tokens already found in MixtureVitae-Omni'
 ### Status
 
 Findings posted to Huu on Discord (Jul 9, 2026, 3:51pm): *"this dataset is mostly text, only train_data_snac.jsonl.gz and valid_data_snac.jsonl.gz have snac tokens ... u want to add it?"* — **awaiting his reply.** No integration or full download has started pending his decision.
+
+## 17. Permissive Dataset Survey — 6 Candidates Investigated, MINT-1T-HTML Download Started (Jul 13, 2026)
+
+While the A2 captioning full run (§2.5e) is in progress, investigated the 6 remaining unscoped candidates from the Jul 7 team chat (§15) to prepare for downloading whatever is actionable. Research done via HuggingFace API/WebFetch, no download attempted for the rejected/deferred candidates.
+
+### Results per candidate
+
+| Candidate | Verdict | Notes |
+|---|---|---|
+| `mira-wm.com` | **Not relevant, dropped** | Confirmed via search: this is "MIRA," a Rocket League gameplay world model (General Intuition + Kyutai + Epic Games) — video + keyboard actions + game state from bot-vs-bot matches (~10,000 match-hours). No robot/human pose or action data of any kind. Real dataset is `kyutai/rocket-science` on HF, unrelated to this project's needs. |
+| `finevla.xlang.ai` | **Deferred — data not yet public** | The actual FineVLA-Data training set (47,159 human-verified trajectories aggregated from 10 robot datasets, 220,606 action steps) is **not released**. Checked the GitHub repo (`xlang-ai/FineVLA`) directly: README says "Coming soon" for policy checkpoints; the only downloadable artifact is `xlangai/RoboFine-bench`, a 500-video **evaluation benchmark**, not training data. Nothing to download until upstream releases it. |
+| `nvidia/Cosmos3-DROID` | **Confirmed real, downloadable — architecture decision needed before use** | Raw DROID (real bimanual/single-arm robot teleop data) repackaged to LeRobotDataset v3.0. 71,907 episodes (57,639 success + 14,268 failure), ~22.4M frames @15fps, 707GB, 3 camera streams (2 exterior + 1 wrist) + joint/cartesian/gripper state+action, license OpenMDW 1.1 (commercial-OK). **Not downloaded yet** — this is robot joint-space action data, a fundamentally different representation from this project's xyz human-pose PCHIP tokens (§2.2). Using it requires designing a new robot-action tokenization scheme first (comparable scope to the already-deferred "PAB-Spline joint angles" work), not just a download+count-tokens step. Flagged for Huu to decide scope before investing download time. |
+| `MiG-NJU/OmniVideo-100K` | **Deferred — dilution risk** | Video-text QA dataset (multiple-choice + open-ended questions about video content), Apache 2.0, ~100K samples (`mcq_30k`/`oe_70k` subsets). No pose/action signal — would only add more seed2/cosmos/text tokens, same class of risk already flagged for MV-Omni (agent-token ratio dilution, 12.2%→5.2% when MV-Omni was mixed in, §13 Jul 8 update). Not downloaded pending a decision on whether the dilution tradeoff is worth it. |
+| `mlfoundations/MINT-1T-HTML` | **Downloaded — see below** | Interleaved text+image web dataset (CommonCrawl HTML, 2017-2024), CC-BY-4.0. Directly addresses the still-open DISCUSS-1 language-data-mix gap (§1, §13) — FineVideo v4's 5.217B tokens are ~100% modality-specific (cosmos 74.4%/agent 12.2%/snac 7.0%/seed2 6.4%), essentially zero plain natural-language text, so this is the first candidate that adds real language grounding at meaningful scale. |
+| `genrobot2025/Gen-EgoData` | **Deferred — small scale, format cost** | Egocentric human video + ego-SLAM pose + actions for domestic tasks (kitchen/bedroom/living-room/study; folding clothes, organizing, etc.), CC-BY-SA-4.0 (note: share-alike, has downstream licensing implications unlike the other CC-BY/Apache candidates). Only 500 samples / 4.23 hours total — closest structural match to this project's own pipeline (egocentric perspective, pose+action) but too small to move the token-count needle; value would be qualitative (viewpoint diversity) not quantitative. Data stored as `.mcap` (ROS-like), requires the `genrobot-ai/das-datakit` toolkit to load — not started.
+
+### Key architectural distinction surfaced this session
+
+Datasets split into two classes with very different integration cost:
+1. **Raw video** (OmniVideo-100K, and FineVideo itself) — this project's own HRNet→MotionBERT→PCHIP pipeline can process it end-to-end under the project's own joint/coordinate conventions. Integration cost ≈ compute time only.
+2. **Pre-posed/pre-actioned data** (Cosmos3-DROID's robot joint-space, Gen-EgoData's ego-SLAM `.mcap`) — each source has its own skeleton/joint convention, coordinate frame, and action representation. Integrating these is a **retargeting problem** (design + validate a mapping into this project's token format, possibly a wholly new modality for robot-embodiment actions), not a data-ingestion problem. Recommendation: don't invest download time in class-2 sources until there's an explicit decision on whether/how to add a robot-action modality distinct from the current human-pose agent tokens.
+
+### MINT-1T-HTML download — in progress
+
+**Size correction:** the dataset card advertises "1 trillion text tokens / 3.4B images / 5.91TB" for the full MINT-1T project (which also includes PDF and ArXiv splits), but the `mlfoundations/MINT-1T-HTML` repo used here is the **HTML-only config** (`data_v1_1`). Measured directly via the HF tree API (paginated, all 6,159 files): **2.89TB actual size**, not 5.91TB.
+
+**Schema (inspected from a downloaded shard, `pyarrow.parquet`):**
+```
+images:           list<string>   -- image URLs (NOT embedded bytes)
+texts:            list<string>   -- actual interleaved text content
+metadata:         string (JSON)  -- per-image source info (document_url, unformatted_src, ...)
+url:               string        -- source webpage URL
+image_hashes:      list<string>
+images_metadata:   list<string>
+cc_dump:           string        -- source CommonCrawl dump id (e.g. "CC-MAIN-2017-22")
+```
+**Important finding: the `images` column is a list of image URLs, not raw image bytes.** The `texts` column is directly usable (real text, tokenizable now with this project's tokenizer). Getting actual pixels — needed if the plan is to run these through the Seed2 tokenizer to add `<seed2_N>` tokens alongside the text — would require a **separate crawl step per URL**, with an unmeasured but likely significant dead-link rate given the source pages are from 2011-era blogs crawled in CommonCrawl 2017. Not attempted yet; text-only ingestion is the safe near-term plan.
+
+**Download launched:** `tools/extract/download_mint1t_html.py` (new script) uses `huggingface_hub.snapshot_download` with `allow_patterns=["data_v1_1/*.parquet"]`, 16 parallel workers, and an outer retry loop (safe to interrupt/resume — skips files already complete). Running in a detached `tmux` session (`mint1t`), logging to `logs/download_mint1t_html.log`, target `/p/data1/mmlaion/shared/vla/mint1t_html/` (per-project convention for shared downloaded data, 390TB free at `/p/data1` so no capacity concern for 2.89TB). Copied the existing cached HF token into the custom `HF_HOME` (`/p/data1/mmlaion/nguyen38/hf_cache`) to get authenticated rate limits (~50MB/s single-thread measured vs ~31MB/s unauthenticated).
+
+**Progress at end of session (07:13, Jul 13):** 249/6,159 files, 204GB/2.89TB (~7%), running ~43 minutes, steady rate ~4.7GB/min → **ETA ~10 hours from start** (~9.3h remaining). No errors. Text-token counting against this project's own tokenizer (same method as the §16 MixtureVitae investigation) is the natural next step once a meaningful fraction has landed, to convert the raw 742B-token (their tokenizer) figure into a real budget-relevant number.
+
+**Next steps (not started):** (1) let the download finish or grow further, (2) sample-tokenize a subset of `texts` with the project's own GPT-NeoX+VLA vocab tokenizer to get a real token count, (3) decide with Huu how large a slice of the 2.89TB is actually needed for DISCUSS-1 (likely far less than the full corpus, given the "few billion tokens" target), (4) decide separately whether the image-URL-crawl-for-seed2 idea is worth pursuing given expected link rot.

@@ -26,7 +26,7 @@ VIDEOS_DIR = "/p/data1/mmlaion/shared/nguyen38/data/videos_staging"
 OUT_DIR = "/p/data1/mmlaion/nguyen38/3d-human-pose/logs/caption_frames_florence2"
 
 
-def collect_samples(num_videos, min_gap_sec=2.0):
+def collect_samples(num_videos, min_gap_sec=2.0, target_count=4):
     """Prefer activities with an agent-flip (real content event), fall back
     to start-only activities to fill the quota."""
     with_agent_flip = []
@@ -51,13 +51,22 @@ def collect_samples(num_videos, min_gap_sec=2.0):
                         ct = act.get("chunk_timing") or []
                         if not ct:
                             continue
-                        pts = select_anchor_points(ct, min_gap_sec=min_gap_sec)
+                        pts = select_anchor_points(ct, min_gap_sec=min_gap_sec, target_count=target_count)
                         seen_videos.add(vid)
                         entry = {
                             "video_id": vid, "video_path": video_path,
                             "text_prompt": act.get("text_prompt", ""), "pts": pts,
                         }
-                        if len(pts) > 1:
+                        # Classify on the raw has_agent signal, not len(pts):
+                        # the periodic supplement in select_anchor_points can
+                        # pad a zero-flip activity up to target_count points,
+                        # which would otherwise defeat this "prefer real
+                        # agent-flip activities" stratification.
+                        has_flip = any(
+                            ct[i]["has_agent"] != ct[i - 1]["has_agent"]
+                            for i in range(1, len(ct))
+                        )
+                        if has_flip:
                             with_agent_flip.append(entry)
                         else:
                             start_only.append(entry)
@@ -71,9 +80,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-videos", type=int, default=10)
     parser.add_argument("--min-gap-sec", type=float, default=2.0)
+    parser.add_argument("--target-count", type=int, default=4)
     args = parser.parse_args()
 
-    samples = collect_samples(args.num_videos, min_gap_sec=args.min_gap_sec)
+    samples = collect_samples(args.num_videos, min_gap_sec=args.min_gap_sec, target_count=args.target_count)
     total_pts = sum(len(s["pts"]) for s in samples)
     print(f"Collected {len(samples)} videos, {total_pts} anchor points total")
 
