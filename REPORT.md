@@ -1398,3 +1398,44 @@ cc_dump:           string        -- source CommonCrawl dump id (e.g. "CC-MAIN-20
 **Progress at end of session (07:13, Jul 13):** 249/6,159 files, 204GB/2.89TB (~7%), running ~43 minutes, steady rate ~4.7GB/min → **ETA ~10 hours from start** (~9.3h remaining). No errors. Text-token counting against this project's own tokenizer (same method as the §16 MixtureVitae investigation) is the natural next step once a meaningful fraction has landed, to convert the raw 742B-token (their tokenizer) figure into a real budget-relevant number.
 
 **Next steps (not started):** (1) let the download finish or grow further, (2) sample-tokenize a subset of `texts` with the project's own GPT-NeoX+VLA vocab tokenizer to get a real token count, (3) decide with Huu how large a slice of the 2.89TB is actually needed for DISCUSS-1 (likely far less than the full corpus, given the "few billion tokens" target), (4) decide separately whether the image-URL-crawl-for-seed2 idea is worth pursuing given expected link rot.
+
+---
+
+## 18. Caption+Speech Interleaving Pipeline — Implementation Started, Two Real Bugs Found (Jul 14, 2026)
+
+While A2 continues running (job chain `14104155`→`14104156-159`, caption count 11,501→13,783 between Jul 13 and Jul 14 checks), started implementing the approved plan to interleave `<caption>` and `<speech>` tags into the flattened token sequence at modality-transition points — the fix for root cause #2 of the "model can't self-initiate modality transitions" finding (no language anchor explaining what's happening at each timestamp).
+
+### 8-task breakdown and status
+
+1. **Video→shard manifest** (`tools/analysis/build_video_shard_manifest.py`) — DONE. Maps all 43,751 `video_id`s to their `HuggingFaceFV/finevideo` parquet shard index.
+2. **Speech extraction script** (`tools/analysis/extract_speech_segments.py`) — coded, two real bugs found and fixed (detailed below).
+3. *(not a new script — the already-running A2 SLURM job itself)*.
+4. **Caption dict adapter** (`tools/analysis/build_caption_dict.py`) — coded, logic-tested against real A2 output; **not yet run at full scale** (`captions_dict/` doesn't exist on disk yet).
+5. **Tokenizer rebuild** — added 4 wrapper tokens (`<caption>`, `</caption>`, `<speech>`, `</speech>`) to `tools/tokenizer/build_tokenizers.py` and `tools/tokenizer/expand_vocab.py`. `tokenizer_vla_adaptive_v2` rebuild confirmed complete: vocab 156,509 (144,215 base+SNAC + 4 new), all 4 new tokens verified atomic, spot-checked all pre-existing token categories (seed2/cosmos/avclm/pelvis/SNAC/agent/fps) still atomic too. `tokenizer_vla_qwen3` rebuild was in progress at time of writing.
+6. **`phase6_merge_adaptive.py`** — NOT YET EDITED. Pre-implementation check of the cosmos/avc_lm 1:1 pairing invariant (needed before trusting the planned index-based splice logic) found 1 mismatch in a 2,753-activity sample: video `bg9y_imduwQ`, activity `scene_8_act_1`, 183 `<avc_lm>` vs 184 `<cosmos>` — traced to a dangling trailing incomplete chunk at the very end of the activity's frame range (already excluded from `avc_count`/`chunk_timing` elsewhere in the pipeline, so pre-existing and invisible, not a new bug). Planned indexing (loop bounded by `len(avc_matches)`, index into `cosmos_matches` by the same index) should be safe against this specific trailing-only failure mode, but a broader 5-shard check to confirm no *interspersed* (non-trailing) mismatches exist was interrupted and not yet re-run.
+7. **`phase7_flatten.py`** — not started.
+8. **End-to-end dry run** — not started.
+
+### Correction: no new Whisper compute needed
+
+Earlier informal framing called this "the Whisper pipeline," but `extract_speech_segments.py` does not run any ASR model. FineVideo already ships a pre-computed per-video transcript (`timecoded_text_to_speech`, sourced from YouTube-Commons ASR) in its HF Hub parquet files. The script's job is purely to re-fetch that field and re-align it onto the 8-frame `chunk_timing` grid already stored per-activity — a mapping/data-wrangling task, not new model inference.
+
+### Two real bugs found while producing sample output
+
+**Bug 1 (initially misdiagnosed as an HF-fetch issue):** a quick manual test (`--video-ids iWv3M3cSBs8,vd6hr_AtYtQ`, 2 videos) on the shared JUWELS login node drove process RSS to 90+ GB within ~9 minutes with no sign of leveling off; killed to protect the shared node (754GB total, other users present). First hypothesis was that `pq.read_table(path, columns=["json"], filesystem=fs)` reading via `HfFileSystem`'s remote streaming was buffering inefficiently — switched to `hf_hub_download()` (download to local `$HF_HOME` cache, then read the local file with plain `pyarrow`). That change is real and worth keeping (avoids repeat-download cost across videos sharing a shard, and is a generally safer I/O pattern), but re-testing showed **the same unbounded growth curve, proving this wasn't the actual cause.**
+
+**Real cause:** `load_activities_needing_speech()` — called before any `--video-ids` filtering — defaults to the unrestricted `INPUT_GLOB_DEFAULT`, i.e. **all 160 files of `final_dataset_adaptive_v3/`, 663GB total** (confirmed via `du -sh`), and for every video with `chunk_timing` it retained the **entire activity dict**, including the `video_tokens` field (the full per-activity token string — potentially hundreds of KB each, given cosmos alone is 74.4% of the corpus's 5.217B tokens). With no early filtering, memory grew roughly proportional to how many of the 160 files had been scanned so far, well past what any 2-video test needed.
+
+**Fix (both applied):**
+1. `load_activities_needing_speech()` now only retains the 3 fields actually used downstream (`activity_id`, `chunk_timing`, `time_range_sec`), not the full activity dict.
+2. The `--video-ids` allowlist (when given) is now applied *during* the per-line scan, not as a post-hoc dict filter after everything was loaded.
+
+**Verified fix:** re-ran the identical 2-video test — RSS stayed under 500MB for the full run (vs. 90+ GB unbounded before). Note the production full-scale path (32-way SLURM array, each worker already only touches its `SLURM_ARRAY_TASK_COUNT`-sliced ~5 files via `input_paths[start:end]`) was always structurally less exposed to bug 1 than the login-node quick-test path (which had no such slicing), but the field-trimming fix (bug 1's real fix) reduces every worker's memory footprint regardless of slicing.
+
+### Tokenizer upload — pending user action
+
+`tools/upload/upload_tokenizers_v2.py`'s baked-in model cards were updated to describe the 4 new tokens (adaptive_v2: 156,505→156,509 vocab; qwen3: 257,897→257,901 vocab), including a new changelog note in each README. Not run — needs the user's own `HF_TOKEN` exported first. Once `tokenizer_vla_qwen3`'s rebuild is confirmed complete:
+```bash
+export HF_TOKEN=...   # user's own token
+python tools/upload/upload_tokenizers_v2.py --mode all
+```

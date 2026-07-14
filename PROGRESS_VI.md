@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 13/07/2026  
+**Cập nhật lần cuối:** 14/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **hiện đang DOWN, xem phần Cập nhật bên dưới**  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
 
@@ -123,6 +123,26 @@ Caption là text tiếng Anh thường, tokenize BPE bình thường — **khôn
 **Insight quan trọng về framework (đáng nhớ cho việc scope dataset sau này):** nguồn video thô (pipeline HRNet→MotionBERT→PCHIP tự xử lý được từ đầu) rẻ để tích hợp; nguồn đã có pose/action sẵn (DROID joint-space, Gen-EgoData `.mcap`) là bài toán retargeting, không phải bài toán data-ingestion — đừng đầu tư thời gian tải trước khi có quyết định rõ ràng về việc có thêm modality robot-action riêng hay không.
 
 **Trạng thái download:** `tools/extract/download_mint1t_html.py` (script mới, dùng `huggingface_hub.snapshot_download`, 16 worker, tự retry, resumable) chạy trong tmux session `mint1t`, log tại `logs/download_mint1t_html.log`, đích `/p/data1/mmlaion/shared/vla/mint1t_html/`. Cuối phiên: 249/6,159 file, 204GB/2.89TB (~7%), ETA ~10 giờ từ lúc bắt đầu, không lỗi. **Việc tiếp theo:** để chạy xong, rồi sample-tokenize cột `texts` bằng tokenizer riêng của project (giống cách đã làm với MixtureVitae, §13) để biết số token thật trước khi quyết định cần bao nhiêu cho DISCUSS-1.
+
+### 6. Bắt đầu triển khai pipeline chèn caption+speech vào token (14/07/2026, làm song song trong lúc A2 tiếp tục chạy)
+
+**Bối cảnh:** đã duyệt plan chèn tag `<caption>` (output của A2/Qwen2.5-VL) và `<speech>` (transcript ASR có sẵn của FineVideo, KHÔNG phải chạy Whisper mới — xem đính chính bên dưới) vào chuỗi token training tại các điểm chuyển đổi modal, giúp model có "language anchor" mà hiện đang thiếu. Tổng 8 task, trạng thái như sau.
+
+**Đã xong:**
+- **Task #1 (manifest video→shard):** `tools/analysis/build_video_shard_manifest.py`, đã chạy xong. Map 43,751 video_id sang shard index parquet của `HuggingFaceFV/finevideo`. Dùng lại được mãi, không cần chạy lại.
+- **Task #2 (script trích speech, xem bug bên dưới):** `tools/analysis/extract_speech_segments.py` đã viết xong. **Đính chính so với cách gọi trước đây:** script này KHÔNG chạy Whisper — FineVideo đã có sẵn transcript ASR tính trước cho mỗi video (`timecoded_text_to_speech`, nguồn YouTube-Commons), nên script chỉ fetch lại field đó từ parquet trên HF Hub rồi map vào `chunk_timing`, không cần tính ASR mới.
+- **Task #4 (adapter caption dict):** `tools/analysis/build_caption_dict.py` đã viết, đã test logic trên output A2 thật. **Chưa chạy full-scale** — thư mục output `captions_dict/` chưa tồn tại trên đĩa.
+- **Task #5 (tokenizer):** đã thêm 4 token wrapper (`<caption>`, `</caption>`, `<speech>`, `</speech>`) vào `tools/tokenizer/build_tokenizers.py` + `tools/tokenizer/expand_vocab.py`. Rebuild `tokenizer_vla_adaptive_v2` **đã xác nhận xong và verify kỹ** (vocab 156,509, cả 4 token mới đều atomic, tất cả nhóm token cũ cũng re-check lại atomic). Rebuild `tokenizer_vla_qwen3` tại thời điểm ghi entry này **vẫn đang chạy** — cần check lại trước khi coi là xong.
+
+**2 bug thật đã tìm ra và fix trong `extract_speech_segments.py` khi cố lấy sample output cho user xem (quan trọng — có thể tái diễn nếu script này bị copy hoặc pattern bị tái sử dụng chỗ khác):**
+1. **RAM tăng không giới hạn — KHÔNG phải do fetch từ HF (chẩn đoán sai lúc đầu).** Test nhanh với `--video-ids` (2 video) đẩy RSS lên 90+ GB và vẫn tăng tiếp trên login node dùng chung, phải kill giữa chừng. Lúc đầu nghi ngờ do đọc streaming qua `HfFileSystem`, đã đổi sang `hf_hub_download` (tải về cache local) — fix này đúng và nên giữ, nhưng KHÔNG phải nguyên nhân thật. **Nguyên nhân thật:** `load_activities_needing_speech()` mặc định quét toàn bộ glob `final_dataset_adaptive_v3/` (160 file, tổng **663GB**) trước khi lọc theo `--video-ids`, và giữ lại **toàn bộ activity dict** (gồm cả chuỗi `video_tokens` — hàng trăm KB/activity) cho MỌI video có `chunk_timing`, thay vì chỉ 3 field thực sự cần (`activity_id`, `chunk_timing`, `time_range_sec`).
+2. **Fix:** (a) chỉ giữ lại 3 field cần thiết, (b) áp filter `--video-ids`/allowlist NGAY TRONG lúc quét file, không lọc sau khi đã load hết. Test lại: RSS giữ dưới 500MB cho cùng test 2-video (so với 90+ GB không giới hạn trước đó). Job full-scale thực tế (SLURM array 32 worker, ~5 file/worker nhờ chia theo `SLURM_ARRAY_TASK_COUNT`) vốn ít bị ảnh hưởng hơn path test nhanh trên login node, nhưng fix này vẫn giảm RAM cho worker nói chung.
+
+**Chưa bắt đầu:** Task #6 (`phase6_merge_adaptive.py` — chèn `<caption>` trước `<cosmos>`, `<speech>` sau `</avc_lm>`; pre-check invariant cosmos/avc_lm 1:1 tìm thấy 1 mismatch dạng trailing chunk trong 2,753 activity, đánh giá an toàn nhưng broad-check 5 shard bị ngắt giữa chừng, chưa chạy lại), Task #7 (update regex/state-machine `phase7_flatten.py`), Task #8 (dry-run end-to-end).
+
+**Trạng thái job caption A2:** chain `14104155` (đang chạy, 32/32 task) → `14104156-159` (đang xếp hàng, chờ dependency). Số caption tăng 11,501 → 13,783 giữa lần check 13/07 và 14/07 — tiến độ đều nhưng còn xa target 912,998, dự kiến còn vài ngày nữa.
+
+**Upload tokenizer (đang chờ, cần HF token riêng của user):** `tools/upload/upload_tokenizers_v2.py` đã cập nhật model card phản ánh 4 token mới (vocab 156,505→156,509 cho adaptive_v2, 257,897→257,901 cho qwen3). Chưa chạy — user sẽ export `HF_TOKEN` riêng và chạy sau khi rebuild qwen3 xong: `python tools/upload/upload_tokenizers_v2.py --mode all`.
 
 ---
 

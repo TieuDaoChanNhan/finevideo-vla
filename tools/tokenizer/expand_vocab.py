@@ -18,6 +18,8 @@ def expand_vocab(input_vocab_path="vocab/vocab.json", output_vocab_path="vocab/v
         "<cosmos>", "</cosmos>",
         "<avc_lm>", "</avc_lm>",
         "<agent>", "</agent>",
+        "<caption>", "</caption>",
+        "<speech>", "</speech>",
         "<start_cosmo>", "</start_cosmo>",
         "<start_avclm>", "</start_avclm>",
     ]

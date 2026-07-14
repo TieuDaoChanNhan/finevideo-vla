@@ -42,18 +42,24 @@ tags:
 license: apache-2.0
 ---
 
-# VLA Tokenizer — Adaptive v2 (GPT-NeoX-20b + SNAC)
+# VLA Tokenizer — Adaptive v2 (GPT-NeoX-20b + SNAC + caption/speech)
 
 Extended GPT-NeoX-20b tokenizer for the **FineVideo-VLA** multimodal dataset.
-Adds 3D human pose tokens, video tokens, and SNAC audio tokens on top of the
+Adds 3D human pose tokens, video tokens, SNAC audio tokens, and caption/speech
+wrapper tokens on top of the
 [EleutherAI/gpt-neox-20b](https://huggingface.co/EleutherAI/gpt-neox-20b) base.
 
-**Vocab size: 156,505** (50,277 base + 93,938 VLA + 12,290 SNAC)
+**Vocab size: 156,509** (50,277 base + 93,938 VLA + 12,290 SNAC + 4 caption/speech)
 
 > **v1 → v2 change:** Added 12,290 SNAC audio tokens (`<snac>`, `</snac>`,
 > and 12,288 `<snac_N>` tokens) for the SNAC listen format used in
 > [MixtureVitae-Omni](https://huggingface.co/datasets/mixture-vitae/MixtureVitae-Omni)
 > and FineVideo-VLA audio tokenization. All existing v1 token IDs are unchanged.
+>
+> **Later addition (same v2 repo, in place):** Added 4 wrapper tokens —
+> `<caption>`, `</caption>`, `<speech>`, `</speech>` — for inline visual
+> caption / spoken-dialogue interleaving at modality-transition points in the
+> token sequence. All prior token IDs (including SNAC) are unchanged.
 
 ---
 
@@ -73,8 +79,9 @@ Adds 3D human pose tokens, video tokens, and SNAC audio tokens on top of the
 | **SNAC Level 1 even** | `<snac_132362>` – `<snac_136457>` | 4,096 | 25 Hz fine audio (even frames) |
 | **SNAC Level 1 odd** | `<snac_144650>` – `<snac_148745>` | 4,096 | 25 Hz fine audio (odd frames) |
 | **SNAC wrappers** | `<snac>`, `</snac>` | 2 | Block delimiters |
+| **Caption/speech wrappers** | `<caption>`, `</caption>`, `<speech>`, `</speech>` | 4 | Inline caption/dialogue interleaving |
 
-**Total new tokens: 106,228** (93,938 VLA + 12,290 SNAC)
+**Total new tokens: 106,232** (93,938 VLA + 12,290 SNAC + 4 caption/speech)
 
 ---
 
@@ -116,7 +123,7 @@ SNAC listen format: 3 tokens per base frame (L0 + L1_even + L1_odd),
 from transformers import AutoTokenizer
 
 tok = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-adaptive-v2")
-print(len(tok))  # 156505
+print(len(tok))  # 156509
 
 # All VLA and SNAC tokens are single atomic tokens
 print(tok.encode("<seed2_1137>",   add_special_tokens=False))  # [59908]
@@ -179,9 +186,10 @@ license: apache-2.0
 # VLA Tokenizer — Qwen3
 
 Extended Qwen3 tokenizer for the **FineVideo-VLA** multimodal dataset.
-Adds all VLA tokens (video, 3D pose, SNAC audio) on top of the Qwen3 base tokenizer.
+Adds all VLA tokens (video, 3D pose, SNAC audio, caption/speech wrappers) on
+top of the Qwen3 base tokenizer.
 
-**Vocab size: 257,897** (~151,669 Qwen3 base + 106,228 VLA tokens)
+**Vocab size: 257,901** (~151,669 Qwen3 base + 106,232 VLA tokens)
 
 > **Why Qwen3?** The Qwen3 family has strong multilingual + reasoning abilities
 > and native HuggingFace ecosystem support (vLLM, llama.cpp, transformers).
@@ -206,8 +214,9 @@ Adds all VLA tokens (video, 3D pose, SNAC audio) on top of the Qwen3 base tokeni
 | SNAC Level 1 even | `<snac_132362>` – `<snac_136457>` | 4,096 | 25 Hz fine audio (even frames) |
 | SNAC Level 1 odd | `<snac_144650>` – `<snac_148745>` | 4,096 | 25 Hz fine audio (odd frames) |
 | SNAC wrappers | `<snac>`, `</snac>` | 2 | Block delimiters |
+| Caption/speech wrappers | `<caption>`, `</caption>`, `<speech>`, `</speech>` | 4 | Inline caption/dialogue interleaving |
 
-**Total VLA tokens added: 106,228**
+**Total VLA tokens added: 106,232**
 
 ---
 
@@ -225,7 +234,7 @@ Adds all VLA tokens (video, 3D pose, SNAC audio) on top of the Qwen3 base tokeni
 from transformers import AutoTokenizer
 
 tok = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-qwen3")
-print(len(tok))  # 257897
+print(len(tok))  # 257901
 
 # All VLA tokens are atomic
 print(tok.encode("<seed2_1137>",   add_special_tokens=False))  # single ID

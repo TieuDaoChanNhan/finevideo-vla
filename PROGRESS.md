@@ -1,7 +1,7 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 13, 2026  
+**Last updated:** July 14, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **currently DOWN, see Infrastructure Status below**  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
@@ -123,6 +123,26 @@ Investigated the 6 remaining unscoped data candidates from the Jul 7 team chat. 
 **Key framework insight (worth remembering for future dataset scoping):** raw video sources (own HRNet→MotionBERT→PCHIP pipeline handles them end-to-end) are cheap to integrate; pre-posed/pre-actioned sources (DROID joint-space, Gen-EgoData `.mcap`) are a retargeting problem, not a data-ingestion problem — don't invest download time there without an explicit decision on adding a distinct robot-action modality first.
 
 **Download status:** `tools/extract/download_mint1t_html.py` (new script, `huggingface_hub.snapshot_download`, 16 workers, auto-retry, resumable) running in tmux session `mint1t`, log at `logs/download_mint1t_html.log`, target `/p/data1/mmlaion/shared/vla/mint1t_html/`. At session end: 249/6,159 files, 204GB/2.89TB (~7%), ETA ~10h from start, no errors. **Next steps:** let it finish, then sample-tokenize `texts` with the project's own tokenizer (same method as the MixtureVitae investigation, §13) to get a real token count before deciding how much of the corpus is actually needed for DISCUSS-1.
+
+### 6. Caption+speech interleaving pipeline — implementation started (Jul 14, 2026, while A2 continues running)
+
+**Context:** approved plan to interleave `<caption>` (A2/Qwen2.5-VL output) and `<speech>` (FineVideo's pre-computed ASR transcript, NOT a new Whisper run — see correction below) tags into the training token sequence at modality-transition points, giving the model language anchors it currently lacks. 8 tasks total; status below.
+
+**Done:**
+- **Task #1 (video→shard manifest):** `tools/analysis/build_video_shard_manifest.py`, run to completion. 43,751 video_ids mapped to their `HuggingFaceFV/finevideo` parquet shard index. Reusable, no need to rerun.
+- **Task #2 (speech extraction script, see bugs below):** `tools/analysis/extract_speech_segments.py` written. **Correction to earlier framing:** this does NOT run Whisper — FineVideo already ships a pre-computed ASR transcript per video (`timecoded_text_to_speech`, from YouTube-Commons), so this script just re-fetches that field from the HF Hub parquet and maps it onto `chunk_timing`, no new ASR compute needed.
+- **Task #4 (caption dict adapter):** `tools/analysis/build_caption_dict.py` written, logic-tested against real A2 output. **Not yet run at full scale** — `captions_dict/` output directory does not exist on disk yet.
+- **Task #5 (tokenizer):** added 4 wrapper tokens (`<caption>`, `</caption>`, `<speech>`, `</speech>`) to `tools/tokenizer/build_tokenizers.py` + `tools/tokenizer/expand_vocab.py`. `tokenizer_vla_adaptive_v2` rebuild **confirmed complete and verified** (vocab 156,509, all 4 new tokens atomic, all pre-existing token categories re-checked atomic too). `tokenizer_vla_qwen3` rebuild was still running as of this entry — check before assuming done.
+
+**Two real bugs found and fixed in `extract_speech_segments.py` while trying to produce sample output (important — could resurface if this script is copied or its pattern reused elsewhere):**
+1. **Unbounded memory growth, not from HF fetching (initially misdiagnosed).** A quick `--video-ids` test (2 videos) drove RSS to 90+ GB and climbing on the shared login node before being killed. First suspected `HfFileSystem` streaming reads and switched to `hf_hub_download` (local-cache download) — that fix is real and worth keeping, but it was NOT the actual cause. **Real cause:** `load_activities_needing_speech()` defaults to scanning the full `final_dataset_adaptive_v3/` glob (160 files, **663GB total**) before applying the `--video-ids` allowlist, and it retained the **entire activity dict** (including the `video_tokens` string — hundreds of KB per activity) for every video with `chunk_timing`, not just the 3 fields actually needed (`activity_id`, `chunk_timing`, `time_range_sec`).
+2. **Fix:** (a) trim retained activity data to only the 3 needed fields, (b) apply the `--video-ids`/allowlist filter *during* the file scan, not after loading everything. Re-tested: RSS stayed under 500MB for the same 2-video test (down from 90+ GB unbounded). Production full-scale runs (32-way SLURM array, ~5 files/worker via `SLURM_ARRAY_TASK_COUNT` slicing) were always going to be less exposed to this than the login-node quick-test path, but the fix reduces worker memory footprint regardless.
+
+**Not started:** Task #6 (`phase6_merge_adaptive.py` — inject `<caption>` pre-`<cosmos>`, `<speech>` post-`</avc_lm>`; pre-check on cosmos/avc_lm 1:1 invariant found 1 trailing-chunk mismatch out of 2,753 activities, judged safe but a broader 5-shard check was interrupted, not yet re-run), Task #7 (`phase7_flatten.py` regex/state-machine update), Task #8 (end-to-end dry run).
+
+**A2 captioning job status:** chain `14104155` (running, 32/32 tasks) → `14104156-159` (queued, dependency). Caption count grew 11,501 → 13,783 between the Jul 13 and Jul 14 checks — steady but far from the 912,998 target, still expect several more days.
+
+**Tokenizer upload (pending, needs user's own HF token):** `tools/upload/upload_tokenizers_v2.py` updated with new model-card text reflecting the 4 added tokens (vocab 156,505→156,509 for adaptive_v2, 257,897→257,901 for qwen3). Not run yet — user will export their own `HF_TOKEN` and run it once the qwen3 rebuild finishes: `python tools/upload/upload_tokenizers_v2.py --mode all`.
 
 ---
 

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-Build VLA tokenizers with SNAC support.
+Build VLA tokenizers with SNAC + caption/speech support.
 
 Two outputs:
   current  — load existing tokenizer_vla_adaptive (GPT-NeoX-20b, 144,215 vocab)
-             + add 12,290 SNAC tokens → tokenizer_vla_adaptive_v2
+             + add 12,290 SNAC tokens + 4 caption/speech wrapper tokens
+             → tokenizer_vla_adaptive_v2 (rebuilt in place, not yet used by any
+             completed retokenization/training run as of this change — see
+             PROGRESS.md's still-unchecked "Megatron re-tokenize ... v0.3" item)
   qwen3    — load Qwen3 base tokenizer
-             + add ALL VLA tokens (93,938 existing + 12,290 SNAC = 106,228)
+             + add ALL VLA tokens (93,938 existing + 12,290 SNAC + 4 caption/speech)
              → tokenizer_vla_qwen3
   all      — both
 
@@ -50,6 +53,11 @@ def snac_tokens() -> list[str]:
     return toks
 
 
+def caption_speech_tokens() -> list[str]:
+    """4 wrapper tokens for inline caption/speech interleaving (chunk-anchored)."""
+    return ["<caption>", "</caption>", "<speech>", "</speech>"]
+
+
 def all_vla_tokens() -> list[str]:
     """Full VLA token list: 93,938 existing + 12,290 SNAC = 106,228 total."""
     toks = []
@@ -60,6 +68,8 @@ def all_vla_tokens() -> list[str]:
         "<cosmos>", "</cosmos>",
         "<avc_lm>", "</avc_lm>",
         "<agent>", "</agent>",
+        "<caption>", "</caption>",
+        "<speech>", "</speech>",
         "<start_cosmo>", "</start_cosmo>",
         "<start_avclm>", "</start_avclm>",
     ]
@@ -102,6 +112,10 @@ SPOT_CHECK = [
     "<snac_148745>",   # L1B last
     "<snac>",
     "</snac>",
+    "<caption>",
+    "</caption>",
+    "<speech>",
+    "</speech>",
 ]
 
 def verify(tok, label: str):
@@ -134,10 +148,10 @@ def build_current(output_dir: str):
     tok = AutoTokenizer.from_pretrained(EXISTING_TOK_DIR)
     print(f"  Loaded base vocab size: {len(tok)}")
 
-    new_toks = snac_tokens()
+    new_toks = snac_tokens() + caption_speech_tokens()
     # Filter out any already present (safe re-run)
     to_add = [t for t in new_toks if t not in tok.get_vocab()]
-    print(f"  SNAC tokens to add: {len(to_add)} / {len(new_toks)}")
+    print(f"  SNAC + caption/speech tokens to add: {len(to_add)} / {len(new_toks)}")
 
     if to_add:
         added = tok.add_tokens(to_add, special_tokens=True)
