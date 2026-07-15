@@ -1,9 +1,55 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 14, 2026  
-**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **currently DOWN, see Infrastructure Status below**  
+**Last updated:** July 15, 2026  
+**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **back up**, `booster` batch jobs running normally as of Jul 15  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
+
+---
+
+## Cập nhật phiên làm việc — 15/07/2026 (đọc phần này trước khi resume)
+
+**Việc chính hôm nay: kiểm tra lại trạng thái thật của caption+speech pipeline (task breakdown ở REPORT.md §18), phát hiện 2 việc đã âm thầm chạy xong mà doc chưa ghi nhận, và fix 2 bug thật trong `phase7_flatten.py` liên quan tới việc permute speech transcript khi có SNAC.
+
+### 1. Speech extraction (task #2) — XÁC NHẬN ĐÃ CHẠY XONG HOÀN TOÀN
+
+REPORT.md §18 dừng ở "relaunched — confirmed healthy" (14/7). Check lại tmux session `speech_full` thì cả 8 worker đã in `DONE` từ lâu ("All workers finished"):
+
+| Metric | Tổng 8 worker |
+|---|---|
+| Video xử lý | **40,437** |
+| Activity có speech | **303,976** |
+| Segment speech trích ra | **2,608,543** |
+| Garbled/skip | ~58K (~2.2%) |
+
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/speech_segments/` — 40,490 file `{video_id}_speech.jsonl`. Task #2 coi như xong, sẵn sàng cho task #6 (`phase6_merge_adaptive.py --speech-segments-dir`).
+
+### 2. Tokenizer rebuild (task #5) — XÁC NHẬN ĐÃ CHẠY XONG HOÀN TOÀN
+
+`tokenizer_vla_qwen3` (đang "in progress" theo REPORT.md §18) đã build xong: vocab **257,901**, tất cả token mới (`<caption>`, `</caption>`, `<speech>`, `</speech>`) + toàn bộ token cũ (seed2/cosmos/avclm/pelvis/SNAC/agent/fps) đã verify atomic qua spot-check trong tmux `qwen3_rebuild`. Cùng với `tokenizer_vla_adaptive_v2` (156,509 vocab, đã xong từ trước) — cả 2 tokenizer đã sẵn sàng, chỉ còn thiếu bước **upload lên HuggingFace** (cần user tự export `HF_TOKEN`):
+```bash
+cd /p/data1/mmlaion/nguyen38/3d-human-pose
+source activate_env_tools.sh
+export HF_TOKEN=...   # HF token của user
+python tools/upload/upload_tokenizers_v2.py --mode all
+```
+
+### 3. Caption pipeline (A2, task #3) — vẫn đang chạy, còn xa mới xong
+
+`squeue` cho thấy job `14104156` đang chạy đủ 32/32 worker (đã chạy hơn 8h45p tính tới lúc check), và có chuỗi 3 job kế tiếp (`14104157`→`158`→`159`) đang xếp hàng chờ qua dependency `afterany` — tự động nối tiếp vì 1 lần chạy không đủ time-window để xử lý hết ~913K task point. Worker 0 mẫu: 800/1275 video, ~0.03 video/s, ETA riêng job hiện tại ~287 phút. Đã có **25,432 file caption** ghi ra `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/captions/`. Chưa đủ để chạy full-scale task #4 (`build_caption_dict.py`) — cần đợi thêm.
+
+### 4. Fix 2 bug thật trong `pipeline_pose/phase7_flatten.py` (liên quan task #7)
+
+Phát hiện khi rà lại kỹ augmentation pipeline (không phải lỗi mới sinh ra hôm nay, đã tồn tại từ khi `permute_sentences` + SNAC injection được thêm vào):
+
+- **Bug A (chính):** augmentation "sentence permutation" (xáo câu trong `### Speech:`) áp dụng **vô điều kiện**, kể cả khi activity đó có `<snac_N>` (audio thật, giữ đúng thứ tự thời gian). Kết quả: model "nghe" (SNAC) đúng thứ tự nhưng "đọc" (text speech) bị xáo trộn — dạy sai lệch giả giữa audio và text. **Fix:** thêm biến `effective_permute_rate = 0.0 if sn > 0 else permute_sentences` ngay trước khi gọi `process_transcript_into_chunks()` — `sn` là số token `<snac_N>` đã có sẵn trong `kept_tokens` (tính từ `count_token_types()`, không cần thêm logic mới).
+- **Bug B (phụ, phát hiện khi test fix A):** `permute_chunks_list()` có `n = max(1, int(len(c) * permutation_rate))` — dòng này **ép tối thiểu 1 lần hoán đổi bất kể rate truyền vào là bao nhiêu**, kể cả `rate=0.0`. Nếu không sửa, fix A ở trên sẽ vô tác dụng (permute_rate=0 vẫn bị hoán đổi 1 cặp). **Fix:** thêm điều kiện `permutation_rate <= 0` vào early-return cùng với check `len(chunks) < 2` đã có sẵn.
+- Đã verify bằng test nhanh: `permute_chunks_list(chunks, 0.0)` giờ trả về list y hệt input (trước đây thì không).
+- **Chưa commit**, chưa chạy lại full-scale (đây là fix cho lần Phase 7 chạy tiếp theo, thuộc task #7/#8 của caption+speech interleaving work, hiện vẫn "not started" theo §18).
+
+### Việc tiếp theo hợp lý nhất
+
+Vì task #3 (A2) còn chạy rất lâu và task #6/#7/#8 phụ thuộc cả speech (đã xong 100%) lẫn caption (chưa xong), có thể tranh thủ bắt đầu task #6 (`phase6_merge_adaptive.py` — thêm `--captions-dir` + `--speech-segments-dir`) ngay, vì phần speech-segments đã sẵn sàng hoàn toàn, không cần đợi caption.
 
 ---
 

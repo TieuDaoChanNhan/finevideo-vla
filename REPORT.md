@@ -1450,3 +1450,43 @@ python tools/upload/upload_tokenizers_v2.py --mode all
 **First launch: all 8 workers crashed within ~20 seconds** — `RuntimeError: ... File reconstruction error: IO Error: Disk quota exceeded (os error 122)`. Root cause: the runner script never set `HF_HOME`, so `hf_hub_download()` defaulted to `~/.cache/huggingface` — the small-quota home directory (already a documented gotcha elsewhere in this project's history, e.g. the Jul 12 session note "always set `HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache`... to avoid Disk quota exceeded" — simply forgot to apply it to this new script). 8 parallel workers downloading ~450-500MB parquet shards each blew through the remaining home quota in under a minute (home usage measured at 7.7GB right before the crash, 9.6GB right after).
 
 **Fix:** added `export HF_HOME=/p/data1/mmlaion/nguyen38/hf_cache` (+ `HF_HUB_DISABLE_XET=1` for the known Xet-backend flakiness) to `run_speech_extraction_login.sh`. Cleaned up the 1.9GB of partial `HuggingFaceFV/finevideo` parquet cache the crashed run left behind in `~/.cache/huggingface` (courtesy cleanup, home dir shared with other project caches). Relaunched — confirmed healthy: 8/8 workers alive, ~100% of 1 core each (8/80 total login-node cores, ~10%), RSS 300-400MB/worker (consistent with the earlier memory-bug fix holding), and `hf_cache` under `/p/data1` growing correctly (16GB and rising) while `~/.cache/huggingface` stayed flat. Running in tmux session `speech_full`, per-worker logs at `logs/speech_extraction_login/worker_*.log`, output target `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/speech_segments/`.
+
+---
+
+## 19. Status Check + Two Permutation/SNAC Bugs Fixed (Jul 15, 2026)
+
+Re-verified the live cluster state of the §18 8-task breakdown (via `squeue`, `tmux capture-pane`, and log/output inspection, not just re-reading the docs) and found two tasks had actually finished since the last write-up, plus fixed a real correctness bug in `phase7_flatten.py` surfaced during a design discussion with Huu about speech-transcript augmentation.
+
+### Task #2 (speech extraction) — confirmed COMPLETE
+
+`tmux` session `speech_full` shows all 8 `extract_speech_segments.py` workers printed `DONE` ("All workers finished"). Aggregate across workers:
+
+| Metric | Total |
+|---|---|
+| Videos processed | **40,437** |
+| Activities with speech | **303,976** |
+| Segments extracted | **2,608,543** |
+| Garbled/skipped | ~58K (~2.2%) |
+
+Output: `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/speech_segments/` — 40,490 `{video_id}_speech.jsonl` files (confirmed via `find | wc -l`). Task #2 is now a completed input for task #6.
+
+### Task #5 (tokenizer rebuild) — confirmed COMPLETE
+
+`tokenizer_vla_qwen3` (in progress as of the Jul 14 entry) finished building: vocab **257,901**, all 4 new wrapper tokens (`<caption>`, `</caption>`, `<speech>`, `</speech>`) plus every pre-existing token category (seed2/cosmos/avclm/pelvis/SNAC/agent/fps) spot-checked atomic in the `qwen3_rebuild` tmux pane. Combined with the already-complete `tokenizer_vla_adaptive_v2` (156,509 vocab), both tokenizers are ready; only the HF upload step (§18's pending user action) remains.
+
+### Task #3 (A2 captioning) — still running, far from done
+
+`squeue` shows job `14104156` running its full 32/32 array (~8h45m elapsed at check time), with a 3-job dependency chain (`14104157`→`14104158`→`14104159`, `afterany`) queued behind it — expected, since one `--time` window can't cover all ~913K task points. Worker 0 sample: 800/1275 videos, ~0.03 vid/s, current-job ETA ~287 min. 25,432 `{video_id}_captions.jsonl` files written so far to `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/captions/`. Not yet enough to run task #4 (`build_caption_dict.py`) at full scale.
+
+### Two bugs fixed in `pipeline_pose/phase7_flatten.py`
+
+Surfaced while double-checking, with Huu, whether sentence-permutation augmentation on `speech_transcript` (§2.4/§18 augmentation table) could conflict with real SNAC audio tokens injected into the same activity (Phase 6 v2, §2.3). Confirmed `speech_transcript` is genuinely ASR text (`timecoded_text_to_speech`, per §18's "no new Whisper compute" note) — not FineVideo's separate model-generated `description`/`text_prompt` commentary field — so the conflict is real, not a false alarm.
+
+- **Bug A (the actual conflict):** `permute_sentences` augmentation shuffled `### Speech:` sentence order unconditionally, even for activities carrying real `<snac_N>` audio tokens (which preserve true temporal order). This teaches a spurious mismatch between what the model "hears" (SNAC, correct order) and "reads" (shuffled text). **Fix:** in `flatten_one_file()`, added `effective_permute_rate = 0.0 if sn > 0 else permute_sentences` right before the `process_transcript_into_chunks()` call — `sn` (SNAC token count) was already computed by the existing `count_token_types(kept_tokens)` call a few lines above, no new logic needed to detect SNAC presence.
+- **Bug B (masking bug, found while testing fix A):** `permute_chunks_list()`'s `n = max(1, int(len(c) * permutation_rate))` forces at least one swap regardless of the requested rate — passing `permutation_rate=0.0` still performed 1 swap, which would have silently defeated Bug A's fix. **Fix:** added `or permutation_rate <= 0` to the existing `len(chunks) < 2` early-return guard.
+- Verified with a standalone unit check: `permute_chunks_list(chunks, 0.0)` now returns the input list unchanged (previously it did not).
+- **Not yet committed to git, not yet exercised at scale** — this fix takes effect the next time Phase 7 runs, i.e. as part of the still-unstarted task #7/#8 work from §18.
+
+### Suggested next step
+
+Task #3 (A2) will take a while longer, and tasks #6–8 need both speech (now 100% ready) and captions (not yet). Task #6 (`phase6_merge_adaptive.py` — add `--captions-dir` + `--speech-segments-dir`) can start now regardless, since it only needs the speech-segments input, which is fully ready.

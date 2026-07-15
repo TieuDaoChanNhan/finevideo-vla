@@ -127,7 +127,7 @@ def augment_text_string(text, synonym_rate=0.15, stopword_drop_rate=0.05):
 
 
 def permute_chunks_list(chunks, permutation_rate=0.10):
-    if len(chunks) < 2:
+    if len(chunks) < 2 or permutation_rate <= 0:
         return chunks
     c = list(chunks)
     n = max(1, int(len(c) * permutation_rate))
@@ -350,9 +350,13 @@ def flatten_one_file(in_path, output_dir, skip_existing,
 
                     # Speech: augmented and placed in a dedicated header block.
                     # NOT interleaved into the token sequence (fixed v3 bug).
+                    # Sentence permutation is skipped when real SNAC audio tokens
+                    # are present: SNAC preserves true temporal order, so shuffling
+                    # the speech text would mismatch what the model "hears" vs "reads".
+                    effective_permute_rate = 0.0 if sn > 0 else permute_sentences
                     speech_chunks = process_transcript_into_chunks(
                         speech, max_words=20,
-                        permute_rate=permute_sentences,
+                        permute_rate=effective_permute_rate,
                         syn_rate=synonym_rate,
                         stop_rate=stopword_drop,
                     )
