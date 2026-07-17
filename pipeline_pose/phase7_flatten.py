@@ -1,37 +1,57 @@
 #!/usr/bin/env python3
 """
-Phase 7 v4 — Flatten Phase 6 v2 merged dataset into Megatron-LM JSONL.
+Phase 7 v5 — Flatten Phase 6 v4 merged dataset into Megatron-LM JSONL.
 
-Key changes from v3:
-  1. Per-chunk temporal ordering.
-     Old: [all cosmos ...][all agent ...][all snac ...]
-     New: for each 8-frame chunk → [<seed2_N>...?][<cosmos_N>...?][agent tokens?][<snac_N>...?]
-     State machine walks events in document order; AVC-LM fires the per-chunk flush.
+Key changes from v4:
+  1. Two new token types from the caption+speech language-anchor pipeline
+     (Phase 6 v4's --captions-dir / --speech-segments-dir):
+       <caption>...</caption>  — Qwen2.5-VL frame caption, anchored before
+                                  its chunk's <cosmos> block. Buffered like
+                                  seed2/cosmos, flushed at avc_lm (in the
+                                  order caption -> seed2 -> cosmos, matching
+                                  source document order).
+       <speech>...</speech>    — inline ASR segment snapped to its chunk,
+                                  anchored after </avc_lm> alongside
+                                  agent/snac. Emitted immediately, no
+                                  dropout, like agent/snac.
+     Neither is text-augmented (no synonym replacement / stopword drop):
+     both are anchored to an exact chunk, so paraphrasing them would break
+     the token-to-moment correspondence that's the point of adding them.
+     This is a different treatment from the existing "### Speech:" header
+     block below, which is untouched and still augmented/permuted as before
+     — the two are intentionally redundant (whole-activity dump vs.
+     precisely-timed anchor), a deliberate decision, not an oversight.
 
-  2. Speech in a dedicated ### Speech: header block, NOT scattered into the token sequence.
-     Previously speech words were randomly inserted among cosmos/agent/snac tokens, breaking
-     agent joint grammar in 43% of full-chain records.
+  2. count_token_types() gained a `mode` tracker so caption/speech words
+     (which have no distinguishing '<...>' prefix) are attributed to their
+     own stat buckets instead of silently landing in the catch-all "agent"
+     bucket. Stats-only change; does not affect training text content.
 
-  3. Text header blocks (Title / Context / Keywords / Speech) are shuffled among
-     themselves.  The token sequence is ALWAYS placed after all text blocks to
-     guarantee a consistent text-prompt → token-generation order for inference.
-
-  4. Per-file token counts printed to stdout so you can sum them for a total
-     dataset size without running a separate Megatron tokenisation pass.
+Carried over from v4 (unchanged):
+  - Per-chunk temporal ordering via a document-order event state machine;
+    AVC-LM fires the per-chunk flush.
+  - Speech in a dedicated ### Speech: header block (in addition to the new
+    inline <speech> above), NOT otherwise scattered into the token sequence.
+  - Text header blocks (Title / Context / Keywords / Speech) are shuffled
+    among themselves. The token sequence is ALWAYS placed after all text
+    blocks to guarantee a consistent text-prompt -> token-generation order.
+  - Per-file token counts printed to stdout.
 
 Record filter (unchanged from v3):
   Emit any activity that has <agent> OR <snac> tokens.
   Pure seed2+cosmos activities are skipped.
 
-Drop rates (unchanged from v3):
-  AVC-LM  100%   (removed pending ablation)
-  Cosmos   50%   (per-chunk independent decision)
-  Seed2     0%   (always keep)
-  Agent     0%   (always keep)
-  SNAC      0%   (always keep)
+Drop rates (unchanged from v4):
+  AVC-LM          100%   (removed pending ablation)
+  Cosmos           50%   (per-chunk independent decision)
+  Seed2             0%   (always keep)
+  Agent             0%   (always keep)
+  SNAC              0%   (always keep)
+  Caption           0%   (always keep -- sparse anchor signal)
+  Speech (inline)   0%   (always keep -- sparse anchor signal)
 
-Input:  .../final_dataset_adaptive_v2/final_vla_adaptive_v2_rank_*.jsonl   (Phase 6 v2 output)
-Output: .../megatron_dataset_v4/flat_*.jsonl
+Input:  .../final_dataset_adaptive_v4/final_vla_adaptive_rank_*.jsonl   (Phase 6 v4 output)
+Output: .../megatron_dataset_v5/flat_*.jsonl
 
 Usage:
     python pipeline_pose/phase7_flatten.py [options]
@@ -167,6 +187,13 @@ _RE_SIMPLE = re.compile(r'<(seed2|cosmos|avc_lm)>(.*?)</\1>', re.DOTALL)
 _RE_AGENT  = re.compile(r'<agent>(.*?)</agent>', re.DOTALL)
 # SNAC blocks: contain <snac_N> tokens
 _RE_SNAC   = re.compile(r'<snac>(.*?)</snac>', re.DOTALL)
+# Caption blocks (Phase 6 v4): free-text Qwen2.5-VL caption, injected before <cosmos>
+_RE_CAPTION = re.compile(r'<caption>(.*?)</caption>', re.DOTALL)
+# Inline speech blocks (Phase 6 v4): free-text ASR segment snapped to a chunk,
+# injected after </avc_lm> alongside agent/snac. Distinct from the whole-activity
+# "### Speech:" header block built from activity["speech_transcript"] below --
+# that one is unchanged and still augmented/permuted as before.
+_RE_SPEECH_INLINE = re.compile(r'<speech>(.*?)</speech>', re.DOTALL)
 # Any single tag <...>
 _RE_TAG    = re.compile(r'<[^>]+>')
 
@@ -180,19 +207,34 @@ def process_activity_per_chunk(token_str,
     """
     Flatten video_tokens into a temporally-ordered list of vocab token strings.
 
-    Phase 6 v2 writes chunks in this order for each 8-frame window:
-        [<seed2>N...</seed2>?]  <cosmos>N...</cosmos>  <avc_lm>N...</avc_lm>
-        [<agent><fps_30>...</agent>?]  [<snac><snac_N>...</snac>?]
+    Phase 6 v4 writes chunks in this order for each 8-frame window:
+        [<seed2>N...</seed2>?]  [<caption>text</caption>?]  <cosmos>N...</cosmos>
+        <avc_lm>N...</avc_lm>  [<agent><fps_30>...</agent>?]  [<snac><snac_N>...</snac>?]
+        [<speech>text</speech>?]
 
     This function emits per chunk:
-        [<seed2_N>...?]  [<cosmos_N>...?]  [agent inner tokens?]  [<snac_N>...?]
+        [<caption> word... </caption>?]  [<seed2_N>...?]  [<cosmos_N>...?]
+        [agent inner tokens?]  [<snac_N>...?]  [<speech> word... </speech>?]
 
     State machine (processes events in document order):
+        caption →  buffer pending_caption
         seed2   →  buffer pending_seed2
         cosmos  →  buffer pending_cosmos
-        avc_lm  →  flush: emit pending_seed2 (dropout), emit pending_cosmos (dropout)
+        avc_lm  →  flush, in this order: pending_caption (no dropout, verbatim
+                    text), pending_seed2 (dropout), pending_cosmos (dropout)
         agent   →  emit inner named-joint tags directly (no dropout)
         snac    →  emit <snac_N> tags directly (optional dropout)
+        speech  →  emit verbatim text wrapped in <speech>/</speech> (no dropout,
+                    no augmentation -- same reasoning as caption: this text is
+                    snapped to an exact chunk, so paraphrasing it would break
+                    the token-to-moment correspondence that's the whole point
+                    of adding it)
+
+    Caption is buffered rather than emitted immediately (unlike agent/snac/
+    speech) because it appears before <cosmos> in the source string but must
+    still respect per-chunk dropout timing semantics the same way seed2/cosmos
+    do -- flushing all three together at avc_lm keeps their relative order
+    (caption, then seed2, then cosmos) matching the source document order.
 
     AVC-LM payload is always discarded.
     """
@@ -211,19 +253,29 @@ def process_activity_per_chunk(token_str,
     for m in _RE_SNAC.finditer(token_str):
         events.append((m.start(), 'snac', m.group(1)))
 
+    for m in _RE_CAPTION.finditer(token_str):
+        events.append((m.start(), 'caption', m.group(1)))
+
+    for m in _RE_SPEECH_INLINE.finditer(token_str):
+        events.append((m.start(), 'speech', m.group(1)))
+
     if not events:
         return []
 
     events.sort(key=lambda x: x[0])
 
     # ── State machine ─────────────────────────────────────────────────────────
-    all_output     = []
-    pending_seed2  = None   # seed2 payload waiting for its avc_lm trigger
-    pending_cosmos = None   # cosmos payload waiting for its avc_lm trigger
+    all_output      = []
+    pending_seed2   = None   # seed2 payload waiting for its avc_lm trigger
+    pending_cosmos  = None   # cosmos payload waiting for its avc_lm trigger
+    pending_caption = None   # caption payload waiting for its avc_lm trigger
 
     for _, etype, payload in events:
 
-        if etype == 'seed2':
+        if etype == 'caption':
+            pending_caption = payload
+
+        elif etype == 'seed2':
             pending_seed2 = payload
 
         elif etype == 'cosmos':
@@ -231,6 +283,14 @@ def process_activity_per_chunk(token_str,
 
         elif etype == 'avc_lm':
             # avc_lm fires → flush pending video tokens for this chunk
+
+            if pending_caption is not None:
+                text = pending_caption.strip()
+                if text:
+                    all_output.append('<caption>')
+                    all_output.extend(text.split())
+                    all_output.append('</caption>')
+            pending_caption = None
 
             if pending_seed2 is not None and random.random() > drop_rate_seed:
                 all_output.extend(
@@ -253,16 +313,49 @@ def process_activity_per_chunk(token_str,
             if random.random() > drop_rate_snac:
                 all_output.extend(_RE_TAG.findall(payload))
 
+        elif etype == 'speech':
+            text = payload.strip()
+            if text:
+                all_output.append('<speech>')
+                all_output.extend(text.split())
+                all_output.append('</speech>')
+
     return all_output
 
 
 # ── Token type counter ───────────────────────────────────────────────────────
 
 def count_token_types(tokens):
-    """Return (n_seed2, n_cosmos, n_agent, n_snac) counts."""
-    s2 = co = ag = sn = 0
+    """Return (n_seed2, n_cosmos, n_agent, n_snac, n_caption, n_speech) counts.
+
+    caption/speech words don't carry a distinguishing '<...>' prefix (they're
+    plain English text between '<caption>'/'</caption>' or '<speech>'/'</speech>'
+    sentinels), so a running `mode` tracks whether we're currently inside one
+    of those wrappers -- otherwise every caption/speech word would silently
+    fall into the catch-all 'agent' bucket below and corrupt the reported
+    token-type breakdown (it would NOT corrupt the actual training text,
+    which is unaffected -- this only affects the printed stats).
+    """
+    s2 = co = ag = sn = cap = sp = 0
+    mode = None  # None | 'caption' | 'speech'
     for tok in tokens:
-        if tok.startswith('<seed2_'):
+        if tok == '<caption>':
+            mode = 'caption'
+            cap += 1
+        elif tok == '</caption>':
+            mode = None
+            cap += 1
+        elif tok == '<speech>':
+            mode = 'speech'
+            sp += 1
+        elif tok == '</speech>':
+            mode = None
+            sp += 1
+        elif mode == 'caption':
+            cap += 1
+        elif mode == 'speech':
+            sp += 1
+        elif tok.startswith('<seed2_'):
             s2 += 1
         elif tok.startswith('<cosmos_'):
             co += 1
@@ -270,7 +363,7 @@ def count_token_types(tokens):
             sn += 1
         else:
             ag += 1   # fps_N, joint open/close, joint_t_N, joint_x/y/z_N
-    return s2, co, ag, sn
+    return s2, co, ag, sn, cap, sp
 
 
 # ── Per-file worker ──────────────────────────────────────────────────────────
@@ -279,7 +372,7 @@ def flatten_one_file(in_path, output_dir, skip_existing,
                      drop_avc, drop_cosmos, drop_seed, drop_snac,
                      synonym_rate, stopword_drop, permute_sentences):
     """
-    Flatten one Phase 6 v2 JSONL shard into flat Megatron-LM JSONL.
+    Flatten one Phase 6 v4 JSONL shard into flat Megatron-LM JSONL.
 
     Returns a dict with per-file stats for aggregate reporting.
     """
@@ -288,11 +381,12 @@ def flatten_one_file(in_path, output_dir, skip_existing,
 
     if skip_existing and os.path.exists(out_path):
         return {"status": "skip", "path": out_path,
-                "records": 0, "seed2": 0, "cosmos": 0, "agent": 0, "snac": 0}
+                "records": 0, "seed2": 0, "cosmos": 0, "agent": 0, "snac": 0,
+                "caption": 0, "speech_inline": 0}
 
     H = "###"
     written = 0
-    total_seed2 = total_cosmos = total_agent = total_snac = 0
+    total_seed2 = total_cosmos = total_agent = total_snac = total_caption = total_speech_inline = 0
 
     with open(in_path, "r", encoding="utf-8") as fin, \
          open(out_path, "w", encoding="utf-8") as fout:
@@ -332,11 +426,13 @@ def flatten_one_file(in_path, output_dir, skip_existing,
                     if not kept_tokens:
                         continue
 
-                    s2, co, ag, sn = count_token_types(kept_tokens)
+                    s2, co, ag, sn, cap, sp_inline = count_token_types(kept_tokens)
                     total_seed2  += s2
                     total_cosmos += co
                     total_agent  += ag
                     total_snac   += sn
+                    total_caption += cap
+                    total_speech_inline += sp_inline
 
                     # ── Text header blocks ──────────────────────────────────
                     aug_title = augment_text_string(
@@ -386,7 +482,7 @@ def flatten_one_file(in_path, output_dir, skip_existing,
                     fout.write(json.dumps({"text": output}, ensure_ascii=False) + "\n")
                     written += 1
 
-    total = total_seed2 + total_cosmos + total_agent + total_snac
+    total = total_seed2 + total_cosmos + total_agent + total_snac + total_caption + total_speech_inline
     return {
         "status":  "done",
         "path":    out_path,
@@ -395,6 +491,8 @@ def flatten_one_file(in_path, output_dir, skip_existing,
         "cosmos":  total_cosmos,
         "agent":   total_agent,
         "snac":    total_snac,
+        "caption": total_caption,
+        "speech_inline": total_speech_inline,
         "total":   total,
     }
 
@@ -403,21 +501,21 @@ def flatten_one_file(in_path, output_dir, skip_existing,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Phase 7 v4 — per-chunk temporal flatten for Megatron-LM pretraining."
+        description="Phase 7 v5 — per-chunk temporal flatten for Megatron-LM pretraining."
     )
     parser.add_argument(
         "--input-glob",
         default=(
             "/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA"
-            "/final_dataset_adaptive_v2/final_vla_adaptive_v2_rank_*.jsonl"
+            "/final_dataset_adaptive_v4/final_vla_adaptive_rank_*.jsonl"
         ),
-        help="Glob pattern for Phase 6 v2 JSONL shards",
+        help="Glob pattern for Phase 6 v4 JSONL shards (v3 input + caption/speech injected)",
     )
     parser.add_argument(
         "--output-dir",
         default=(
             "/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA"
-            "/megatron_dataset_v4"
+            "/megatron_dataset_v5"
         ),
         help="Output directory for flat Megatron-LM JSONL",
     )
@@ -443,10 +541,10 @@ def main():
         raise FileNotFoundError(f"No input files matched: {args.input_glob!r}")
 
     os.makedirs(args.output_dir, exist_ok=True)
-    print(f"[Phase7 v4] {len(input_paths)} input files → {args.output_dir}")
-    print(f"[Phase7 v4] drop: cosmos={args.drop_cosmos} seed={args.drop_seed} "
-          f"snac={args.drop_snac} avc=1.0(fixed)")
-    print(f"[Phase7 v4] workers={min(args.workers, len(input_paths))}")
+    print(f"[Phase7 v5] {len(input_paths)} input files → {args.output_dir}")
+    print(f"[Phase7 v5] drop: cosmos={args.drop_cosmos} seed={args.drop_seed} "
+          f"snac={args.drop_snac} avc=1.0(fixed) caption=0.0(fixed) speech_inline=0.0(fixed)")
+    print(f"[Phase7 v5] workers={min(args.workers, len(input_paths))}")
 
     worker_fn = partial(
         flatten_one_file,
@@ -463,6 +561,7 @@ def main():
 
     # Aggregate counters
     total_records = total_seed2 = total_cosmos = total_agent = total_snac = 0
+    total_caption = total_speech_inline = 0
     n_skipped = n_done = 0
 
     num_workers = min(args.workers, len(input_paths))
@@ -478,6 +577,8 @@ def main():
                 total_cosmos  += result["cosmos"]
                 total_agent   += result["agent"]
                 total_snac    += result["snac"]
+                total_caption += result["caption"]
+                total_speech_inline += result["speech_inline"]
                 print(
                     f"[DONE] {os.path.basename(result['path'])} | "
                     f"{result['records']:5d} records | "
@@ -485,23 +586,28 @@ def main():
                     f"cosmos={result['cosmos']:,} "
                     f"agent={result['agent']:,} "
                     f"snac={result['snac']:,} "
+                    f"caption={result['caption']:,} "
+                    f"speech_inline={result['speech_inline']:,} "
                     f"total={result['total']:,}"
                 )
 
-    grand_total = total_seed2 + total_cosmos + total_agent + total_snac
+    grand_total = (total_seed2 + total_cosmos + total_agent + total_snac
+                   + total_caption + total_speech_inline)
     denom = max(grand_total, 1)
 
     print()
     print("=" * 72)
-    print(f"Phase 7 v4 — DONE")
+    print(f"Phase 7 v5 — DONE")
     print(f"  Files processed : {n_done}  ({n_skipped} skipped)")
     print(f"  Total records   : {total_records:,}")
     print(f"  Token counts:")
-    print(f"    seed2   : {total_seed2:>15,}  ({total_seed2 / denom * 100:.1f}%)")
-    print(f"    cosmos  : {total_cosmos:>15,}  ({total_cosmos / denom * 100:.1f}%)")
-    print(f"    agent   : {total_agent:>15,}  ({total_agent / denom * 100:.1f}%)")
-    print(f"    snac    : {total_snac:>15,}  ({total_snac / denom * 100:.1f}%)")
-    print(f"    TOTAL   : {grand_total:>15,}  ({grand_total / 1e9:.3f}B)")
+    print(f"    seed2         : {total_seed2:>15,}  ({total_seed2 / denom * 100:.1f}%)")
+    print(f"    cosmos        : {total_cosmos:>15,}  ({total_cosmos / denom * 100:.1f}%)")
+    print(f"    agent         : {total_agent:>15,}  ({total_agent / denom * 100:.1f}%)")
+    print(f"    snac          : {total_snac:>15,}  ({total_snac / denom * 100:.1f}%)")
+    print(f"    caption       : {total_caption:>15,}  ({total_caption / denom * 100:.1f}%)")
+    print(f"    speech_inline : {total_speech_inline:>15,}  ({total_speech_inline / denom * 100:.1f}%)")
+    print(f"    TOTAL         : {grand_total:>15,}  ({grand_total / 1e9:.3f}B)")
     print("=" * 72)
 
 

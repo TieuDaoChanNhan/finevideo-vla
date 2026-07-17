@@ -40,6 +40,7 @@ from tqdm import tqdm
 TARGET_FPS = 30
 CHUNK_SIZE = 8
 AVC_PATTERN = re.compile(r"<avc_lm>\s*.*?\s*</avc_lm>", re.DOTALL)
+COSMOS_PATTERN = re.compile(r"<cosmos>\s*.*?\s*</cosmos>", re.DOTALL)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,44 +135,143 @@ def build_snac_insertion(snac_by_chunk: Dict, chunk_idx: int) -> str:
     return ("<snac> " + " ".join(tokens) + " </snac>") if tokens else ""
 
 
+# ── Caption token loading ───────────────────────────────────────────────────
+
+def load_caption_dict(path: str) -> Dict[str, Dict[str, str]]:
+    """Load build_caption_dict.py output for one video.
+
+    Input file has exactly one JSON line:
+        {"video_id": ..., "captions_by_activity": {activity_id: {chunk_idx_str: "<caption> ... </caption>"}}}
+    Returns {activity_id: {chunk_idx_str: "<caption> ... </caption>"}}, already tag-wrapped.
+    """
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            line = f.readline()
+    except OSError:
+        return {}
+    line = line.strip()
+    if not line:
+        return {}
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        return {}
+    by_activity = obj.get("captions_by_activity")
+    return by_activity if isinstance(by_activity, dict) else {}
+
+
+# ── Speech (inline) token loading ───────────────────────────────────────────
+
+def load_speech_dict(path: str) -> Dict[str, Dict[str, str]]:
+    """Load extract_speech_segments.py output for one video -> {activity_id: {chunk_idx_str: text}}.
+
+    Same per-video, multi-line-per-activity shape convention as load_snac_dict,
+    except values are already tag-wrapped strings ('<speech> ... </speech>'),
+    not raw token lists -- no extra wrapping needed on lookup.
+    """
+    speech: Dict[str, Dict[str, str]] = {}
+    if not os.path.exists(path):
+        return speech
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                act_id = obj.get("activity_id", "")
+                by_chunk = obj.get("speech_by_chunk")
+                if act_id and isinstance(by_chunk, dict):
+                    speech[act_id] = by_chunk
+    except OSError:
+        pass
+    return speech
+
+
 # ── Injection ────────────────────────────────────────────────────────────────
 
 def inject_chunk_tokens(
     video_tokens: str,
     agent_insertions: List[str],
     snac_insertions: List[str],
-) -> Tuple[str, int, int]:
+    speech_insertions: List[str] = None,
+    caption_insertions: List[str] = None,
+) -> Tuple[str, int, int, int, int]:
     """
-    Inject agent and SNAC tokens after each <avc_lm> block in one pass.
+    Inject agent/SNAC/speech tokens after each <avc_lm> block, and caption
+    tokens before each <cosmos> block, in one pass.
 
     Per chunk, the resulting token order is:
-        <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]
+        [<caption>...</caption>] <cosmos>...</cosmos> <avc_lm>...</avc_lm>
+        [<agent>...</agent>] [<snac>...</snac>] [<speech>...</speech>]
 
-    Both agent and snac are optional — empty string means nothing is injected.
-    Returns (merged_tokens, n_agent_injected, n_snac_injected).
+    caption/agent/snac/speech are all optional — empty string means nothing
+    is injected for that chunk.
+
+    Caption placement uses <cosmos> block positions, found independently of
+    <avc_lm>. cosmos and avc_lm are 1:1 per chunk for the overwhelming
+    majority of activities (verified empirically), but a small number
+    (~2,753/372,385 activities, trailing-chunk edge cases) have one fewer
+    cosmos block than avc_lm blocks. When idx has no corresponding cosmos
+    match, that chunk's caption is silently skipped (counted as a miss by
+    the caller) rather than misplaced or crashing.
+
+    Returns (merged_tokens, n_agent_injected, n_snac_injected, n_speech_injected, n_caption_injected).
     """
     if not video_tokens:
-        return video_tokens, 0, 0
-    matches = list(AVC_PATTERN.finditer(video_tokens))
-    if not matches:
-        return video_tokens, 0, 0
+        return video_tokens, 0, 0, 0, 0
+    avc_matches = list(AVC_PATTERN.finditer(video_tokens))
+    if not avc_matches:
+        return video_tokens, 0, 0, 0, 0
+    cosmos_matches = list(COSMOS_PATTERN.finditer(video_tokens))
+
+    speech_insertions = speech_insertions or []
+    caption_insertions = caption_insertions or []
+
+    # Collect (position, text) insertion events, then apply them in one
+    # left-to-right pass. Positions come from two independent regexes
+    # (avc_lm end / cosmos start), so events must be globally sorted —
+    # they are not already in position order across the two sources.
+    events: List[Tuple[int, str]] = []
+    inj_agent = inj_snac = inj_speech = inj_caption = 0
+
+    for idx, m in enumerate(avc_matches):
+        after_text = ""
+        agent_text  = agent_insertions[idx]  if idx < len(agent_insertions)  else ""
+        snac_text   = snac_insertions[idx]   if idx < len(snac_insertions)   else ""
+        speech_text = speech_insertions[idx] if idx < len(speech_insertions) else ""
+        if agent_text:
+            after_text += " " + agent_text
+            inj_agent += 1
+        if snac_text:
+            after_text += " " + snac_text
+            inj_snac += 1
+        if speech_text:
+            after_text += " " + speech_text
+            inj_speech += 1
+        if after_text:
+            events.append((m.end(), after_text))
+
+        caption_text = caption_insertions[idx] if idx < len(caption_insertions) else ""
+        if caption_text and idx < len(cosmos_matches):
+            events.append((cosmos_matches[idx].start(), caption_text + " "))
+            inj_caption += 1
+
+    events.sort(key=lambda e: e[0])
 
     parts: List[str] = []
     cursor = 0
-    inj_agent = inj_snac = 0
-    for idx, m in enumerate(matches):
-        parts.append(video_tokens[cursor:m.end()])
-        agent_text = agent_insertions[idx] if idx < len(agent_insertions) else ""
-        snac_text  = snac_insertions[idx]  if idx < len(snac_insertions)  else ""
-        if agent_text:
-            parts.append(" " + agent_text)
-            inj_agent += 1
-        if snac_text:
-            parts.append(" " + snac_text)
-            inj_snac += 1
-        cursor = m.end()
+    for pos, text in events:
+        parts.append(video_tokens[cursor:pos])
+        parts.append(text)
+        cursor = pos
     parts.append(video_tokens[cursor:])
-    return "".join(parts), inj_agent, inj_snac
+    return "".join(parts), inj_agent, inj_snac, inj_speech, inj_caption
 
 
 # ── Chunk timing builder ────────────────────────────────────────────────────
@@ -183,6 +283,8 @@ def build_chunk_timing(
     agent_dict: Dict[int, str],
     video_tokens: str,
     snac_by_chunk: Dict = None,
+    caption_by_chunk: Dict = None,
+    speech_by_chunk_inline: Dict = None,
 ) -> List[dict]:
     """Build per-chunk timing array with modality presence flags.
 
@@ -220,6 +322,8 @@ def build_chunk_timing(
             for c in (nearest, nearest - CHUNK_SIZE, nearest + CHUNK_SIZE)
         )
         has_snac = bool(snac_by_chunk and snac_by_chunk.get(str(i)))
+        has_caption = bool(caption_by_chunk and caption_by_chunk.get(str(i)))
+        has_speech_inline = bool(speech_by_chunk_inline and speech_by_chunk_inline.get(str(i)))
 
         this_end = avc_ends[i] if i < len(avc_ends) else len(video_tokens or "")
         has_seed2 = any(prev_end <= p < this_end for p in seed2_positions)
@@ -235,6 +339,8 @@ def build_chunk_timing(
             "has_avc_lm": True,
             "has_agent": has_agent,
             "has_snac": has_snac,
+            "has_caption": has_caption,
+            "has_speech_inline": has_speech_inline,
         })
 
     return timing
@@ -244,8 +350,10 @@ def process_activity(
     activity: dict,
     agent_dict: Dict[int, str],
     snac_by_chunk: Dict = None,
-) -> Tuple[int, int, int, int]:
-    """Returns (avc_count, inj_agent, misses, inj_snac)."""
+    caption_by_chunk: Dict = None,
+    speech_by_chunk_inline: Dict = None,
+) -> Tuple[int, int, int, int, int, int]:
+    """Returns (avc_count, inj_agent, misses, inj_snac, inj_speech, inj_caption)."""
     start_sec, end_sec = activity.get("time_range_sec", [0.0, 0.0])[:2]
     start_sec = safe_float(start_sec)
     end_sec = safe_float(end_sec)
@@ -253,29 +361,56 @@ def process_activity(
 
     avc_count = len(AVC_PATTERN.findall(video_tokens or ""))
     if avc_count == 0:
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0, 0, 0
 
     duration_frames = int(max(0.0, end_sec - start_sec) * TARGET_FPS)
     chunk_starts = list(range(0, duration_frames, CHUNK_SIZE)) if duration_frames > 0 else []
     abs_start = int(round(start_sec * TARGET_FPS))
 
+    # Idempotency guard: this script is designed to run a SECOND time on top
+    # of final_dataset_adaptive_v3 (which already has <agent>/<snac> injected
+    # from the first v2->v3 run) to add captions/speech only. agent_dict /
+    # snac_by_chunk are still needed as inputs on that second run (so
+    # chunk_timing's has_agent/has_snac stay accurate), but must NOT be
+    # re-injected into video_tokens a second time. Detecting existing tags
+    # in the string (rather than relying on the caller to omit
+    # --agent-tokens-dir/--snac-tokens-dir) protects against double
+    # injection even if the CLI is invoked incorrectly.
+    already_has_agent = "<agent>" in video_tokens
+    already_has_snac  = "<snac>"  in video_tokens
+    already_has_speech_inline = "<speech>" in video_tokens
+    already_has_caption       = "<caption>" in video_tokens
+
     agent_insertions: List[str] = []
     snac_insertions: List[str] = []
+    speech_insertions: List[str] = []
+    caption_insertions: List[str] = []
     misses = 0
     for idx in range(avc_count):
         rel_start = chunk_starts[idx] if idx < len(chunk_starts) else idx * CHUNK_SIZE
         agent_text = find_agent_string(agent_dict, abs_start + rel_start)
-        if not agent_text:
+        if not agent_text and not already_has_agent:
             misses += 1
         agent_insertions.append(agent_text)
         snac_text = build_snac_insertion(snac_by_chunk, idx) if snac_by_chunk else ""
         snac_insertions.append(snac_text)
+        speech_text = speech_by_chunk_inline.get(str(idx), "") if speech_by_chunk_inline else ""
+        speech_insertions.append(speech_text)
+        caption_text = caption_by_chunk.get(str(idx), "") if caption_by_chunk else ""
+        caption_insertions.append(caption_text)
 
-    merged, inj_agent, inj_snac = inject_chunk_tokens(video_tokens, agent_insertions, snac_insertions)
+    merged, inj_agent, inj_snac, inj_speech, inj_caption = inject_chunk_tokens(
+        video_tokens,
+        [] if already_has_agent else agent_insertions,
+        [] if already_has_snac else snac_insertions,
+        [] if already_has_speech_inline else speech_insertions,
+        [] if already_has_caption else caption_insertions,
+    )
     activity["video_tokens"] = merged
 
     chunk_timing = build_chunk_timing(
         avc_count, abs_start, chunk_starts, agent_dict, video_tokens, snac_by_chunk,
+        caption_by_chunk, speech_by_chunk_inline,
     )
     activity["chunk_timing"] = chunk_timing
     activity["timing_meta"] = {
@@ -286,32 +421,53 @@ def process_activity(
         "avc_lm_rate": "every_8_frames",
         "agent_rate": "every_8_frames_adaptive_pchip",
         "snac_rate": "37.5_tokens_per_sec_listen_format",
+        "caption_rate": "anchor_points_before_cosmos",
+        "speech_inline_rate": "asr_segment_start_snapped_to_chunk",
     }
 
     if inj_agent > 0:
         activity["agent_token_order"] = "image_first"
         activity["agent_fps"] = TARGET_FPS
 
-    return avc_count, inj_agent, misses, inj_snac
+    return avc_count, inj_agent, misses, inj_snac, inj_speech, inj_caption
 
 
-def process_video(record: dict, agent_tokens_dir: str, snac_tokens_dir: str = "") -> dict:
+def process_video(
+    record: dict,
+    agent_tokens_dir: str,
+    snac_tokens_dir: str = "",
+    captions_dir: str = "",
+    speech_segments_dir: str = "",
+) -> dict:
     video_id = record.get("video_id", "")
     agent_path = os.path.join(agent_tokens_dir, f"{video_id}_tokens.jsonl")
     agent_dict = load_agent_dict(agent_path)
 
-    # Load SNAC data keyed by activity_id (empty dict if dir not set or file missing)
+    # Load SNAC/caption/speech data keyed by activity_id (empty dict if dir not set or file missing)
     snac_file: Dict[str, Dict] = {}
     if snac_tokens_dir:
         snac_path = os.path.join(snac_tokens_dir, f"{video_id}_snac.jsonl")
         snac_file = load_snac_dict(snac_path)
 
+    caption_file: Dict[str, Dict] = {}
+    if captions_dir:
+        caption_path = os.path.join(captions_dir, f"{video_id}_captions_dict.jsonl")
+        caption_file = load_caption_dict(caption_path)
+
+    speech_file: Dict[str, Dict] = {}
+    if speech_segments_dir:
+        speech_path = os.path.join(speech_segments_dir, f"{video_id}_speech.jsonl")
+        speech_file = load_speech_dict(speech_path)
+
     stats = {
         "video_id": video_id,
         "agent_file_found": os.path.exists(agent_path),
         "snac_file_found": bool(snac_tokens_dir and snac_file),
+        "captions_file_found": bool(captions_dir and caption_file),
+        "speech_file_found": bool(speech_segments_dir and speech_file),
         "agent_windows": len(agent_dict),
-        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0,
+        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0,
+        "snac_injected": 0, "speech_injected": 0, "caption_injected": 0,
     }
 
     for scene in record.get("scenes", []):
@@ -322,12 +478,18 @@ def process_video(record: dict, agent_tokens_dir: str, snac_tokens_dir: str = ""
                 continue
             act_id = activity.get("activity_id", "")
             snac_by_chunk = snac_file.get(act_id, {})
+            caption_by_chunk = caption_file.get(act_id, {})
+            speech_by_chunk_inline = speech_file.get(act_id, {})
             stats["activities"] += 1
-            avc, inj, miss, inj_snac = process_activity(activity, agent_dict, snac_by_chunk)
+            avc, inj, miss, inj_snac, inj_speech, inj_caption = process_activity(
+                activity, agent_dict, snac_by_chunk, caption_by_chunk, speech_by_chunk_inline,
+            )
             stats["avc_blocks"] += avc
             stats["injected"] += inj
             stats["misses"] += miss
             stats["snac_injected"] += inj_snac
+            stats["speech_injected"] += inj_speech
+            stats["caption_injected"] += inj_caption
 
     return stats
 
@@ -348,6 +510,14 @@ def parse_args() -> argparse.Namespace:
                     default="",
                     help="Dir with <video_id>_snac.jsonl from snac_finevideo.py. "
                          "Leave empty to skip SNAC injection (backward-compatible).")
+    p.add_argument("--captions-dir",
+                    default="",
+                    help="Dir with <video_id>_captions_dict.jsonl from build_caption_dict.py. "
+                         "Leave empty to skip caption injection (backward-compatible).")
+    p.add_argument("--speech-segments-dir",
+                    default="",
+                    help="Dir with <video_id>_speech.jsonl from extract_speech_segments.py. "
+                         "Leave empty to skip inline speech injection (backward-compatible).")
     p.add_argument("--output-dir", default=None,
                     help="Output directory. Defaults to input file directory.")
     p.add_argument("--output-prefix", default="final_vla_adaptive",
@@ -379,7 +549,8 @@ def main() -> None:
 
     grand = {
         "files": 0, "videos": 0, "no_agent_file": 0,
-        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0,
+        "activities": 0, "avc_blocks": 0, "injected": 0, "misses": 0,
+        "snac_injected": 0, "speech_injected": 0, "caption_injected": 0,
     }
 
     for in_path in my_paths:
@@ -399,7 +570,8 @@ def main() -> None:
 
         n_lines = count_lines(in_path)
         file_stats = {"videos": 0, "no_agent_file": 0, "activities": 0,
-                       "avc_blocks": 0, "injected": 0, "misses": 0, "snac_injected": 0}
+                       "avc_blocks": 0, "injected": 0, "misses": 0,
+                       "snac_injected": 0, "speech_injected": 0, "caption_injected": 0}
 
         with open(in_path, "r", encoding="utf-8") as fin, \
              open(out_path, "w", encoding="utf-8") as fout:
@@ -414,13 +586,18 @@ def main() -> None:
                 except json.JSONDecodeError:
                     continue
 
-                st = process_video(record, args.agent_tokens_dir, args.snac_tokens_dir)
+                st = process_video(
+                    record, args.agent_tokens_dir, args.snac_tokens_dir,
+                    args.captions_dir, args.speech_segments_dir,
+                )
                 file_stats["videos"] += 1
                 file_stats["activities"] += st["activities"]
                 file_stats["avc_blocks"] += st["avc_blocks"]
                 file_stats["injected"] += st["injected"]
                 file_stats["misses"] += st["misses"]
                 file_stats["snac_injected"] += st["snac_injected"]
+                file_stats["speech_injected"] += st["speech_injected"]
+                file_stats["caption_injected"] += st["caption_injected"]
                 if not st["agent_file_found"]:
                     file_stats["no_agent_file"] += 1
 
@@ -433,6 +610,7 @@ def main() -> None:
 
         tqdm.write(f"[DONE] {out_path} | vids={file_stats['videos']} "
                    f"agent={file_stats['injected']} snac={file_stats['snac_injected']} "
+                   f"speech={file_stats['speech_injected']} caption={file_stats['caption_injected']} "
                    f"misses={file_stats['misses']}")
 
     print("=" * 70)
