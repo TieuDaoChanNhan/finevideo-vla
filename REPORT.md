@@ -1490,3 +1490,52 @@ Surfaced while double-checking, with Huu, whether sentence-permutation augmentat
 ### Suggested next step
 
 Task #3 (A2) will take a while longer, and tasks #6–8 need both speech (now 100% ready) and captions (not yet). Task #6 (`phase6_merge_adaptive.py` — add `--captions-dir` + `--speech-segments-dir`) can start now regardless, since it only needs the speech-segments input, which is fully ready.
+
+---
+
+## 20. Tasks #4/#6/#7 Coded, Tested, Committed; Task #6 Launched Full-Scale (Jul 17, 2026)
+
+Task #3 (A2 captioning) finished completely overnight between the Jul 15 and Jul 17 sessions — confirmed via `sacct` (job chain `14104157`→`158`→`159` all `COMPLETED`, the last two finishing in under a minute each because `--skip-existing` found nothing left to do) and an exact line count: **912,998** caption lines across 40,798 files, matching task A1's target exactly. This unblocked tasks #4, #6, #7.
+
+### Task #4 (`build_caption_dict.py`) — run, verified
+
+Reshapes A2's flat per-anchor-point output into the `{activity_id: {chunk_idx: "<caption>...</caption>"}}` per-video shape `phase6_merge_adaptive.py` needs. Ran on all 40,798 files: **40,798 videos, 912,998 caption lines → 372,385 activities, 0 chunk collisions** — exact match with A1's known totals. Output: `captions_dict/`. Verified further by reconstructing the dict from 5 random videos' flat input and diffing against the actual output — byte-for-byte match.
+
+### Task #6 (`phase6_merge_adaptive.py`) — coded, tested, one critical bug caught before it could corrupt data
+
+Added `--captions-dir` / `--speech-segments-dir`, loading `build_caption_dict.py` and `extract_speech_segments.py` output respectively. Per-chunk insertion order is now:
+
+```
+[<caption>?] <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>?] [<snac>?] [<speech>?]
+```
+
+Caption anchors immediately before `<cosmos>` (found via a new `COSMOS_PATTERN` matched independently of `AVC_PATTERN`); agent/snac (existing) and speech (new) anchor immediately after `</avc_lm>`, in that order. `inject_chunk_tokens()` was rewritten from a single-anchor-per-chunk design to a two-anchor (`before-cosmos` / `after-avc_lm`) event-list-and-sort design to support this. `build_chunk_timing()` gained `has_caption`/`has_speech_inline` flags.
+
+**Critical bug caught in dry-run, before touching real data at scale:** this script is designed to run a *second* time on top of `final_dataset_adaptive_v3` — which already has `<agent>`/`<snac>` injected from the original v2→v3 run. Passing `--agent-tokens-dir`/`--snac-tokens-dir` again (needed so `chunk_timing`'s `has_agent`/`has_snac` stay accurate) would, without a guard, **re-inject agent/snac a second time**, duplicating that content. Fixed with an idempotency guard in `process_activity()`: detect `"<agent>" in video_tokens` / `"<snac>" in video_tokens` before injecting; if already present, skip injection for that modality (report 0 injected, don't double-count misses) while still using the loaded dict for the `has_agent`/`has_snac` flag computation. Verified with a real dry-run on 3 videos/72 activities from `final_dataset_adaptive_v3`: agent/snac tag counts and content identical byte-for-byte before/after, while caption (138 injected) and speech (243 injected) were added correctly.
+
+A second, unrelated bug was caught in the same dry-run: the script's default `--agent-tokens-dir` (`outputs/agent_tokens_adaptive`, relative to cwd) does not resolve to real data from this repo's working directory — the actual location is `/p/data1/mmlaion/shared/nguyen38/data/outputs/agent_tokens_adaptive`. Without the idempotency guard's fallback-safe design, this would have silently produced a `chunk_timing` with `has_agent` always `False` (wrong metadata, though not wrong training tokens, since injection is separately guarded). Full-scale submit script uses the correct absolute path.
+
+### Task #7 (`phase7_flatten.py`) — coded, tested
+
+`process_activity_per_chunk()`'s document-order state machine gained two event types: `caption` (buffered like `seed2`/`cosmos`, flushed at the `avc_lm` trigger in the order caption→seed2→cosmos, matching source document order) and `speech` (emitted immediately, like `snac`, no buffering needed since it has no `avc_lm`-relative ordering constraint). Neither is dropped (0% dropout, same treatment as `agent`) nor text-augmented (no synonym replacement / stopword drop) — both are anchored to an exact chunk, so paraphrasing would break the token-to-moment correspondence that's the entire point of adding them. This is a deliberately different treatment from the existing `### Speech:` header block (built from `activity["speech_transcript"]`), which is untouched and still augmented/permuted as before — the two are intentionally redundant (whole-activity dump vs. precisely-timed anchor), confirmed with the user rather than assumed. `count_token_types()` gained a `mode` tracker so caption/speech words (no distinguishing `<...>` prefix) don't silently land in the catch-all `agent` bucket (a stats-only fix, doesn't affect training text). Default I/O paths bumped `final_dataset_adaptive_v2` → `_v4`, `megatron_dataset_v4` → `_v5`.
+
+**Testing:** 7+6 standalone unit-test groups (54 assertions total) covering insertion ordering, the idempotency guard, cross-chunk isolation (a caption at chunk *i* must not leak into chunk *i±1*'s output), dropout independence, and token-type counting accuracy — plus a real end-to-end dry run (3 videos → Phase 6 → Phase 7) with manual inspection of the flattened output text.
+
+Committed as `5f5492e` (`pipeline_pose/phase6_merge_adaptive.py`, `pipeline_pose/phase7_flatten.py`), pushed to `origin/master`.
+
+### Token growth: measured two independent ways, both converge on ~0.75%
+
+Before running full-scale, measured how much the new caption/speech tokens actually add, since the number is central to deciding whether this pipeline is worth the compute:
+
+1. **Sample-based:** ran the real merge on 3 full shards / 798 videos, then processed 5,312 real activities (the subset that survives Phase 7's `has_agent OR has_snac` filter, rank_0+rank_1) through `process_activity_per_chunk()` with production settings (`drop_rate_cosmos=0.5`, fixed random seed for a clean before/after comparison — an initial unseeded comparison across two separate CLI invocations showed a spurious ~1% discrepancy traced to cosmos-dropout randomness accumulating differently across activities, not a real bug; isolating with a fixed seed per activity resolved it). Result: **73,796,727 → 74,340,242 tokens, +0.737%**.
+2. **Exact, full-dataset:** counted words directly across all real output on disk — **912,998 captions, 10,256,494 words** (`captions_dict/`, all 40,798 files) and **2,158,388 speech-chunks, 22,696,606 words** (`speech_segments/`, all 40,490 files) — giving 12,082,490 + 27,013,382 = **39,095,872 new tokens exactly**, against the known real Phase 7 v4 baseline of **5,217,000,000 tokens** (371,888 records, from the completed full-scale run referenced in §8/§16): **+0.749%**.
+
+The two independent methods (a statistical sample through the real code path, vs. an exact word count from disk) agree to within 0.012 percentage points, ruling out a measurement bug.
+
+**Why the number is legitimately small, and why that's expected — not a project setback:** average caption length is 11.2 words, average speech-chunk length 10.5 words; `cosmos` alone is ~75% of total tokens because it emits hundreds of numeric tokens *per chunk*, at every chunk, for the entire activity duration — natural-language text is inherently far more token-compressed than that. **Important scope correction, worth restating explicitly since it caused a real moment of "this seems wrong" for the user this session:** this caption+speech work was scoped from the start as the fix for root cause #2 ("no language anchor at modality-transition points"), a *qualitative* grounding problem — not as the mechanism for the separately-tracked "×4 more training records" goal (§13/§2.5c: the original ×4 figure is captioning **+ perspective framing** combined, where perspective framing — robot/human/cinematic re-framings of the same activity, not yet coded — is the lever that actually multiplies *record count*, not per-record token density). Caption/speech density was already measured and re-scoped once before, in the Jul 12 session (§2.5c: "Đính chính hiểu về mục tiêu ×4"); this entry re-confirms the same conclusion from the token-count angle rather than the anchor-point-count angle, arriving at it independently this time. If the dataset-size problem (2.84B tokens, small for a 1.7B model, per the top-level pretraining blockers) needs to be solved next, perspective framing or an external data source (SenseNova-SI-8M / stera-10m / MixtureVitae-Omni, per §8/§17) is the correct lever — not further tuning of caption/speech density.
+
+### Task #6 launched full-scale
+
+New submit script `slurm/submit_merge_adaptive_v4.sh` (32-array, `partition=batch`, `account=laionize`, `--time=03:00:00`, pattern copied from `submit_merge_adaptive_v3.sh`), input `final_dataset_adaptive_v3/final_vla_adaptive_v3_rank_*.jsonl` (160 files, 663GB), output `final_dataset_adaptive_v4/`, `--skip-existing` for resume safety. Submitted as job **`14114336`**; confirmed all 32/32 array tasks reached `R` (running) state within 15s of submit, worker 1's log showing normal progress (`5/160 files` shortly after start). Not yet confirmed complete as of this entry.
+
+**Not yet started:** full-scale Task #7 (needs `final_dataset_adaptive_v4/` to exist first, i.e. blocked on the above job), Task #8 (dry-run was already done at small scale in this session, satisfying most of its intent; a final end-to-end check on the full-scale v4/v5 output is still worth doing before calling the corpus training-ready).

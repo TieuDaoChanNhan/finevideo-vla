@@ -1,9 +1,54 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 15, 2026  
+**Last updated:** July 17, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **back up**, `booster` batch jobs running normally as of Jul 15  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
+
+---
+
+## Cập nhật phiên làm việc — 17/07/2026 (đọc phần này trước khi resume)
+
+**Việc chính hôm nay:** xác nhận task #3 (A2 captioning) đã chạy xong hoàn toàn qua đêm, chạy + verify task #4, code + test kỹ task #6 + #7, đo chính xác mức tăng token (2 phương pháp độc lập đều ra ~0.75%), commit + push code, **submit full-scale SLURM job task #6**.
+
+### 1. Task #3 (A2 captioning) — XÁC NHẬN ĐÃ CHẠY XONG HOÀN TOÀN (qua đêm 15→17/7)
+
+Kiểm tra `sacct` cho chuỗi job `14104157`→`158`→`159`: cả 3 đều `COMPLETED`, 2 job cuối chỉ mất ~1 phút (do `--skip-existing` không còn việc gì để làm). Đếm dòng thật: **912,998 dòng caption** trên 40,798 file — khớp chính xác target A1. `squeue` trống, không còn job caption nào chạy.
+
+### 2. Task #4 (`build_caption_dict.py`) — CHẠY XONG, VERIFY KỸ
+
+Reshape 40,798 file caption phẳng thành dict `{activity_id: {chunk_idx: "<caption>...</caption>"}}`. Kết quả: **40,798 video, 912,998 dòng → 372,385 activity, 0 collision** — khớp 100% số liệu A1 đã biết. Đối chiếu ngược 5 video ngẫu nhiên: khớp byte-for-byte.
+
+### 3. Task #6 (`phase6_merge_adaptive.py`) — CODE XONG, PHÁT HIỆN + FIX 1 BUG NGUY HIỂM TRƯỚC KHI CHẠY THẬT
+
+Thêm `--captions-dir` + `--speech-segments-dir`. Thứ tự chèn mới trong 1 chunk: `[caption?] <cosmos> <avc_lm> [agent?] [snac?] [speech?]` — caption chèn trước `<cosmos>` (dùng `COSMOS_PATTERN` mới, độc lập với `AVC_PATTERN`), speech chèn sau `</avc_lm>` cùng chỗ agent/snac.
+
+**Bug nguy hiểm bắt được ở bước dry-run, trước khi đụng data thật quy mô lớn:** script này chạy TRÊN `final_dataset_adaptive_v3` — vốn đã có sẵn `<agent>`/`<snac>` từ lần chạy trước. Nếu không cẩn thận, truyền lại `--agent-tokens-dir`/`--snac-tokens-dir` (cần để `has_agent`/`has_snac` trong `chunk_timing` chính xác) sẽ **inject trùng lần 2**. Fix: thêm cơ chế tự phát hiện — nếu `video_tokens` đã có `<agent>`/`<snac>` thì bỏ qua bước inject (báo 0 injected) nhưng vẫn dùng dict để tính cờ `has_agent`/`has_snac` đúng. Verify bằng dry-run thật (3 video/72 activity): nội dung agent/snac giữ nguyên byte-for-byte, caption (138) + speech (243) được thêm đúng.
+
+Phát hiện phụ: path mặc định `--agent-tokens-dir` (tương đối) KHÔNG trỏ đúng data thật — path đúng là `/p/data1/mmlaion/shared/nguyen38/data/outputs/agent_tokens_adaptive`. Submit script full-scale đã dùng path tuyệt đối đúng.
+
+### 4. Task #7 (`phase7_flatten.py`) — CODE XONG, TEST KỸ
+
+State machine thêm event `caption` (buffer, flush cùng seed2/cosmos khi gặp `avc_lm`, thứ tự caption→seed2→cosmos) và `speech` (emit ngay, như snac). Cả 2 **không dropout, không augment** (giữ nguyên văn — vì gắn đúng 1 chunk cụ thể, augment sẽ phá vỡ liên kết token-thời điểm). Header `### Speech:` cũ giữ nguyên không đổi (đã xác nhận với user là cố ý trùng lặp, không phải bug). `count_token_types()` thêm `mode` tracker tránh đếm nhầm từ caption/speech vào bucket agent (chỉ ảnh hưởng thống kê, không ảnh hưởng data training).
+
+**Test:** 7+6 nhóm unit test (54 assertion) — thứ tự chèn, chống double-injection, cách ly caption giữa các chunk, độc lập dropout, đếm token đúng — cộng 1 lần dry-run thật end-to-end (3 video → Phase 6 → Phase 7).
+
+Đã commit `5f5492e`, đã push `origin/master`.
+
+### 5. Đo token tăng — 2 phương pháp độc lập, cùng ra ~0.75%
+
+- **Sample thật:** 798 video/3 shard → 5,312 activity qua filter thật, xử lý với `drop_rate_cosmos=0.5` (seed cố định để so sánh sạch, vì lần đầu so 2 lần chạy CLI riêng biệt không seed bị nhiễu ~1% do random cosmos dropout tích luỹ khác nhau — không phải bug, chỉ là thiếu kiểm soát random state). Kết quả: 73,796,727 → 74,340,242 token, **+0.737%**.
+- **Chính xác toàn bộ dataset:** đếm trực tiếp — 912,998 caption/10,256,494 từ + 2,158,388 speech-chunk/22,696,606 từ = **39,095,872 token mới**, so với baseline thật 5,217,000,000 token (Phase 7 v4 full-scale đã chạy trước đó) → **+0.749%**.
+
+2 phương pháp độc lập khớp nhau trong 0.012 điểm % — loại trừ khả năng có bug đo.
+
+**Ghi chú quan trọng (user có phản ứng thất vọng, cần ghi rõ để tránh lặp lại kỳ vọng sai):** user kỳ vọng việc này sẽ "làm dày" dataset đáng kể, nhưng +0.75% là quá nhỏ so với kỳ vọng đó. Đã làm rõ: caption+speech scope từ đầu là fix root cause #2 (thiếu language anchor tại điểm chuyển modal) — một vấn đề **định tính**, KHÔNG phải cơ chế để đạt mục tiêu "×4 record" (mục tiêu đó, theo §13/§2.5c REPORT.md, là caption **+ perspective framing cộng lại** — perspective framing mới là đòn bẩy nhân RECORD, chưa code). Đây là lần re-confirm thứ 2 của cùng kết luận (lần 1 ở phiên 12/7 nhìn từ góc số lượng điểm neo, lần này nhìn từ góc token count) — nếu muốn giải quyết bài toán dataset nhỏ (2.84B token, nhỏ cho model 1.7B), đòn bẩy đúng là perspective framing hoặc thêm nguồn data ngoài (SenseNova-SI-8M/stera-10m/MixtureVitae-Omni), không phải vắt thêm từ caption/speech density.
+
+### 6. Task #6 — ĐÃ SUBMIT FULL-SCALE
+
+Script mới `slurm/submit_merge_adaptive_v4.sh` (32-array, `partition=batch`, `account=laionize`, `--time=03:00:00`, theo đúng pattern `submit_merge_adaptive_v3.sh`), input `final_dataset_adaptive_v3/` (160 file, 663GB), output `final_dataset_adaptive_v4/`, `--skip-existing`. **Job `14114336`** — xác nhận 32/32 task vào trạng thái `R` trong 15s, worker 1 log cho thấy tiến độ bình thường. Chưa xác nhận xong ở thời điểm ghi entry này.
+
+**Chưa bắt đầu:** Task #7 full-scale (chờ `final_dataset_adaptive_v4/` xong), Task #8 kiểm tra full-scale cuối cùng (đã làm ở quy mô nhỏ trong phiên này, còn cần double-check ở output full-scale trước khi coi corpus sẵn sàng train).
 
 ---
 
