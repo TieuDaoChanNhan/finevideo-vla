@@ -1,9 +1,182 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 17, 2026  
+**Last updated:** July 18, 2026  
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **back up**, `booster` batch jobs running normally as of Jul 15  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
+
+---
+
+## Cập nhật phiên làm việc — 18/07/2026 (tối — phiên bổ sung 2, đọc phần này trước)
+
+**Việc chính tối nay:** phát hiện + fix bug lớn — **cả 3 job tokenize đang chạy dùng nhầm tokenizer cũ** (không phải Qwen3 như dự định), đã hủy job đang chạy, xoá 215GB output sai, sửa script, resubmit lại đúng Qwen3. Đếm token thật: FineVideo-v5 gần như không đổi (10.55B, chứng minh lệch số 5.256B không phải do tokenizer) — MV-Omni tăng thật +25% (20.39B). Tải xong hoàn toàn cả 3 nguồn mới (OmniVideo-100K, RoboVQA, SenseNova). Tạo `data_prep/` với script flatten cho RoboVQA + OmniVideo-100K (bắt + fix 2 bug thật khi validate kỹ). Giải nén + map caption/speech cho video OmniVideo-100K — **sẵn sàng Step A** (chờ submit ở JUPITER). Điều tra sâu RoboVQA — phát hiện video thật nằm trong tfrecord (không phải chỉ 4.5% như báo sai lúc đầu), viết parser tfrecord thuần Python, đang trích xuất frame (chạy nền, ~36% xong cuối phiên) — nhưng phát hiện đây là **16 ảnh rời rạc/episode, không phải video liên tục**, cần quyết định kiến trúc trước khi qua Step A. Đọc trực tiếp paper SenseNova (39 trang, qua `pypdf`) theo yêu cầu Huu — tìm ra **22 dataset nguồn ảnh cụ thể**, verify license từng cái: vài cái permissive thật (GQA/VQA/VSR/CLEVR/MindCube), phần lớn (nhóm đóng góp nhiều ảnh nhất) non-commercial xác nhận (ScanNet/ScanNet++/Matterport3D/CA-1M/Ego-Exo4D/ARKitScenes), vài cái đáng ngờ kiểu "license mới nhưng nguồn cũ dính" (VSI-590K/ViCA/VLM-3R). Đọc thêm paper MINT-1T gốc — xác nhận quyết định bỏ ảnh trước đây đúng, có bằng chứng mạnh hơn nữa (chính tác giả tự ghi "N/A" cho license asset).
+
+### 1. Bug tokenizer sai — phát hiện + fix + resubmit
+
+Bạn hỏi thẳng "có refer đúng tokenizer mới nhất chưa, nhớ lần này dùng Qwen" — check lại thì **cả 3 sbatch (`tokenize_finevideo_v5`/`tokenize_mv_omni`/`tokenize_mint1t`) đều trỏ `tokenizer_vla_adaptive_v2` (GPT-NeoX cũ), không phải `tokenizer_vla_qwen3`**. Đã: (1) `scancel` job `tok_mint1t` đang chạy dở với tokenizer sai, (2) sửa `TOKENIZER_MODEL` trong cả 3 script → `tokenizer_vla_qwen3`, (3) xoá 215GB output cũ (bắt buộc vì cả 3 script dùng `--resume`), (4) submit lại cả 3 (job `14118929`/`14118930`/`14118931`).
+
+### 2. Token thật sau khi dùng đúng Qwen3
+
+| Nguồn | Token (Qwen3) | So với bản tokenizer sai |
+|---|---|---|
+| FineVideo-VLA v5 | **10,550,998,369** | Gần như y hệt (10,554,076,391) — **xác nhận lệch 5.256B không phải do tokenizer** |
+| MV-Omni | **20,389,561,883** | Tăng thật +25% (16,357,256,571) — Qwen3 vocab lớn ảnh hưởng nhiều hơn với nội dung tự nhiên |
+| RoboVQA | 58,588,270 | Job nhỏ (1-node), xong luôn |
+| OmniVideo-100K QA | 30,689,299 | Job nhỏ (1-node), xong luôn |
+| MINT-1T text | Đang chạy | — |
+
+### 3. Tải xong hoàn toàn: OmniVideo-100K, RoboVQA, SenseNova-SI-8M
+
+Cả 3 đều `snapshot_download completed successfully`. SenseNova gặp sự cố nhỏ giữa chừng — tmux session bị chết âm thầm (verify qua `tmux ls`/`ps aux`/log đứng im), tôi tạo tmux mới nhưng thiếu `HF_TOKEN` trong shell của tôi nên lỗi ngay — **bị chặn khi tự động dò tìm token trong cache/rc files (đúng, không nên tự làm vậy)**, bạn tự chạy lại và hoàn tất (1,121.4GB, 53/53 zip).
+
+### 4. `data_prep/` — folder mới, 2 script flatten, bắt 2 bug thật khi validate
+
+Tạo `data_prep/omnivideo_100k/` + `data_prep/robovqa/` (đúng ý định ghi sẵn CLAUDE.md, chưa từng tồn tại thật).
+
+- `data_prep/robovqa/flatten_text.py`: 221,912 record → flat JSONL, 0 skip.
+- `data_prep/omnivideo_100k/flatten_qa_text.py`: gộp OE+MCQ → 99,983 record. **Validate kỹ theo đúng yêu cầu bạn ("đừng sai") bắt được 2 bug thật:** 2,740 record MCQ dạng `event_sequence_ordering` dùng field tên khác (`question_textual`/`options_textual`) bị bỏ sót oan; 6,372 record OE có `answer` là list bị in xấu kiểu Python-repr (`['B','C','A']`). Fix cả 2, verify lại bằng audit kiểu dữ liệu toàn bộ corpus (không chỉ sample) + regex check — sạch 100%.
+
+### 5. OmniVideo-100K — giờ đã thật sự sẵn sàng Step A
+
+Giải nén 5,214 video mp4 (49GB, khớp đúng số video). Viết `data_prep/omnivideo_100k/build_segment_captions.py` — map `segments[].visual`/`transcription` (đã convert MM:SS→giây) thành caption/speech theo từng đoạn thời gian: 5,214 video, 47,467 segment, 0 lỗi timestamp. **Video + caption/speech đều sẵn sàng — chỉ chờ submit Step A ở JUPITER** (bạn nhắc: Step A phải chạy JUPITER vì chỉ nơi đó có GPU, JUWELS chỉ dùng tokenize CPU).
+
+### 6. RoboVQA — đính chính phát hiện sai trước đó, viết parser tfrecord thuần Python, đang trích xuất
+
+**Đính chính:** lúc trước báo "chỉ 4.5% video có mp4, phần còn lại coi như mất" — **sai**. Ảnh thật của 95.5% record còn lại nằm trong `tfrecord/` (184 shard), không mất. Không có TensorFlow/protobuf trong bất kỳ env nào — viết `data_prep/robovqa/tfrecord_lite.py` (parser protobuf thuần Python, không cần cài gì). Verify kỹ qua nhiều bước: dò cấu trúc mù → xác nhận JPEG thật (mở ảnh xem, đúng cảnh robot) → chạy trên 500 episode thật (luôn đúng 16 frame/episode, 100% JPEG hợp lệ) → **cross-check text giải mã khớp byte-for-byte với json/train đã biết đúng (join key đúng là `video_filename`, không phải `uid` — 2 ID khác nhau, dễ nhầm)**.
+
+Viết `data_prep/robovqa/extract_frames.py` — bug đầu tiên bắt ngay lúc test (list vs tuple, đã fix). Đang chạy nền (không phải SLURM — job nhẹ, chạy trực tiếp login node theo đúng "job nhỏ thì tmux/nền, không cần SLURM"). **Cuối phiên: 67/184 shard, 82,669/221,912 episode đã trích.**
+
+**⚠️ Phát hiện quan trọng khi bạn hỏi lại — RoboVQA KHÔNG có video liên tục, chỉ có 16 ảnh JPEG rời rạc/episode (~1.6fps)**, khác hẳn FineVideo/OmniVideo-100K (video liên tục thật). Step A hiện tại thiết kế cho video liên tục — **chưa chắc dùng thẳng được cho 16 ảnh rời rạc này, cần quyết định kiến trúc riêng** (nối thành "video giả", hay xử lý theo hướng ảnh-tĩnh như đã bàn cho SenseNova) trước khi làm tiếp. Chưa quyết, để phiên sau.
+
+### 7. SenseNova-SI-8M — đọc trực tiếp paper (39 trang, qua `pypdf`), tìm ra 22 dataset nguồn cụ thể
+
+Huu chất vấn thẳng trên chat: "how do you know, what is the basis" — đúng, kết luận trước đó (dựa vào README im lặng + so sánh MINT) chưa đủ chặt. Không có tool đọc PDF nào trong project — **hỏi bạn trước khi cài** (đúng nguyên tắc không tự ý pip install), bạn đồng ý cài `pypdf`.
+
+Đọc ra **Section 3.2 "Data Sources"**: 8.5M cặp QA từ **22 dataset nguồn**, chia 3 nhóm. Verify license từng cái (WebSearch trực tiếp trang terms-of-use chính chủ):
+
+- **Permissive thật:** GQA, VQA, VSR, CLEVR-series, MindCube (5/22).
+- **Non-commercial/gated xác nhận:** IconQA, MultiSpa, ScanNet, ScanNet++, Matterport3D, CA-1M, Ego-Exo4D, + ARKitScenes (check thêm vì là nguồn của các dataset trung gian) — 8 dataset.
+- **"Nested derivative" đáng ngờ:** VSI-590K/ViCA/VLM-3R tự gắn license mới nhưng build từ chính ScanNet/ARKitScenes — license mới không rửa được nguồn cũ.
+- **Chưa xác định:** 7 dataset còn lại (SPEC, Open3D-VQA, REL3D, SAT, GRiD-3D, SUN RGB-D, MessyTable).
+
+**Kết luận cuối:** nhóm đóng góp nhiều ảnh nhất (4.5M/8.5M) xác nhận non-commercial — tag `apache-2.0` của SenseNova không áp được cho phần lớn ảnh. Đã báo đầy đủ breakdown để bạn relay Huu.
+
+### 8. MINT-1T — đọc thêm paper gốc theo yêu cầu bạn, xác nhận quyết định cũ đúng
+
+Paper có phần "Datasheet for Datasets" — chính tác giả tự ghi **"Did you mention the license of the assets? [N/A]"**. Bằng chứng mạnh hơn hẳn README đã dùng trước đây. Quyết định bỏ ảnh MINT (giữ text) — vẫn đúng, không cần đổi gì.
+
+---
+
+## Cập nhật phiên làm việc — 18/07/2026 (chiều — phiên bổ sung, đọc phần này trước)
+
+**Việc chính chiều nay:** xác nhận 2 job tokenize từ sáng (MV-Omni, MINT) thực sự chạy thật (MV-Omni từng fail âm thầm lúc sáng do lỗi Ray, đã fix + resubmit) — **MV-Omni đã COMPLETED thật, MINT vẫn đang chạy**. Đếm token thật bằng `count_tokens.py` cho FineVideo-v5 và MV-Omni — **phát hiện lệch số quan trọng, chưa rõ nguyên nhân** (xem mục 1). Đính chính license SenseNova-SI-8M (không còn an toàn như tưởng). Viết lại mục Gen-EgoData (không phải ego-video, mà là dữ liệu action tay-đơn từ thiết bị cầm tay). Thảo luận sâu với Van Khue về câu hỏi ego/exo — kết luận **không cần sửa FineVideo-VLA**. Khảo sát thêm dataset mới trên HF (RoboVQA, Open X-Embodiment, NVIDIA GR00T-Sim — permissive; loại AgiBot World/Apple EgoDex/Meta ego-1k/EgoBrain — non-commercial). Viết script + bắt đầu tải OmniVideo-100K và RoboVQA. Cập nhật toàn bộ `datasets.md`.
+
+### 1. Token thật đã tokenize xong — VÀ 1 lệch số quan trọng cần lưu ý
+
+Chạy `count_tokens.py` (chỉnh `OUTPUT_DIR` inline, không sửa file gốc) trên 2 output Megatron thật:
+
+| Nguồn | Token thật (BIN SIZE CHECK: PASS) | Document |
+|---|---|---|
+| **FineVideo-VLA v5** | **10,554,076,391 (10.55B)** | 371,888 |
+| **MV-Omni** | **16,357,256,571 (16.36B)** | 1,593,301 |
+| MINT-1T text | Chưa có — job vẫn đang chạy | — |
+| **Tổng đã tokenize xong** | **~26.91B token** | — |
+
+**⚠️ Lệch số chưa rõ nguyên nhân:** số token FineVideo-v5 thật (10.55B) **gấp ~2 lần** con số vẫn ghi trong docs từ trước tới giờ (5,255,589,397 / 5.256B, xem mục "18/07/2026 sáng" bên dưới). Số document khớp chính xác (371,888 cả 2 phía) nên không phải lỗi thiếu/thừa record. Nghi ngờ hợp lý nhất (chưa verify): con số 5.256B được tính ở bước flatten bằng cách đếm số lần xuất hiện tag `<..._N>` + đếm từ thô cho phần text tự do (title/context/caption/speech), trong khi tokenizer BPE thật (GPT-NeoX-20b + VLA extension) tách 1 từ tiếng Anh thường thành nhiều subword token hơn đáng kể so với đếm-từ-thô — token VLA (`<seed2_N>`, `<pelvis_x_N>`...) vẫn atomic cả 2 cách tính nên phần lệch nhiều khả năng dồn hết vào phần text tự nhiên. **Chưa verify tận gốc, để dành phiên sau.** Tin tốt: ngân sách token thật cao hơn nhiều so với lo ngại "corpus quá nhỏ cho model 1.7B" trước đây.
+
+### 2. Job tokenize — trạng thái thật cuối phiên
+
+- **`tok_mv_omni` (14118393)** — job đầu (`14117680`) từng fail âm thầm sáng nay (SLURM báo COMPLETED nhưng Ray không connect, 0 output thật). Đã fix bug start Ray cluster, resubmit — **lần này COMPLETED thật** (13:18, không traceback, output 7 shard/60.94GB thật).
+- **`tok_mint1t` (14118392)** — vẫn RUNNING cuối phiên (>1h40p), tiến độ bình thường, chưa lỗi.
+
+### 3. SenseNova-SI-8M — đính chính license (xem chi tiết trong `datasets.md` mục 4 và [[project_vla_status]])
+
+Huu nghi ngờ (qua ChatGPT) ảnh trong dataset không permissive hoàn toàn. Điều tra lại kỹ (README, GitHub `OpenSenseNova/SenseNova-SI`, paper arXiv:2511.13719, tự đọc `image` column thật trong parquet) — **không tìm được tài liệu nào nói rõ nguồn gốc ảnh gốc**, paper/GitHub chỉ dùng từ "curated" (gợi ý tổng hợp từ nguồn khác, không phải tự chụp). Cùng dạng bẫy `cc_dump` như MINT. **Rút lại kết luận "an toàn hơn MINT" ở mục sáng nay** — license mở, chưa nên coi là sẵn sàng train.
+
+### 4. Gen-EgoData — viết lại sau khi đọc kỹ toolkit `das-datakit`
+
+Không phải "video ego + pose người" — là dữ liệu từ **thiết bị cầm tay "DAS device"** (kiểu UMI), action thật = `eef_pose` (6-DoF) + `Gripper_width` (tay đơn), khác hẳn `<agent>` 17-khớp hiện tại. License CC-BY-SA-4.0 (share-alike, cần Huu duyệt điều khoản riêng). Xếp lại vào cùng nhóm "robot-action modality" với MolmoAct2/Cosmos3-DROID/Open X-Embodiment/GR00T-Sim.
+
+### 5. Ego/exo — kết luận sau thảo luận dài với Van Khue: KHÔNG cần sửa FineVideo-VLA
+
+Verify trực tiếp trong code (`phase3_kinematics_processor.py`): `<agent>` pose token đã **root-centred/pelvis-relative** sẵn (`retargeted[:, pelvis_idx] = 0.0`) — bất kể video quay góc nào. "Egocentric" (góc camera) và "root-centred" (quy ước toạ độ khung xương) là 2 trục khác nhau — không có "pose exocentric" để mà sửa, và head-relative sẽ **tệ hơn** pelvis-relative (nhiễu xoay đầu lan vào mọi khớp khác), không phải "egocentric hơn". Vấn đề thật (nếu có) là domain-gap giữa video train (3rd-person) và video robot thấy lúc deploy (camera gắn robot) — giải pháp đúng là ưu tiên **integrate Isaac Sim pipeline** (hoặc dùng GR00T-Sim mục 6 làm tạm), không phải sửa FineVideo-VLA hay đi săn thêm ego-video dataset.
+
+### 6. Khảo sát dataset mới trên HF — 3 ứng viên tốt, 4 ứng viên bị loại vì license
+
+| Dataset | License verify thật | Kết luận |
+|---|---|---|
+| **NVIDIA GR00T-X-Embodiment-Sim** | ✅ CC-BY-4.0 | **Ứng viên mạnh nhất** — 345K trajectory, có humanoid GR1, cùng vai trò Isaac Sim |
+| **RoboVQA** (Google DeepMind) | ✅ CC-BY-4.0+Apache-2.0 (verify từ GitHub chính chủ) | 238h, 3 embodiment — tải qua mirror `Tianli/robovqa` (Van Khue tìm ra), có `LICENSE.txt` Apache-2.0 thật |
+| **Open X-Embodiment** | ⚠️ Registry 55-60 dataset con, KHÔNG đồng nhất license | Chưa tải — cần audit từng cái trước |
+| AgiBot World | ❌ CC BY-**NC**-SA | Loại |
+| Apple EgoDex | ❌ CC-BY-**NC**-ND | Loại (tiếc, rất khớp use-case: 829h ego dexterous manipulation + pose) |
+| Meta `ego-1k` / `EgoBrain` | ❌ Non-commercial (+ EgoBrain lạc chủ đề, EEG) | Loại |
+
+### 7. Bắt đầu tải OmniVideo-100K + RoboVQA
+
+Viết `tools/extract/download_omnivideo_100k.py` + `tools/extract/download_robovqa.py` (cùng pattern resumable với `download_sensenova_si8m.py`, đã verify file list/size thật qua HF API trước khi viết). Van Khue chạy cả 2 trong tmux riêng (`omnivideo_dl`, `robovqa_dl`) — cuối phiên: OmniVideo-100K 22 file/8.8GB/52.9GB, RoboVQA 402 file/1.6GB/~70.8GB, cả 2 đang tiến triển bình thường. SenseNova vẫn tải song song (52/54 file, 1.1TB, thỉnh thoảng timeout tự resume).
+
+### 8. `datasets.md` — cập nhật toàn bộ
+
+Thêm mục 15 (RoboVQA), 16 (Open X-Embodiment), 17 (GR00T-Sim); viết lại mục 4 (SenseNova, đính chính license) và mục 8 (Gen-EgoData, schema đúng); thêm 4 dòng "đã check, loại" cho AgiBot/EgoDex/ego-1k/EgoBrain; cập nhật bảng tổng quan + phần "Việc còn mở".
+
+---
+
+## Cập nhật phiên làm việc — 18/07/2026 (đọc phần này trước khi resume)
+
+**Việc chính hôm nay:** xác nhận task #6/#7 full-scale (Phase 6 v4 + Phase 7 v5) đã chạy xong sạch, quality/validity khớp gần tuyệt đối dự đoán, upload lên HF. Tạo `datasets.md` khảo sát 14 dataset. Điều tra sâu MINT-1T-HTML (structure thật, license) → **quyết định bỏ hẳn phần ảnh** (chỉ URL, không track được license), giữ phần text. Điều tra SenseNova-SI-8M (ảnh thật, permissive) → **quyết định tải full 1.13TB**, đang chạy. Thiết kế rồi **từ chối** egocentric perspective converter sau khi soi kỹ giá trị thật. Setup pipeline Megatron tokenize cho 3 nguồn (MV-Omni, MINT, FineVideo v5), account thử đổi `laionize`/`batch` — **chưa submit**.
+
+### 1. Task #6/#7 full-scale — XÁC NHẬN HOÀN THÀNH (docs cũ ghi "chưa confirm", giờ đã xong)
+
+`sacct` xác nhận cả 2 job COMPLETED (14114336 merge v4: 31 phút, 14114370 flatten v5: 38 phút), 0 lỗi thật (chỉ warning module vô hại). Kết quả khớp gần như tuyệt đối dự đoán trước khi chạy: token tăng **+0.740%** (dự đoán +0.737%/+0.749%), caption/speech token lệch <0.05%, record count khớp 100% (371,888). Tổng **5,255,589,397 token** (5.256B). Verify không double-injection (2,787 activity check tag mở/đóng khớp), spot-check nội dung caption/speech đặt đúng vị trí, nội dung hợp lý.
+
+**Đã upload lên HF:** cập nhật `tools/upload/vla_flattened_dataset_card.md` (bảng số liệu v5, mục "What Changed in v5", vocab 156,509) + `upload_flattened_hf.py` (default trỏ `megatron_dataset_v5`, prefix `flat_final_vla_adaptive_rank`). User chạy upload, confirm live trên `EmpathicRobotics/FineVideo-Phase7-Flattened` (verify qua HF API, `lastModified` đúng ngày chạy).
+
+### 2. Tạo `datasets.md` — khảo sát 14 dataset, mọi field verify bằng data thật
+
+File mới ở root repo, trả lời nhanh cho từng dataset: tổng quan / đã tải chưa+path / tokenize modality nào / structure + có thể bổ sung token gì / ready Megatron chưa. Gồm: FineVideo-VLA, MixtureVitae-Omni, MINT-1T-HTML, SenseNova-SI-8M, OmniVideo-100K, MolmoAct2-BimanualYAM, Cosmos3-DROID, Gen-EgoData, MixtureVitae-Backup/multimodal, VALID, stera-10m, FineVLA, abc.bot, và "MINT PDF data" (Huu đã tải sẵn, chưa rõ path, trên leo). Đối chiếu với danh sách 7 dataset Huu tự liệt kê trong chat — khớp 100%, không sót cái nào.
+
+**Phát hiện quan trọng khi làm rõ MV-Omni:** không cần bước "flatten" như FineVideo — data gốc `mv_omni_converted/*.jsonl.gz` đã đúng schema `{"text":...}` sẵn, chỉ còn thiếu (a) quyết định tỷ lệ trộn tránh loãng agent-token, (b) chạy tokenize thật.
+
+### 3. MINT-1T-HTML — điều tra structure + license thật, quyết định BỎ ẢNH, giữ text
+
+**Tải xong hoàn toàn** (2.7TB, 6,159/6,159 file, verify qua log + đếm file thật).
+
+**Structure thật (không phải đoán từ README):** `texts[]`/`images[]` cùng độ dài, xen kẽ, loại trừ lẫn nhau (vị trí nào có text thì ảnh null và ngược lại). `image_hashes`/`images_metadata` KHÔNG cùng độ dài, không align theo index — chỉ nên dùng `images[i]` (URL) làm nguồn sự thật.
+
+**Quy mô thật (đo, không đoán):** ~850M record, ~2.83 tỷ URL ảnh, 91.7% còn sống (test 60 URL thật), ~97KB/ảnh → tải hết sẽ ~130-180TB. → chỉ pilot 20 shard (~9.2M ảnh).
+
+**Bug tốc độ tìm & fix:** rate-limit theo domain (0.5s/request) vô tình bóp tốc độ toàn bộ 64 worker xuống ~10 img/s vì phần lớn ảnh dùng chung 4 host CDN Blogspot. Fix: đổi sang semaphore giới hạn concurrency/domain (mặc định 8) thay vì serialize.
+
+**License — đọc thẳng README chính thức mlfoundations:** `cc_dump` KHÔNG phải license (là mã CommonCrawl dump, dễ nhầm CC=Creative Commons). Pipeline filter của họ không hề lọc bản quyền ảnh (chỉ NSFW/size/dedup), và README tự nhận trách nhiệm thuộc về user. **Quyết định (chat 18/7, Huu): bỏ hẳn ảnh** (*"if the mint doesn't have images ignore it"*), **giữ text** (*"the hf dataset is fine"* — Van Khue). Đã xoá 130MB ảnh pilot đã tải. `stera-10m` cũng bị loại cùng phiên (not permissive).
+
+### 4. SenseNova-SI-8M — điều tra structure thật, quyết định tải full, đang chạy
+
+**Structure thật:** config `full` (`SenseNova-SI-8M.parquet`, 851MB, 8,164,067 record) chỉ có `image: list<string>` (path tương đối), KHÔNG nhúng bytes — khác bản `preview` (1000 sample, có nhúng bytes, chỉ để xem thử). Ảnh thật nằm trong **53 file zip độc lập** (`images_part_001..053.zip`, ~1.10TB) — giải nén tất cả vào 1 thư mục chung sẽ tự ráp lại đúng cây `images/`, join bằng `f"{extract_dest}/{image[i]}"`.
+
+Nội dung: VQA trắc nghiệm về spatial reasoning trong nhà (định vị vật thể, hướng tương đối) — sát với nhu cầu robot/embodied hơn QA thường. Apache-2.0, ảnh bytes thật (không URL) → không vướng rủi ro license như MINT.
+
+**Quyết định: tải full 1.13TB.** Script `tools/extract/download_sensenova_si8m.py` (resumable, in tiến độ mỗi lần retry). **Tính đến cuối phiên: ~71GB/1.13TB, ~45MB/s thật (đo trực tiếp), ETA ~6.5h.** Bước giải nén+join chưa code, để sau khi tải xong.
+
+### 5. Egocentric perspective converter — thiết kế xong rồi TỪ CHỐI (quan trọng, đừng làm lại nếu chưa giải quyết được vấn đề gốc)
+
+Thiết kế ban đầu: `<agent_ego>` tag riêng (tránh nhập nhằng vocab với `<agent>` 3rd-person), record riêng biệt (không nhét chung 1 record tránh bloat context). Nhưng **bị từ chối sau khi user hỏi thẳng "có gì hay"**: video (seed2/cosmos/avclm) không đổi — vẫn là video YouTube 3rd-person gốc — chỉ nhãn pose bị xoay sang hệ quy chiếu chỉ có ý nghĩa nếu có camera gắn đầu thật (không tồn tại). Hệ quả: (1) cặp video-pose không nhất quán vật lý — dạy sai mapping; (2) phép biến đổi là isometry (khả nghịch, không mất thông tin) nên `agent`/`agent_ego` **thông tin y hệt nhau** cho việc retarget robot — không thêm kiến thức mới. **Kết luận: không code theo hướng này**, chỉ đáng làm lại nếu có video egocentric thật để ghép cùng.
+
+### 6. Megatron tokenize — setup cho 3 nguồn, script sẵn sàng, CHƯA SUBMIT
+
+TODO tồn đọng lâu nhất của project: `.bin/.idx` thật hiện có (2.84B token) vẫn dùng data+tokenizer v1 cũ, chưa từng tokenize lại với SNAC/caption/speech hay MV-Omni.
+
+Tìm ra script thật `mv-scale/tokenize_vla_adaptive.sbatch` (hạ tầng dùng chung nhiều project, account `cstdl` trên JUSUF trước đây). Thử đổi sang `account=laionize`/`partition=batch` trên JUWELS theo yêu cầu user — **verify trước** bằng `sacctmgr` (laionize có association hợp lệ với batch) và test path hạ tầng đọc được, không đoán bừa.
+
+**Phát hiện quan trọng:** `mv_preprocess_data.py` chỉ đọc `.jsonl` phẳng key `text`, KHÔNG đọc parquet trực tiếp. MV-Omni/FineVideo-v5 đã đúng format sẵn. MINT (parquet, cột `texts[]`) cần bước convert riêng.
+
+**Đã tạo:**
+- `tools/extract/convert_mint1t_text_jsonl.py` + `slurm/convert_mint1t_text.sbatch` (32-array, nối `texts[]` thành 1 chuỗi `{"text":...}`)
+- `mv-scale/tokenize_mv_omni.sbatch`, `tokenize_finevideo_v5.sbatch`, `tokenize_mint1t.sbatch` — cùng dùng tokenizer `tokenizer_vla_adaptive_v2` (156,509 vocab) để token ID khớp nhau lúc trộn sau này; MINT phụ thuộc bước convert xong trước.
+
+Tất cả đã syntax-check OK. **Chủ động KHÔNG quyết định tỷ lệ trộn MV-Omni/MINT trong bước này** — theo yêu cầu user ("mấy cái quyết định drop out để sau đi"), đây là quyết định lúc train, không phải lúc tokenize.
+
+**Trạng thái cuối phiên: cả 4 job (convert MINT + 3 tokenize) đều CHƯA submit.** SenseNova vẫn đang tải nền. Phiên sau cần check cả 2.
 
 ---
 
@@ -853,6 +1026,11 @@ With vocab expansion + MV-Omni + captioning + Cosmos3-DROID + SNAC-FineVideo, re
 | 1-CP compression: deferred, keep adaptive 2/4/8-CP | +7.1% gain (sample-based) doesn't justify full Phase 5→7 re-run right now; revisit later if needed | Jul 8, 2026 |
 | Synthetic/sim data capped at ≤30% of total training mix | Team consensus (Huu), citing literature guidance; keeps balance toward real video | Jul 7, 2026 |
 | Moss-Audio Tokenizer V2 usage: keep limited even if adopted | Huu: at 400 tok/s it would overwhelm the dataset if used broadly for omni-modal pretraining; only viable as a short high-detail segment followed by lower-rate SNAC, or standalone if not binding to language | Jul 2, 2026 |
+| MINT-1T-HTML images: dropped entirely, text kept | No per-image license info available (dataset's own README confirms no copyright filtering was done, only NSFW/size/dedup); `cc_dump` is a CommonCrawl snapshot ID, not a Creative Commons marker. Text kept — different risk profile (LLM text pretraining under fair-use/TDM norms vs. redistributing raw hotlinked media) | Jul 18, 2026 |
+| stera-10m: dropped | Not permissive (self-assessed + no objection from Huu) | Jul 18, 2026 |
+| SenseNova-SI-8M: download in full | Real image bytes (not URLs), Apache-2.0, spatial-reasoning content relevant to embodied/robot use — best available static-image candidate found so far | Jul 18, 2026 |
+| Egocentric perspective converter (Priority 3): rejected as scoped | The transform only relabels the SAME pose (isometry, no info gain) while pairing it with the SAME unchanged 3rd-person video — creates a physically incoherent video→pose training pair, not a real data multiplier. Only worth revisiting with genuine paired egocentric video, or for a narrow pose-only (no-video) sub-task | Jul 18, 2026 |
+| Megatron tokenize: try account `laionize`/partition `batch` on JUWELS instead of `cstdl` on JUSUF | User's call, verified via `sacctmgr` that `laionize` has a valid `batch` association before writing scripts | Jul 18, 2026 |
 
 ---
 

@@ -6,10 +6,11 @@ Upload flattened Megatron-LM shards to EmpathicRobotics/FineVideo-Phase7-Flatten
   - gzip compressed in parallel
   - uploaded via huggingface_hub
 
-v4 (default): seed2 + cosmos(50%) + agent + snac, 371,888 records, 5.217B tokens
-  Per-chunk temporal ordering: [seed2?][cosmos?][agent?][snac?] per 8-frame chunk
-  Speech in ### Speech: header (not scattered into token sequence)
-  source: megatron_dataset_v4/flat_final_vla_adaptive_v2_rank_*.jsonl
+v5 (default): seed2 + cosmos(50%) + agent + snac + caption + speech, 371,888 records, 5.256B tokens
+  Per-chunk temporal ordering: [caption?][seed2?][cosmos?][agent?][snac?][speech?] per 8-frame chunk
+  Caption/speech anchored to their exact chunk, 0% dropout, no augmentation
+  Whole-activity ### Speech: header unchanged (intentionally redundant with inline <speech>)
+  source: megatron_dataset_v5/flat_final_vla_adaptive_rank_*.jsonl
 
 Usage:
     export HF_TOKEN='hf_...'
@@ -75,16 +76,16 @@ def main():
     )
     parser.add_argument(
         "--source-dir",
-        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v4",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v5",
     )
     parser.add_argument(
         "--upload-dir",
-        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/hf_upload_flattened_v4",
+        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/hf_upload_flattened_v5",
     )
     parser.add_argument(
         "--shard-prefix",
-        default="flat_final_vla_adaptive_v2_rank",
-        help="Filename stem before _{i}.jsonl (v3 uses 'flat_final_vla_adaptive_v2_rank')",
+        default="flat_final_vla_adaptive_rank",
+        help="Filename stem before _{i}.jsonl (v5 uses 'flat_final_vla_adaptive_rank')",
     )
     parser.add_argument(
         "--skip-compress", action="store_true",
@@ -151,7 +152,7 @@ def main():
             path_in_repo="README.md",
             repo_id=REPO_ID,
             repo_type="dataset",
-            commit_message="Update dataset card for v4: per-chunk temporal ordering, 5.217B tokens",
+            commit_message="Update dataset card for v5: caption+speech language anchors, 5.256B tokens",
         )
         print("Uploaded dataset card.")
 
@@ -159,7 +160,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload v4: per-chunk temporal ordering, seed2+cosmos(50%)+agent+snac, 371,888 records, 5.217B tokens",
+        commit_message="Upload v5: added inline caption+speech language anchors, 371,888 records, 5.256B tokens",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")

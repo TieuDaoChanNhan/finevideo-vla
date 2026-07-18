@@ -1,0 +1,47 @@
+{
+  "video_id": "mqnOHH7OXiU",
+  "question_id": "mqnOHH7OXiU_fine_grained_perception_0",
+  "search_tag": "cartoon",
+  "language": "en-US",
+  "duration": 60,
+  "metadata": {
+    "kind": "youtube#video",
+    "etag": "1Yw7GILA67MwAUj49RXS0EyS0f0",
+    "id": "mqnOHH7OXiU",
+    "snippet": {
+      "publishedAt": "2025-08-22T07:57:59Z",
+      "channelId": "UCbp9MyKCTEww4CxEzc_Tp0Q",
+      "title": "The Hardest Challenge..",
+      "description": "Subscribe ❤️",
+      "channelTitle": "Stokes Twins",
+      "categoryId": "22",
+      "liveBroadcastContent": "none",
+      "defaultLanguage": "en",
+      "defaultAudioLanguage": "en-US"
+    },
+    "contentDetails": {
+      "duration": "PT1M",
+      "dimension": "2d",
+      "definition": "hd",
+      "caption": "false",
+      "licensedContent": true,
+      "contentRating": {},
+      "projection": "rectangular"
+    },
+    "statistics": {
+      "viewCount": "140043221",
+      "likeCount": "2550367",
+      "favoriteCount": "0",
+      "commentCount": "1413"
+    }
+  },
+  "video_path": "videos/mqnOHH7OXiU.mp4",
+  "resolution": "720x1280",
+  "task": "fine_grained_perception",
+  "subtask": "Audio-Guided",
+  "question": "When a participant is heard muttering a comment about his \"pants\" amidst groans of exertion, what corresponding visual gesture is he performing?",
+  "answer": "The participant in the blue tracksuit scrambles to his feet and uses his hands to brush off his pants.",
+  "analysis": {
+    "connections": "This question links a specific line of dialogue (\"I think I put my pants\") to a congruent visual action (brushing the pants), requiring precise temporal alignment to notice the relationship between the spoken words and the physical reaction."
+  }
+}

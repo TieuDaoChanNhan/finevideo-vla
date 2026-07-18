@@ -1,0 +1,457 @@
+{
+  "video_id": "iGVvChGEQdM",
+  "search_tag": "news",
+  "language": "en",
+  "duration": 86,
+  "metadata": {
+    "kind": "youtube#video",
+    "etag": "CkHSDwZWwMccOufEd9PwufhcBLw",
+    "id": "iGVvChGEQdM",
+    "snippet": {
+      "publishedAt": "2025-01-05T08:00:39Z",
+      "channelId": "UCCVHAKnRl6auKmX8VeSlEYQ",
+      "title": "🚀 OWL NEWS:  Memecoin MIRA Raises $1 Million for Rare Cancer Research",
+      "description": "Hey CashClickers, welcome to another episode of OWL NEWS, where we bring you the most inspiring and impactful stories from the crypto world! 🦉✨\n\n🔥 Today’s Spotlight:\n1️⃣ MIRA Memecoin for a Cause 🚀: A father’s heartfelt plea led to the creation of MIRA, a memecoin that raised over $1 million for rare cancer research.\n2️⃣ Community Power 🌎: Siqi Chen’s story about his daughter Mira united the crypto community, turning a dream into action. Despite MIRA’s price drop, the mission continues with proceeds funding vital brain tumor research.\n\n💡 Key Takeaways:\n\nCrypto isn’t just about investments; it’s about making a real-world impact.\n\nCommunities can drive incredible change when they come together for a cause.\n\n👉 Like this video if you believe in the power of crypto communities!\n📩 Comment your thoughts—how can we harness crypto for more positive change?\n✅ Subscribe and turn on notifications for more updates, inspiring stories, and insights from the crypto space.\n\nCashClick Links:\n\nCashClick App: https://cashclick.app\n\nTelegram Bot: https://t.me/Cashclickappbot\n\nTelegram Channel: https://t.me/cashclickapp\n\nYouTube Channel:    / @‌cashclickapp  \n\nX (Platform): https://x.com/CashClickApp\n\nConnect with Awards.Photos:\n\nWebsite: https://awards.photos\n\nInstagram:   / awards.photos  \n\nSeed Photo Integration:\n\nConnect with seed.photo:\n\nWebsite: https://seed.photo\n\nInstagram:   / seed.photo  \n\nTelegram Channel: https://t.me/seedphoto\n\nLet’s keep making a difference together, one memecoin at a time! 🌐\n\n👥 Why Join Us? Every click in CashClick enriches your knowledge and wallet! Whether you’re a tech enthusiast, a budding photographer, or someone curious about the world of digital earnings, our platforms are designed for you. Engage with our content, participate in our communities, and transform your digital actions into rewards. 🦉💼 📢 We’re Listening: Your feedback drives our innovation. For suggestions, inquiries, or more information, feel free to contact us at [Your Contact Email]. Thank you for visiting our channel! If you’re not just looking for promises but actual results, CashClick and Seed.Photo are your destinations. 🦉🌟\n#CryptoForACause #MIRAToken #OwlNews #CryptoCommunity #RareCancerResearch",
+      "channelTitle": "CashClick",
+      "categoryId": "20",
+      "liveBroadcastContent": "none",
+      "defaultLanguage": "en-GB",
+      "defaultAudioLanguage": "en-GB"
+    },
+    "contentDetails": {
+      "duration": "PT1M26S",
+      "dimension": "2d",
+      "definition": "hd",
+      "caption": "false",
+      "licensedContent": false,
+      "contentRating": {},
+      "projection": "rectangular"
+    },
+    "statistics": {
+      "viewCount": "1626",
+      "likeCount": "240",
+      "favoriteCount": "0",
+      "commentCount": "24"
+    }
+  },
+  "video_path": "videos/iGVvChGEQdM.mp4",
+  "resolution": "854x480",
+  "main_entities": [
+    {
+      "entity": "Oscar Owlman",
+      "description": "An anthropomorphic owl character wearing a suit and glasses, serving as the news anchor for The Owl News.",
+      "label": "people"
+    },
+    {
+      "entity": "Siqi Chen",
+      "description": "A man shown in a photograph alongside his daughter, identified as the founder of Runway.",
+      "label": "people"
+    },
+    {
+      "entity": "Mira",
+      "description": "A young girl shown in a photograph with her father, described as battling a rare brain tumor.",
+      "label": "people"
+    },
+    {
+      "entity": "Money",
+      "description": "Stacks of US dollar bills shown being counted rapidly, representing the donations and market cap mentioned in the story.",
+      "label": "object"
+    }
+  ],
+  "non_speech": [
+    {
+      "start_time": "00:00",
+      "end_time": "00:16",
+      "sound": "Music - An upbeat, orchestral-style news theme with electronic and synthesized elements."
+    },
+    {
+      "start_time": "00:15",
+      "end_time": "00:16",
+      "sound": "Whoosh"
+    },
+    {
+      "start_time": "00:16",
+      "end_time": "01:17",
+      "sound": "Music - A low-volume, rhythmic electronic background track."
+    },
+    {
+      "start_time": "01:17",
+      "end_time": "01:17",
+      "sound": "Animal sound imitation"
+    },
+    {
+      "start_time": "01:17",
+      "end_time": "01:25",
+      "sound": "Music - An upbeat, orchestral-style news theme with electronic and synthesized elements."
+    }
+  ],
+  "transcribe": [
+    {
+      "start_time": "00:16",
+      "end_time": "00:17",
+      "text": "Hello, cash clickers."
+    },
+    {
+      "start_time": "00:18",
+      "end_time": "00:22",
+      "text": "Welcome back to Al News where we spotlight inspiring stories from the crypto world."
+    },
+    {
+      "start_time": "00:22",
+      "end_time": "00:24",
+      "text": "Today's update is nothing short of extraordinary."
+    },
+    {
+      "start_time": "00:25",
+      "end_time": "00:30",
+      "text": "A heartfelt plea from Siki Chen, founder of runway, has united the crypto community."
+    },
+    {
+      "start_time": "00:30",
+      "end_time": "00:38",
+      "text": "Chen's daughter Mira is battling a rare brain tumor, and his message sparked the creation of the meme coin Mira on pump.fun."
+    },
+    {
+      "start_time": "00:38",
+      "end_time": "00:44",
+      "text": "In just days, Mira soared to an $80 million market cap, driven purely by community support."
+    },
+    {
+      "start_time": "00:44",
+      "end_time": "00:49",
+      "text": "Key player Wadle's ETH even sent 50% of the token supply directly to Chen."
+    },
+    {
+      "start_time": "00:50",
+      "end_time": "01:00",
+      "text": "While prices have since dropped 80% from their peak, the mission continues with over $1 million raised for brain tumor research at the University of Colorado's Hankinson Lab."
+    },
+    {
+      "start_time": "01:00",
+      "end_time": "01:03",
+      "text": "This story reminds us of the power of crypto communities."
+    },
+    {
+      "start_time": "01:04",
+      "end_time": "01:10",
+      "text": "Memecoins may be volatile, but they've proven capable of driving real world impact for families and vital causes."
+    },
+    {
+      "start_time": "01:10",
+      "end_time": "01:16",
+      "text": "Stay tuned for more stories of innovation and community spirit right here on Owl News until next time."
+    },
+    {
+      "start_time": "01:17",
+      "end_time": "01:17",
+      "text": "Hoot hoot."
+    }
+  ],
+  "label_speaker": [
+    {
+      "start_time": "00:16",
+      "end_time": "00:17",
+      "text": "Hello, cash clickers.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:18",
+      "end_time": "00:22",
+      "text": "Welcome back to Al News where we spotlight inspiring stories from the crypto world.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:22",
+      "end_time": "00:24",
+      "text": "Today's update is nothing short of extraordinary.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:25",
+      "end_time": "00:30",
+      "text": "A heartfelt plea from Siki Chen, founder of runway, has united the crypto community.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:30",
+      "end_time": "00:38",
+      "text": "Chen's daughter Mira is battling a rare brain tumor, and his message sparked the creation of the meme coin Mira on pump.fun.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:38",
+      "end_time": "00:44",
+      "text": "In just days, Mira soared to an $80 million market cap, driven purely by community support.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:44",
+      "end_time": "00:49",
+      "text": "Key player Wadle's ETH even sent 50% of the token supply directly to Chen.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "00:50",
+      "end_time": "01:00",
+      "text": "While prices have since dropped 80% from their peak, the mission continues with over $1 million raised for brain tumor research at the University of Colorado's Hankinson Lab.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "01:00",
+      "end_time": "01:03",
+      "text": "This story reminds us of the power of crypto communities.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "01:04",
+      "end_time": "01:10",
+      "text": "Memecoins may be volatile, but they've proven capable of driving real world impact for families and vital causes.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "01:10",
+      "end_time": "01:16",
+      "text": "Stay tuned for more stories of innovation and community spirit right here on Owl News until next time.",
+      "speaker": "Oscar Owlman"
+    },
+    {
+      "start_time": "01:17",
+      "end_time": "01:17",
+      "text": "Hoot hoot.",
+      "speaker": "Oscar Owlman"
+    }
+  ],
+  "video_summary": "In this segment of \"The Owl News,\" anchor Oscar Owlman reports on a fundraising effort by the crypto community for Siqi Chen and his daughter, Mira, who is fighting a rare brain tumor. The story describes how a meme coin named after Mira was launched, briefly reaching an $80 million market cap—visualized by rapidly counting stacks of Money—before its value dropped. Despite the volatility, the initiative raised over $1 million for brain tumor research, showcasing the charitable potential of cryptocurrency markets.",
+  "segments": [
+    {
+      "start_time": "00:00",
+      "end_time": "00:16",
+      "transcription": [],
+      "visual": [
+        {
+          "start_time": "00:00",
+          "end_time": "00:08",
+          "text": "The video opens with a graphic title card featuring a stylized golden world map in the background, partially obscured by a blue, metallic, ring-like structure. Centered on the screen is a rectangular overlay displaying the text \"Cash Click Presents\" in small white letters above the main title, \"THE OWL NEWS.\" The word \"OWL\" is rendered in a large, bold yellow font, while \"THE\" and \"NEWS\" appear in white, with a bright horizontal lens flare effect streaking across the center of the text.\n\nThe scene cuts to a black screen displaying a white text disclaimer. The word \"DISCLAIMER\" appears in large capital letters at the top center. Below this heading, a paragraph of text states that the content provided on the YouTube channel is for educational and entertainment purposes only and does not constitute financial or investment advice. The text continues by warning that cryptocurrency investments are highly speculative and carry significant risk, advising viewers to conduct their own research and consider their financial situation. The final sentence notes that the views expressed are solely those of the content creators and should not be taken as professional financial guidance.\n\nA dynamic 3D animation sequence follows, characterized by a dark environment illuminated by golden and orange light. Abstract digital distortions transition into a spinning graphic of a golden globe surrounded by glowing orange and white concentric rings. The camera swoops and pans rapidly around the 3D elements, focusing on the metallic textures of the golden landmasses and the light trails of the orbiting rings. The view shifts to glide over a flat plane of the golden map, highlighting the three-dimensional relief of the continents against a dark, reflective surface."
+        },
+        {
+          "start_time": "00:08",
+          "end_time": "00:16",
+          "text": "The video begins with a dynamic, high-angle close-up of a stylized, three-dimensional world map where the landmasses are depicted as raised, golden-yellow blocks against a dark navy-blue background. Sleek, metallic rings with glowing orange edges curve and sweep through the frame, creating a sense of rapid orbital motion around the map. The camera pans quickly across the representation of Europe and Asia, rotating to shift the perspective from a side view to a more frontal orientation.\n\nAs the camera zooms out and stabilizes, the continent of Africa becomes the central focal point, with Europe situated above and parts of Asia and Australia visible to the sides. The background reveals a large, mechanical structure resembling a camera lens aperture or turbine with concentric grey and blue rings. A translucent, rectangular graphic banner slides into the center of the screen, displaying the text \"Cash Click Presents\" in a small, white sans-serif font in the upper left corner. Immediately below, the title \"THE OWL NEWS\" appears in large, bold, white capital letters. The background elements continue to rotate slowly as the title card locks into place over the globe."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "00:00",
+          "end_time": "00:16",
+          "sound": "Music - An upbeat, orchestral-style news theme with electronic and synthesized elements."
+        },
+        {
+          "start_time": "00:15",
+          "end_time": "00:16",
+          "sound": "Whoosh"
+        }
+      ]
+    },
+    {
+      "start_time": "00:16",
+      "end_time": "00:30",
+      "transcription": [
+        {
+          "start_time": "00:16",
+          "end_time": "00:17",
+          "text": "Hello, cash clickers.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "00:18",
+          "end_time": "00:22",
+          "text": "Welcome back to Al News where we spotlight inspiring stories from the crypto world.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "00:22",
+          "end_time": "00:24",
+          "text": "Today's update is nothing short of extraordinary.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "00:25",
+          "end_time": "00:30",
+          "text": "A heartfelt plea from Siki Chen, founder of runway, has united the crypto community.",
+          "speaker": "Oscar Owlman"
+        }
+      ],
+      "visual": [
+        {
+          "start_time": "00:16",
+          "end_time": "00:30",
+          "text": "The video opens in a stylized news studio featuring a curved, reflective desk and a backdrop of blue-toned screens displaying various data visualizations and maps. Centered behind the desk is Oscar Owlman, an anthropomorphic owl character wearing a grey suit, a white shirt, and a yellow tie. His hands rest clasped on the desk surface. As the scene progresses, a lower-third graphic slides onto the screen from the left, displaying the text \"Oscar Owlman\" followed by the subtitle \"Chief News Anchor.\" Oscar Owlman blinks and makes subtle head movements while remaining seated.\n\nA graphic transition wipes across the screen, featuring large, three-dimensional white text that reads \"THE OWL NEWS\" sliding through yellow and grey geometric barriers. This transition gives way to a split-screen layout set against a dark, abstract background containing digital artifacts and scrolling numbers. On the left side, a smaller rectangular window labeled \"THE OWL NEWS STUDIO\" displays the continuing feed of Oscar Owlman at his desk. To the right, a larger window presents a close-up photograph of a smiling man with glasses and a beard, identified as Siqi Chen, pressing his cheek against the cheek of a smiling young girl, identified as Mira."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "00:16",
+          "end_time": "00:30",
+          "sound": "Music - A low-volume, rhythmic electronic background track."
+        }
+      ]
+    },
+    {
+      "start_time": "00:30",
+      "end_time": "00:44",
+      "transcription": [
+        {
+          "start_time": "00:30",
+          "end_time": "00:38",
+          "text": "Chen's daughter Mira is battling a rare brain tumor, and his message sparked the creation of the meme coin Mira on pump.fun.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "00:38",
+          "end_time": "00:44",
+          "text": "In just days, Mira soared to an $80 million market cap, driven purely by community support.",
+          "speaker": "Oscar Owlman"
+        }
+      ],
+      "visual": [
+        {
+          "start_time": "00:30",
+          "end_time": "00:44",
+          "text": "The video begins with a split-screen composition overlaid with digital interface graphics, including timecodes and glitch effects. On the left side, a box labeled \"THE OWL NEWS STUDIO\" displays a static image of Oscar Owlman, an anthropomorphic owl wearing a blue suit, white shirt, tie, and glasses, seated behind a sleek desk in a futuristic newsroom environment. On the right side, a photograph shows Siqi Chen smiling broadly next to a young girl, Mira, who is also smiling. At the 00:02 mark, the image on the right changes to a different photograph taken in a hospital setting; this image features Siqi Chen on the left, Mira lying in a hospital bed in the center with medical tape visible on her hand, and a woman on the right leaning in, with all three individuals looking at the camera and smiling.\n\nAt 00:07, the screen transitions to a graphic title card against a background of horizontal yellow and gold bars. The text \"THE OWL NEWS\" appears in the center in a thick, metallic sans-serif font with a white and silver gradient, styled with a 3D effect.\n\nThe scene then cuts to a close-up shot of a large stack of Money, specifically United States one-hundred-dollar bills, being counted rapidly. The bills flip past the camera at a high speed, creating a blur of motion, though the portrait of Benjamin Franklin remains discernible on the currency as the stack decreases."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "00:30",
+          "end_time": "00:44",
+          "sound": "Music - A low-volume, rhythmic electronic background track."
+        }
+      ]
+    },
+    {
+      "start_time": "00:44",
+      "end_time": "00:50",
+      "transcription": [
+        {
+          "start_time": "00:44",
+          "end_time": "00:49",
+          "text": "Key player Wadle's ETH even sent 50% of the token supply directly to Chen.",
+          "speaker": "Oscar Owlman"
+        }
+      ],
+      "visual": [
+        {
+          "start_time": "00:44",
+          "end_time": "00:50",
+          "text": "A high-angle, isometric shot reveals a dark, textured surface resembling a digital circuit board or technological interface. At the center, a neon green square outline glows intensely, enclosing a three-dimensional dollar sign that slowly rotates. Bright green lines radiate outward from this central square in rectilinear patterns, mimicking circuit traces that pulse with moving light. Faintly superimposed in the background is a dot-matrix style map of the world, rendered in muted green tones. The scene is animated with subtle digital noise and glowing particles, creating a cybernetic atmosphere focused on the central financial symbol."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "00:44",
+          "end_time": "00:50",
+          "sound": "Music - A low-volume, rhythmic electronic background track."
+        }
+      ]
+    },
+    {
+      "start_time": "00:50",
+      "end_time": "01:04",
+      "transcription": [
+        {
+          "start_time": "00:50",
+          "end_time": "01:00",
+          "text": "While prices have since dropped 80% from their peak, the mission continues with over $1 million raised for brain tumor research at the University of Colorado's Hankinson Lab.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "01:00",
+          "end_time": "01:03",
+          "text": "This story reminds us of the power of crypto communities.",
+          "speaker": "Oscar Owlman"
+        }
+      ],
+      "visual": [
+        {
+          "start_time": "00:50",
+          "end_time": "01:04",
+          "text": "A high-angle shot depicts a stylized, digital environment resembling a computer circuit board in dark tones. In the center, a raised square platform glows with a bright neon green outline and features a large dollar sign symbol in the middle. Green light traces travel along the circuit lines radiating from the center, while a faint, translucent world map overlay is visible in the background. The camera slowly zooms in on the central dollar icon.\n\nThe scene transitions to a repeating grid of United States banknotes filling the entire frame. Alternating rows of one-dollar bills featuring George Washington and twenty-dollar bills featuring Andrew Jackson are visible. The grid moves rapidly downwards, creating a motion blur effect as the Money passes through the frame. The perspective is slightly angled, showing the flat arrangement of the currency.\n\nThe visual changes to a dark green digital space filled with motion. Horizontal rectangular bars in varying shades of green slide across the background. Superimposed over these are numerous glowing green circular icons, each containing a simple silhouette of a human figure. These icons drift and float across the screen against the animated backdrop."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "00:50",
+          "end_time": "01:04",
+          "sound": "Music - A low-volume, rhythmic electronic background track."
+        }
+      ]
+    },
+    {
+      "start_time": "01:04",
+      "end_time": "01:17",
+      "transcription": [
+        {
+          "start_time": "01:04",
+          "end_time": "01:10",
+          "text": "Memecoins may be volatile, but they've proven capable of driving real world impact for families and vital causes.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "01:10",
+          "end_time": "01:16",
+          "text": "Stay tuned for more stories of innovation and community spirit right here on Owl News until next time.",
+          "speaker": "Oscar Owlman"
+        },
+        {
+          "start_time": "01:17",
+          "end_time": "01:17",
+          "text": "Hoot hoot.",
+          "speaker": "Oscar Owlman"
+        }
+      ],
+      "visual": [
+        {
+          "start_time": "01:04",
+          "end_time": "01:17",
+          "text": "The video begins with a digital animation featuring a dark green background populated by horizontal, semi-transparent rectangular bars. Numerous circular icons, glowing in a bright neon green and containing simple silhouettes of human heads and shoulders, float across the screen. The scene transitions to a blue-toned environment where the circular avatar icons turn white and are interconnected by thin, glowing white lines, forming a complex web-like network structure amidst bright lens flares and digital streaks.\n\nA graphic title card appears against a textured, mustard-yellow background composed of horizontal panels. A rectangular banner stretches across the center, displaying the text \"THE OWL NEWS\" in bold, metallic silver, three-dimensional lettering.\n\nThe scene cuts to a news studio setting where Oscar Owlman, an anthropomorphic character with the realistic head of a brown and white owl and large orange eyes, sits behind a sleek, curved desk. He is dressed in a grey suit jacket, white dress shirt, and a gold tie. His hands rest on the desk surface, which features small embedded electronic devices. Behind him, a curved wall of monitors displays various data visualizations, maps, and graphs in blue and orange tones, illuminated by teal ambient lighting. A white interface bar appears at the bottom of the frame, displaying a \"thumbs up\" icon, a \"thumbs down\" icon, a red \"Subscribe\" button, and a notification bell icon. A computer mouse cursor arrow moves onto the screen and clicks the \"Subscribe\" button."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "01:04",
+          "end_time": "01:17",
+          "sound": "Music - A low-volume, rhythmic electronic background track."
+        },
+        {
+          "start_time": "01:17",
+          "end_time": "01:17",
+          "sound": "Animal sound imitation"
+        }
+      ]
+    },
+    {
+      "start_time": "01:17",
+      "end_time": "01:26",
+      "transcription": [],
+      "visual": [
+        {
+          "start_time": "01:17",
+          "end_time": "01:26",
+          "text": "A medium shot centers on Oscar Owlman, an anthropomorphic owl with detailed brown and white plumage, seated behind a sleek, dark curved desk in a futuristic newsroom setting. He wears a tailored grey suit jacket, a white dress shirt, a blue tie, and a yellow pocket square, staring directly forward. The background features a curved wall lined with multiple monitors displaying blue-toned data charts and digital interfaces, illuminated by modern, rectangular overhead lights. A graphical overlay appears at the bottom of the screen, showcasing a white bar with \"thumbs up\" and \"thumbs down\" icons, a grey button reading \"Subscribed,\" and a bell notification icon that is clicked by a digital hand cursor.\n\nThe visual shifts abruptly to a black environment occupied by a spinning, metallic 3D emblem. The object consists of a central flat cylinder marked with a white circle and a horizontal bar above it, surrounded by concentric, wireframe rings that ripple outward. The emblem rotates on a vertical axis, revealing its metallic texture and depth as the surrounding rings oscillate in a rhythmic pattern.\n\nThe motion ceases as the 3D element flattens into a static 2D white logo against a solid black background. The logo comprises a geometric icon on the left—a solid white circle beneath a horizontal line—next to the text \"cashclick\" written in a lowercase, sans-serif white font."
+        }
+      ],
+      "non_speech": [
+        {
+          "start_time": "01:17",
+          "end_time": "01:17",
+          "sound": "Animal sound imitation"
+        },
+        {
+          "start_time": "01:17",
+          "end_time": "01:25",
+          "sound": "Music - An upbeat, orchestral-style news theme with electronic and synthesized elements."
+        }
+      ]
+    }
+  ]
+}

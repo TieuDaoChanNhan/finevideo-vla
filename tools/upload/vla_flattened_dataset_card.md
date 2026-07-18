@@ -14,6 +14,8 @@ tags:
   - tokenization
   - adaptive-pchip
   - snac
+  - caption
+  - speech-transcription
   - megatron-lm
   - pretraining
 language:
@@ -22,24 +24,26 @@ size_categories:
   - 100K<n<1M
 ---
 
-# FineVideo-Phase7-Flattened — Megatron-LM Multimodal Pretraining Dataset (v4)
+# FineVideo-Phase7-Flattened — Megatron-LM Multimodal Pretraining Dataset (v5)
 
 ## Overview
 
 This is the **final, training-ready** flattened dataset from the FineVideo-VLA pipeline. Each record is a single `{"text": "..."}` JSON line containing interleaved multimodal tokens — ready for Megatron-LM tokenization and LLM pretraining.
 
-Four token modalities are interleaved **per 8-frame chunk** in temporal order:
+Six token/text modalities are interleaved **per 8-frame chunk** in temporal order:
 
 - **Seed2** — 1 FPS semantic keyframe tokens (vocab: 8192), kept at 100%
 - **Cosmos** — every 8-frame spatial video tokens (vocab: 64,000), kept at 50%
 - **Agent** — adaptive PCHIP 3D human pose tokens (17 joints, variable control points per joint)
 - **SNAC** — audio tokens in listen format (~10 tokens per 8-frame chunk, vocab: 12,288)
+- **Caption** *(new in v5)* — natural-language VLM caption anchored to the activity's opening frame and every person-appears/disappears event, plain BPE text (no vocab expansion)
+- **Speech** *(new in v5)* — inline ASR transcript segment anchored to its exact chunk (distinct from the whole-activity `### Speech:` header, which is unchanged), plain BPE text
 
 Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo).
 
 **Key property:** Every record contains at least one of `<agent>` or `<snac>` tokens. Records without either are discarded.
 
-## Dataset Statistics (v4, Jul 2, 2026)
+## Dataset Statistics (v5, Jul 17, 2026)
 
 | Metric | Value |
 |--------|-------|
@@ -56,11 +60,23 @@ Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/
 
 | Modality | Tokens | % |
 |----------|--------|---|
-| seed2 | 332,592,448 | 6.4% |
-| cosmos | 3,882,981,800 | 74.4% |
-| agent | 637,924,374 | 12.2% |
-| snac | 363,029,331 | 7.0% |
-| **TOTAL** | **5,216,527,953** | **5.217B** |
+| seed2 | 332,592,448 | 6.3% |
+| cosmos | 3,882,954,800 | 73.9% |
+| agent | 637,924,374 | 12.1% |
+| snac | 363,029,331 | 6.9% |
+| caption *(new)* | 12,076,047 | 0.2% |
+| speech_inline *(new)* | 27,012,397 | 0.5% |
+| **TOTAL** | **5,255,589,397** | **5.256B** |
+
+## What Changed in v5 (Jul 17, 2026)
+
+Added `<caption>` and `<speech>` language anchors at modality-transition points, to give the model a language signal for *why* the token stream is about to switch modality (previously identified as root cause #2 for the model's inability to self-initiate modality transitions at inference).
+
+- `<caption>...</caption>` is inserted immediately before the `<cosmos>` block of its anchor chunk. Anchor points: the activity's opening chunk, plus every chunk where a person appears/disappears (YOLO `has_agent` flip, 5s-debounced against flicker).
+- `<speech>...</speech>` is inserted immediately after `</avc_lm>`, anchored to its exact chunk's ASR segment — distinct from the existing whole-activity `### Speech:` header (intentionally redundant: header = full-activity dump for global context, inline = precisely-timed local anchor).
+- Neither is dropped (0% dropout, same treatment as `agent`) nor text-augmented — both are anchored to an exact chunk, so paraphrasing/permutation would break the token-to-moment correspondence that's the entire point of adding them.
+- Measured token growth: **+0.740%** over the v4 baseline (5.217B → 5.256B), independently cross-checked two ways (a controlled real-pipeline sample and an exact full-dataset word count) that agreed to within 0.012 percentage points.
+- This is a *qualitative* fix (a language anchor at modality-transition points), not a record-count multiplier — it should not be confused with the separately-tracked "perspective framing" idea (robot/human/cinematic re-framings of the same activity), which is what would actually multiply total record count and is not yet implemented.
 
 ## What Changed in v4 (Jul 2, 2026)
 
@@ -89,6 +105,8 @@ In the raw data, image tokens massively outnumber action tokens. **Modality drop
 | Seed2 | 0% | Keep all — primary visual signal |
 | Agent | 0% | Keep all |
 | SNAC | 0% | Keep all |
+| Caption *(new)* | 0% | Anchored to an exact chunk — paraphrasing would break the token-to-moment link |
+| Speech (inline) *(new)* | 0% | Same reason as caption |
 
 ## Data Format
 
@@ -96,7 +114,7 @@ Each line is a JSON object with a single `text` field:
 
 ```json
 {
-  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n### Speech: turn left and walk forward\n<seed2_6750> <seed2_680> ... <cosmos_18232> <cosmos_41007> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ... <snac_132247> <snac_132788> ..."
+  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n### Speech: turn left and walk forward\n<caption> The person is standing on top of a large log. </caption> <seed2_6750> <seed2_680> ... <cosmos_18232> <cosmos_41007> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ... <snac_132247> <snac_132788> ... <speech> We're in West Bank, in the heart of the reserve. </speech>"
 }
 ```
 
@@ -117,9 +135,9 @@ Each record has text headers followed by the flat token sequence. Headers are ra
 Tokens are emitted in document order, one 8-frame chunk at a time:
 
 ```
-chunk 0:  [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...]
+chunk 0:  [<caption>?] [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...] [<speech>?]
 chunk 1:               [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...]
-chunk 2:  [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...]
+chunk 2:  [<caption>?] [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...] [<speech>?]
 ...
 ```
 
@@ -127,6 +145,8 @@ chunk 2:  [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<sn
 - cosmos present at 50% of chunks (random per chunk)
 - agent present only at chunks with a detected person
 - snac present at ~100% of chunks (audio available for most activities)
+- caption appears only at anchor chunks (opening frame + person-appears/disappears events, 5s-debounced) — most activities get ~2.45 captions on average
+- speech (inline) appears only at chunks with an ASR segment mapped to them
 
 ### Agent token format (Adaptive PCHIP)
 
@@ -184,7 +204,7 @@ Text fields have augmentation applied during flattening:
 
 ## Vocabulary & Tokenizer
 
-Use **[EmpathicRobotics/tokenizer-vla-adaptive-v2](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive-v2)** (156,505 vocab) for this dataset — it includes SNAC tokens that are absent in v1 (144,215 vocab).
+Use **[EmpathicRobotics/tokenizer-vla-adaptive-v2](https://huggingface.co/EmpathicRobotics/tokenizer-vla-adaptive-v2)** (156,509 vocab) for this dataset — it includes SNAC tokens (absent in v1, 144,215 vocab) plus the 4 `<caption>`/`</caption>`/`<speech>`/`</speech>` wrapper tokens needed for v5. A Qwen3-based tokenizer with the full VLA vocabulary is also available: [EmpathicRobotics/tokenizer-vla-qwen3](https://huggingface.co/EmpathicRobotics/tokenizer-vla-qwen3) (257,901 vocab).
 
 All VLA tokens are registered via `add_tokens(special_tokens=True)` — the BPE tokenizer treats every VLA token as atomic and never splits them.
 
@@ -195,6 +215,7 @@ tok = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-adaptive-v2"
 tok.encode("<seed2_1137>")      # -> single token
 tok.encode("<pelvis_x_128>")    # -> single token
 tok.encode("<snac_132247>")     # -> single token
+tok.encode("<caption>")         # -> single token (new in v5)
 ```
 
 | Token family | Range | Count |
@@ -207,7 +228,10 @@ tok.encode("<snac_132247>")     # -> single token
 | Joint tokens (xyz, t, wrappers) | — | 13,226 |
 | Modality wrappers | — | 8 |
 | `<snac_N>` (L0 + L1A + L1B) | 128266–148745 | 12,290 |
-| **Total** | | **156,505** |
+| `<caption>`/`</caption>`/`<speech>`/`</speech>` *(new)* | — | 4 |
+| **Total** | | **156,509** |
+
+Caption/speech text content itself is regular English — tokenized with the base BPE vocabulary, no new numbered token family needed (unlike seed2/cosmos/agent/snac, which each got a dedicated `<..._N>` range).
 
 ## Related Resources
 
@@ -230,7 +254,9 @@ tok.encode("<snac_132247>")     # -> single token
 | Phase 4 | YOLO person-detection cleaning | Done |
 | Phase 5 | Adaptive PCHIP per-joint tokenisation (18,847 videos) | Done |
 | Phase 6 v2 | Merge agent + SNAC tokens into multimodal dataset | Done |
-| **Phase 7 v4** | **Per-chunk temporal flatten + modality dropout (this dataset)** | **Done** |
+| Phase 7 v4 | Per-chunk temporal flatten + modality dropout | Done |
+| Phase 6 v4 | Inject caption + inline speech language anchors | Done |
+| **Phase 7 v5** | **Flatten with caption/speech events, 0% dropout on both (this dataset)** | **Done** |
 
 ## Usage
 
@@ -254,7 +280,8 @@ for sample in ds["train"]:
 | v1 | Mar 2026 | 69,844 | ~1.35B | Agent only, 99% AVC-LM drop, 90% cosmos drop |
 | v2 | Jun 2026 | 69,844 | ~1.35B | 100% AVC-LM drop, 50% cosmos drop |
 | v3 | Jul 2, 2026 | 371,888 | ~5.52B | Added SNAC, expanded filter to agent OR snac |
-| **v4** | **Jul 2, 2026** | **371,888** | **5.217B** | **Fixed per-chunk temporal ordering, speech in headers** |
+| v4 | Jul 2, 2026 | 371,888 | 5.217B | Fixed per-chunk temporal ordering, speech in headers |
+| **v5** | **Jul 17, 2026** | **371,888** | **5.256B** | **Added inline `<caption>`/`<speech>` language anchors at modality-transition points (+0.740%)** |
 
 ## Citation
 
