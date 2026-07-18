@@ -7,6 +7,41 @@
 
 ---
 
+## Cập nhật phiên làm việc — 18/07/2026 (tối muộn — phiên bổ sung 3, đọc phần này trước)
+
+**Việc chính:** Viết driver Step A mới cho OmniVideo-100K theo đúng yêu cầu ("tận dụng pipeline cũ nhưng đừng viết code mới vào đó, viết vào `data_prep/omnivideo_100k`") — `step_a_tokenize_video.py` import 3 class tokenizer từ `/e/project1/reformo/nguyen38/prototype/pipeline.py` gốc (không sửa gì ở đó), tự viết toàn bộ logic mới: list video, chunk 8-frame, và **chèn caption/speech chỉ 1 lần tại chunk đầu mỗi segment** (không phải mọi chunk overlap — tránh lặp lại đoạn caption 300-500 từ tới ~40 lần/segment). Trong lúc pilot phát hiện + fix **2 bug seed2 thật** trong `env_stable_vla` (transformers trôi lên 4.57.6, ảnh hưởng cả FineVideo nếu chạy lại Step A bằng env hiện tại) — xem chi tiết mục 2. Submit full-scale lần 1 (`970087`, 32 GPU) thì **lộ thêm 1 bug thật khác trong chính code mới của tôi** — trích toàn bộ frame gốc cả video ra đĩa tạm không resize, 32 rank chạy song song làm tràn quota đĩa của user, gần như mọi video đều lỗi. Đã `scancel`, dọn ~40GB rác, viết lại theo streaming từng chunk 8-frame + resize 512×512, verify lại bằng pilot (`970095`, 48/48 video sạch, nhanh hơn bản cũ), rồi **submit lại full-scale (`970099`, 8 node×4 GPU=32 GPU) — đang chạy lúc ghi entry này**.
+
+### 1. Driver Step A mới — `data_prep/omnivideo_100k/step_a_tokenize_video.py`
+
+Không đụng `pipeline_video/pipeline.py` (bản git, để tracking) hay `/e/project1/reformo/nguyen38/prototype/pipeline.py` (bản runtime thật, có đủ checkpoint). Chỉ import 3 class tokenizer cấp thấp (`Seed2Tokenizer`/`CosmosVideoTokenizer`/`AVCLMTokenizer`) từ `prototype/pipeline.py`, kèm `sys.path.insert` + `os.chdir(PROTOTYPE_DIR)` bắt buộc (checkpoint paths trong 3 class đó relative tới CWD; `import cosmos_tokenizer` bên trong `pipeline.py` chỉ resolve được nếu `sys.path[0]` trỏ đúng `prototype/`).
+
+Sharding video theo `video_list[RANK::WORLD_SIZE]` (đơn giản hơn `dataset.shard()` của FineVideo vì chỉ là list file phẳng). Chèn `<caption>`/`<speech>` tại "anchor chunk" (chunk đầu tiên có `start_sec >= segment.start_sec`) — pattern giống cách `phase6_merge_adaptive.py` snap speech ASR về đúng 1 chunk bắt đầu. Output: `{"video_id", "text"}` 1 dòng/video, resume toàn cục (quét hết `step_a_rank_*.jsonl` hiện có trước khi xử lý).
+
+### 2. Phát hiện + fix 2 bug seed2 thật trong `env_stable_vla` (ảnh hưởng cả FineVideo, không chỉ OmniVideo-100K)
+
+Pilot đầu (`970063`) chạy nhưng `seed2=0` mọi video, không crash. Cả 2 bug đều do `transformers` trôi lên `4.57.6` (checkpoint config ghi `4.52.4`):
+
+- **Bug #1 (import path):** `apply_chunking_to_forward`/`find_pruneable_heads_and_indices`/`prune_linear_layer` bị dời từ `transformers.modeling_utils` sang `transformers.pytorch_utils`. Code `seed2/seed2_tokenizer.py` (BERT API đời cũ) vẫn import chỗ cũ → `ImportError`, bị `except Exception` trong `pipeline.py` nuốt mất.
+- **Bug #2 (hành vi `tie_weights()`, sâu hơn):** `AttributeError: 'NoneType' object has no attribute 'predictions'`. Full traceback (qua job debug riêng `debug_seed2_load.py`, job `970070`): tác giả gốc **chủ ý** set `self.Qformer.cls = None` (dòng 2601 — Qformer không cần đầu MLM khi chỉ encode ảnh). `transformers` cũ tolerate việc này; bản 4.57.6 gọi `tie_weights()` đệ quy vào mọi submodule kể cả cái đã bị null hoá chủ ý → crash.
+
+**Cách sửa:** monkeypatch **chỉ trong `step_a_tokenize_video.py`** (không đụng `seed2_tokenizer.py`/`pipeline.py`/env chung): (1) gán lại 3 hàm bị dời vào `modeling_utils` trước khi import `pipeline.py`; (2) patch `get_output_embeddings`/`set_output_embeddings` của `BertLMHeadModel`/`BertForMaskedLM` trả `None` an toàn khi `self.cls is None`. Verify qua `debug_seed2_load.py` (`LOADED OK`, job `970072`) rồi pilot thật (job `970073`: 48/48 video, seed2 ra token thật 2000-5700/video).
+
+### 3. Bug quota đĩa — do chính code mới, phát hiện khi submit full-scale lần 1
+
+Job `970087` (32 GPU) gần như mọi video đều lỗi `[Errno 122] Disk quota exceeded`. Nguyên nhân: `extract_30fps_frames()` (bản đầu của tôi) trích **toàn bộ frame gốc của cả video** (tới 5400 frame cho video 180s, KHÔNG resize) ra PNG tạm — với 32 rank chạy song song, mỗi rank có lúc giữ 1-2.7GB PNG tạm cùng lúc → tràn quota user (pilot 8-rank trước đó không trúng vì tổng footprint đồng thời còn dưới ngưỡng).
+
+**Đã `scancel` job ngay, dọn ~40GB rác** (`omni_temp_frames_rank_*`, `temp_seed2_rank_*.jpg`). **Fix:** viết lại hoàn toàn theo streaming — 1 lệnh ffmpeg/chunk 8-frame (thay vì 1 lệnh cho cả video), resize 512×512 (khớp `target_size` mặc định của Seed2Tokenizer nên không mất chất lượng; Cosmos downsample tiếp xuống 160 nên cũng không mất gì). Giới hạn dung lượng tạm chỉ còn ~8 frame/rank tại một thời điểm, bất kể video dài bao nhiêu. Verify: pilot lại (`970095`) — 48/48 video sạch, temp dir mỗi rank chỉ 1-2.5MB (so với 1-2.7GB trước), **nhanh hơn bản cũ** (7:22 so với 9:23).
+
+### 4. Trạng thái cuối phiên: full-scale đang chạy
+
+**Đã submit `970099`** (8 node×4 GPU=32 GPU, `--time=05:00:00`, `data_prep/omnivideo_100k/submit_step_a_full.sbatch`) cho toàn bộ 5,214 video, thay thế job `970087` đã huỷ. Output: `$DATA/omnivideo_100k/step_a_output/step_a_rank_{0..31}.jsonl`. Có resume — an toàn để submit lại y nguyên lệnh nếu job timeout/crash giữa chừng.
+
+### Việc tiếp theo hợp lý nhất
+
+Chờ job `970099` chạy xong (theo dõi qua Monitor). Sau khi xong: tokenize Megatron bằng `tokenizer_vla_qwen3` (257,901 vocab — **tuyệt đối không dùng `tokenizer_vla_adaptive_v2`**, bài học đau đã ghi ở phiên trước), rồi mới tới bước quyết định tỷ lệ trộn với FineVideo-VLA/MV-Omni lúc train.
+
+---
+
 ## Cập nhật phiên làm việc — 18/07/2026 (tối — phiên bổ sung 2, đọc phần này trước)
 
 **Việc chính tối nay:** phát hiện + fix bug lớn — **cả 3 job tokenize đang chạy dùng nhầm tokenizer cũ** (không phải Qwen3 như dự định), đã hủy job đang chạy, xoá 215GB output sai, sửa script, resubmit lại đúng Qwen3. Đếm token thật: FineVideo-v5 gần như không đổi (10.55B, chứng minh lệch số 5.256B không phải do tokenizer) — MV-Omni tăng thật +25% (20.39B). Tải xong hoàn toàn cả 3 nguồn mới (OmniVideo-100K, RoboVQA, SenseNova). Tạo `data_prep/` với script flatten cho RoboVQA + OmniVideo-100K (bắt + fix 2 bug thật khi validate kỹ). Giải nén + map caption/speech cho video OmniVideo-100K — **sẵn sàng Step A** (chờ submit ở JUPITER). Điều tra sâu RoboVQA — phát hiện video thật nằm trong tfrecord (không phải chỉ 4.5% như báo sai lúc đầu), viết parser tfrecord thuần Python, đang trích xuất frame (chạy nền, ~36% xong cuối phiên) — nhưng phát hiện đây là **16 ảnh rời rạc/episode, không phải video liên tục**, cần quyết định kiến trúc trước khi qua Step A. Đọc trực tiếp paper SenseNova (39 trang, qua `pypdf`) theo yêu cầu Huu — tìm ra **22 dataset nguồn ảnh cụ thể**, verify license từng cái: vài cái permissive thật (GQA/VQA/VSR/CLEVR/MindCube), phần lớn (nhóm đóng góp nhiều ảnh nhất) non-commercial xác nhận (ScanNet/ScanNet++/Matterport3D/CA-1M/Ego-Exo4D/ARKitScenes), vài cái đáng ngờ kiểu "license mới nhưng nguồn cũ dính" (VSI-590K/ViCA/VLM-3R). Đọc thêm paper MINT-1T gốc — xác nhận quyết định bỏ ảnh trước đây đúng, có bằng chứng mạnh hơn nữa (chính tác giả tự ghi "N/A" cho license asset).

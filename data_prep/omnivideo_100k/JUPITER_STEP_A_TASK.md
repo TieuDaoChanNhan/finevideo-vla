@@ -1,3 +1,16 @@
+> **CẬP NHẬT 18/07/2026 tối muộn — task này ĐÃ LÀM XONG, đọc trước khi bắt đầu lại từ đầu.**
+> Driver đã viết: `data_prep/omnivideo_100k/step_a_tokenize_video.py` (+ `submit_step_a_full.sbatch`, `submit_step_a_pilot.sbatch`).
+> Job full-scale đang chạy: `970099` (8 node×4 GPU=32 GPU, 5,214 video, có resume).
+>
+> **3 bug thật đã bắt được, đọc kỹ trước khi debug lại nếu job fail:**
+> 1. `env_stable_vla` có `transformers==4.57.6` (khác `4.52.4` checkpoint gốc yêu cầu) — làm seed2 tokenizer hỏng 2 lớp (import path bị dời + `tie_weights()` crash trên `Qformer.cls=None` cố ý). Đã fix bằng monkeypatch **chỉ trong `step_a_tokenize_video.py`**, không đụng `seed2_tokenizer.py`/`pipeline.py`/env chung. Nếu seed2 lại ra `0` hoặc lỗi mới liên quan `transformers`, đọc lại monkeypatch ở đầu file trước khi sửa thêm.
+> 2. **Đừng bao giờ trích toàn bộ frame 1 video ra đĩa tạm cùng lúc** (bug tự gây ra ở lần full-scale đầu, job `970087`, làm tràn quota đĩa khi 32 rank chạy song song — pilot 8 rank không lộ ra vì footprint đồng thời còn thấp). Code hiện tại đã sửa thành streaming từng chunk 8-frame (`extract_chunk_frames()`), giới hạn ~8 frame/rank tại một thời điểm, có resize 512×512. Nếu viết lại driver mới cho dataset khác, giữ đúng pattern streaming này.
+> 3. Anchor caption/speech: chỉ chèn **1 lần/segment** (chunk đầu tiên của segment), không phải mọi chunk overlap — segment ~11s (~40 chunk) nhưng caption dài 300-500 từ, chèn mọi chunk sẽ lặp lại đoạn văn hàng chục lần.
+>
+> Xem `PROGRESS.md`/`PROGRESS_VI.md`/`REPORT.md` (mục "OmniVideo-100K Step A", phiên 18/07 tối muộn) để biết chi tiết đầy đủ + trạng thái job mới nhất.
+
+---
+
 # Task: Step A (video tokenization) cho OmniVideo-100K trên JUPITER
 
 **Bối cảnh:** đây là dataset external mới (không phải FineVideo), 5,214 video YouTube thật (tin tức/cartoon/thử thách...), đã được điều tra + chuẩn bị dữ liệu ở JUWELS. Việc còn thiếu duy nhất là chạy Step A (video → token) — chỉ chạy được ở JUPITER vì cần GPU GH200 (JUWELS chỉ có CPU cho phần này).
