@@ -41,7 +41,7 @@ ANIMATION_PATTERN = re.compile(
 
 def main():
     sports_ids = set(line.strip() for line in open(INPUT_IDS) if line.strip())
-    print(f"Sports subset dau vao: {len(sports_ids)}")
+    print(f"Input sports subset: {len(sports_ids)}")
 
     excluded = []
     kept = []
@@ -61,9 +61,9 @@ def main():
     with open(OUTPUT_IDS, "w") as f:
         f.write("\n".join(sorted(kept)) + "\n")
 
-    print(f"Bi loai (khop tu khoa animation/cartoon): {len(excluded)}")
-    print(f"Con lai: {len(kept)}")
-    print(f"Da ghi: {OUTPUT_IDS}")
+    print(f"Excluded (matched animation/cartoon keyword): {len(excluded)}")
+    print(f"Remaining: {len(kept)}")
+    print(f"Written to: {OUTPUT_IDS}")
 
 
 if __name__ == "__main__":

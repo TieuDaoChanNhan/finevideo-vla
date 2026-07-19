@@ -1,30 +1,34 @@
-"""Phase 1 (2D pose: HRNet + Faster R-CNN) cho tap con sports cua OmniVideo-100K,
-chay tren JUPITER. Xem data_prep/omnivideo_100k/JUPITER_POSE_PILOT_TASK.md cho
-boi canh day du (chi 1,256/5,214 video duoc chon qua select_sports_subset.py).
+"""Phase 1 (2D pose: HRNet + Faster R-CNN) for the sports subset of
+OmniVideo-100K, run on JUPITER. See
+data_prep/omnivideo_100k/JUPITER_POSE_PILOT_TASK.md for full context (only
+1,256/5,214 videos are selected via select_sports_subset.py).
 
-Khong sua pipeline_pose/phase1_hrnet_gpu.py -- file goc hard-code doc video tu
-FineVideo HF arrow dataset (load_from_disk("/e/scratch/.../finevideo_disk") +
-cached_video_ids.json), khong dung duoc cho OmniVideo-100K (chi la file mp4
-phang tren disk, khong co arrow dataset). Script nay tai su dung phan model-
-agnostic cua file goc (model init, coco_to_h36m) nhung doc video truc tiep tu
-$DATA/omnivideo_100k/videos/{video_id}.mp4 va shard theo sports-subset list,
-giong pattern RANK::WORLD_SIZE cua step_a_tokenize_video.py.
+Does not modify pipeline_pose/phase1_hrnet_gpu.py -- the original hard-codes
+reading video from the FineVideo HF arrow dataset
+(load_from_disk("/e/scratch/.../finevideo_disk") + cached_video_ids.json),
+which doesn't work for OmniVideo-100K (flat mp4 files on disk, no arrow
+dataset). This script reuses the model-agnostic part of the original (model
+init, coco_to_h36m) but reads video directly from
+$DATA/omnivideo_100k/videos/{video_id}.mp4 and shards over the sports-subset
+list, following the same RANK::WORLD_SIZE pattern as step_a_tokenize_video.py.
 
-Khac voi ban goc MOT diem quan trong (theo yeu cau giu confidence, dung vut):
-coco_to_h36m() o day GIU NGUYEN confidence score lien tuc tu HRNet/detector,
-thay vi nhi phan hoa thanh 1.0/0.0 nhu ban goc (phase1_hrnet_gpu.py dong 37-38:
+One important difference from the original (per the requirement to keep
+confidence scores, not discard them): coco_to_h36m() here KEEPS the continuous
+confidence score from HRNet/the detector, instead of binarizing it to 1.0/0.0
+like the original (phase1_hrnet_gpu.py lines 37-38:
 `if c < CONF_THRESHOLD: return ..., 0.0` / `return ..., 1.0`). Downstream,
-MotionBERT (third_party/MotionBERT/infer_wild.py qua WildDetDataset) doc truc
-tiep cot conf nay lam input feature cho model lifting -- gia tri lien tuc giup
-model phan biet "hoi khong chac" voi "gan nhu chac chan khong thay", thay vi
-chi co 2 muc nhu ban goc. Vi tri (x, y) van bi zero-hoa khi duoi nguong (giu
-nguyen logic goc, tranh dua toa do rac cho MotionBERT) -- chi confidence la
-duoc giu nguyen gia tri that.
+MotionBERT (third_party/MotionBERT/infer_wild.py via WildDetDataset) reads
+that confidence column directly as an input feature for the lifting model --
+a continuous value lets the model distinguish "somewhat uncertain" from
+"almost certainly not visible", instead of only 2 levels like the original.
+The (x, y) position is still zeroed below threshold (unchanged from the
+original -- avoids feeding MotionBERT garbage coordinates); only the
+confidence value is kept at its real, continuous value.
 
-Output giu dung format {"frame_id", "keypoints": [[x,y,conf]x17]} cua ban goc,
-ghi vao outputs/2d_json/{video_id}_2d.json (dung thu muc voi FineVideo, theo
-dung thiet ke trong JUPITER_POSE_PILOT_TASK.md muc 3, de Phase 2 doc duoc
-khong can sua gi -- an toan vi video_id 2 nguon khong trung nhau).
+Output keeps the original's exact format ({"frame_id", "keypoints": [[x,y,conf]x17]}),
+written to outputs/2d_json/{video_id}_2d.json (same directory as FineVideo, per
+the design in JUPITER_POSE_PILOT_TASK.md section 3, so Phase 2 can read it with
+zero changes -- safe since video_ids from the two corpora never collide).
 """
 import argparse
 import json
@@ -33,8 +37,8 @@ import os
 import cv2
 import numpy as np
 
-# ================= MODEL CONFIGURATION (giu nguyen path tuong doi tu ban goc,
-# script phai chay voi CWD = 3d-human-pose/) =================
+# ================= MODEL CONFIGURATION (relative paths kept identical to the
+# original -- this script must run with CWD = 3d-human-pose/) =================
 POSE_CONFIG = "hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py"
 POSE_CHECKPOINT = "hrnet_storage/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth"
 DET_CONFIG = "hrnet_storage/faster-rcnn_r50_fpn_1x_coco.py"
@@ -45,7 +49,7 @@ CONF_THRESHOLD = 0.5
 DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k"
 DEFAULT_VIDEOS_DIR = os.path.join(DATA_ROOT, "videos")
 DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(__file__), "sports_subset_video_ids_filtered.txt")
-DEFAULT_OUTPUT_DIR = "outputs/2d_json"  # cung thu muc voi FineVideo -- xem docstring
+DEFAULT_OUTPUT_DIR = "outputs/2d_json"  # same directory FineVideo uses -- see module docstring
 
 RANK = int(os.environ.get("SLURM_PROCID", 0))
 WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))
@@ -54,8 +58,8 @@ DEVICE = f"cuda:{LOCAL_RANK}"
 
 
 def coco_to_h36m(coco_kpts):
-    """Nhu coco_to_h36m() trong phase1_hrnet_gpu.py, nhung KHONG binarize
-    confidence -- xem module docstring."""
+    """Same as coco_to_h36m() in phase1_hrnet_gpu.py, but does NOT binarize
+    confidence -- see module docstring."""
     h36m = np.zeros((17, 3), dtype=np.float32)
 
     def get_pt(idx):
@@ -85,9 +89,10 @@ def coco_to_h36m(coco_kpts):
     h36m[16, :2], h36m[16, 2] = get_pt(10)
     h36m[9, :2], h36m[9, 2] = nose, c_nose
 
-    # Gating giu nguyen ">= nguong" (tuong duong "> 0" cua ban goc, vi ban goc
-    # da binarize truoc do) -- chi confidence duoc ghi la gia tri that (min cua
-    # 2 diem gop thanh, thay vi hardcode 1.0 nhu ban goc).
+    # Gating kept as ">= threshold" (equivalent to the original's "> 0", since
+    # the original had already binarized by this point) -- only the stored
+    # confidence changes to the real value (min of the 2 contributing points,
+    # instead of a hardcoded 1.0 like the original).
     if c_lhip >= CONF_THRESHOLD and c_rhip >= CONF_THRESHOLD:
         h36m[0, :2], h36m[0, 2] = (lhip + rhip) / 2.0, min(c_lhip, c_rhip)
     if c_lsho >= CONF_THRESHOLD and c_rsho >= CONF_THRESHOLD:
@@ -147,17 +152,19 @@ def process_video_to_json(video_path, output_json_path, det_model, pose_model):
             if frame_idx % 1000 == 0:
                 print(f"   -> [Rank {RANK}] Frame: {frame_idx}", end="\r")
     finally:
-        # Dam bao giai phong VideoCapture ke ca khi loi giua chung (vd OOM tren
-        # 1 frame) -- neu khong, cap bi ro ri toi khi GC don, co the tich luy
-        # het file descriptor qua nhieu video loi lien tiep trong 1 rank chay
-        # lau (~280 video/rank o quy mo full 1,126 video).
+        # Always release the VideoCapture even on an error mid-loop (e.g. an
+        # OOM on one frame) -- otherwise cap leaks until GC collects it, which
+        # could exhaust file descriptors across several bad videos in a row
+        # in one long-running rank process (~280 videos/rank at the full
+        # 1,126-video scale).
         cap.release()
 
     if frame_idx == 0:
-        # cap.isOpened() co the True nhung stream rong/hong ngay frame dau --
-        # khong ghi "thanh cong" voi 0 frame, tranh resume logic coi nhu video
-        # da xong vinh vien ma khong co dau vet loi nao.
-        raise RuntimeError(f"0 frame doc duoc tu {video_path} (video rong/hong?)")
+        # cap.isOpened() can be True but the stream is empty/broken from the
+        # first frame -- don't record this as "success" with 0 frames, which
+        # would make the resume check treat the video as permanently done
+        # with no error trail.
+        raise RuntimeError(f"Read 0 frames from {video_path} (empty/corrupt video?)")
 
     with open(output_json_path, "w") as f:
         json.dump(all_frames_data, f)
@@ -169,7 +176,7 @@ def main():
     ap.add_argument("--videos-dir", default=DEFAULT_VIDEOS_DIR)
     ap.add_argument("--video-ids-file", default=DEFAULT_VIDEO_IDS_FILE)
     ap.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
-    ap.add_argument("--limit", type=int, default=0, help="Chi xu ly N video dau tien (pilot run). 0 = tat ca.")
+    ap.add_argument("--limit", type=int, default=0, help="Only process the first N videos (pilot run). 0 = all.")
     args = ap.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -180,9 +187,9 @@ def main():
         video_ids = video_ids[: args.limit]
     my_ids = video_ids[RANK::WORLD_SIZE]
 
-    print(f"[Rank {RANK}/{WORLD_SIZE}] {len(my_ids)}/{len(video_ids)} video duoc giao, device={DEVICE}")
+    print(f"[Rank {RANK}/{WORLD_SIZE}] {len(my_ids)}/{len(video_ids)} videos assigned, device={DEVICE}")
 
-    print(f"[Rank {RANK}] Dang khoi tao HRNet & Faster R-CNN tren {DEVICE}...")
+    print(f"[Rank {RANK}] Initializing HRNet & Faster R-CNN on {DEVICE}...")
     from mmpose.apis import init_model as init_pose_model
     from mmdet.apis import init_detector
 
@@ -196,26 +203,26 @@ def main():
         tmp_json = final_json + f".tmp_rank{RANK}"
 
         if os.path.exists(final_json):
-            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) Skip (da co): {video_id}")
+            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) Skip (already exists): {video_id}")
             n_skip += 1
             continue
         if not os.path.exists(video_path):
-            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) LOI: khong tim thay {video_path}")
+            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) ERROR: {video_path} not found")
             n_error += 1
             continue
 
         try:
             n_frames = process_video_to_json(video_path, tmp_json, det_model, pose_model)
             os.rename(tmp_json, final_json)
-            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) OK: {video_id} ({n_frames} frame)")
+            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) OK: {video_id} ({n_frames} frames)")
             n_done += 1
         except Exception as e:
-            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) LOI {video_id}: {e}")
+            print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) ERROR {video_id}: {e}")
             if os.path.exists(tmp_json):
                 os.remove(tmp_json)
             n_error += 1
 
-    print(f"[Rank {RANK}] XONG. done={n_done} skip={n_skip} error={n_error}")
+    print(f"[Rank {RANK}] DONE. done={n_done} skip={n_skip} error={n_error}")
 
 
 if __name__ == "__main__":
