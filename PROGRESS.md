@@ -7,6 +7,56 @@
 
 ---
 
+## Cập nhật phiên làm việc — 19/07/2026 (chiều muộn — self-review bắt 1 bug thật, đối chiếu review ngoài với data thật, submit full-scale Phase 1)
+
+**Việc chính:** Trước khi mở rộng từ pilot 24 video lên full 1,126 video, tự review lại code + hạ tầng đã sửa trong phiên — bắt được 1 regression thật do chính fix symlink gây ra. Fix 2 lỗi robustness trong `phase1_hrnet_omnivideo.py` (video hỏng bị coi là "thành công" âm thầm, rò rỉ `VideoCapture` khi lỗi giữa chừng), verify bằng pilot 8 video thật + 1 test video hỏng giả. User mang 1 bài review độc lập (kiểu ChatGPT) về đúng file này — đối chiếu từng điểm với data thật đã có trong phiên thay vì tin/bác theo cảm tính: 2 điểm thật đáng sửa, còn lại phần lớn đã verify không phải vấn đề hoặc là hành vi kế thừa từ bản gốc (đã chạy sạch 40,804 video FineVideo). Trả lời câu hỏi thiết kế về fps — xác nhận giữ đúng convention cũ (native fps ở Phase 1/2, resample ở Phase 2.5), nhưng phát hiện 1 lỗ hổng thật (`fps_lookup.json` chưa có video OmniVideo-100K nào) cần xử lý trước khi chạy Phase 2.5. Áp 4 fix nhỏ cuối cùng rồi **submit job full-scale 1,126 video**.
+
+### 1. Self-review bắt 1 bug thật — do chính fix symlink phiên trước gây ra
+
+`outputs/fps_lookup.json` (43,751 entry, dùng bởi Phase 2.5 và Phase 3) hoá ra **chỉ tồn tại ở thư mục cục bộ** vừa bị đổi tên thành `outputs_local_backup/` — chưa từng có ở `/e/data1/.../nguyen38/outputs/` thật. Nghĩa là fix symlink trước đó vô tình làm file này "biến mất" khỏi path Phase 2.5/3 sẽ tìm. Đã copy lại ngay, verify khớp 43,751 entry cả 2 phía.
+
+### 2. Fix 2 lỗi robustness trong driver Phase 1, verify bằng test thật
+
+- Video hỏng/không mở được trước đây bị ghi thành "OK" với 0 frame — giờ raise lỗi rõ ràng, vào nhóm `error`.
+- `cap.release()` giờ nằm trong `try/finally` — tránh rò rỉ file descriptor nếu gặp nhiều video lỗi liên tiếp trong 1 rank chạy lâu (~280 video/rank ở quy mô full).
+
+Verify: pilot SLURM 8 video mới (job `976556`, COMPLETED, 0 lỗi, 87.7% frame detect người — cao hơn pilot đầu 78.7% nhờ đã lọc animation) + 1 test video hỏng cố ý (xác nhận vào đúng nhóm `error`, không sót file `.tmp`).
+
+### 3. Phát hiện thêm: 130/1,256 video trong sports subset thực ra là animation
+
+Điều tra 2 video tỷ lệ thấp trong pilot đầu → phát hiện là animation lọt qua filter từ khoá chung chung ("dancing"/"running"). Nghiêm trọng hơn: 1 video animation khủng long trong pilot vẫn ra **56.3% detect** — HRNet có thể nhầm nhân vật hoạt hình thành người thật, MotionBERT (train trên người thật) lift lên sẽ SAI chứ không chỉ thiếu data. Viết `filter_animation_content.py`: loại 130/1,256 video có `video_summary` tự nhận animation/cartoon → còn **1,126 video** (`sports_subset_video_ids_filtered.txt`, driver đã đổi default sang file này).
+
+### 4. Đối chiếu review ngoài với data thật — 2 điểm đáng sửa, còn lại đã verify không phải vấn đề
+
+**Đáng sửa thật:**
+- Chọn người bằng bbox lớn nhất mỗi frame độc lập có thể đổi identity giữa các frame ở cảnh đông người — **hành vi kế thừa từ bản gốc** (đã chạy đúng vậy trên 40,804 video FineVideo), không phải bug mới. Có phòng vệ downstream một phần (Phase 3 anti-teleportation, Phase 4 YOLO cleaner). Sửa đúng cách (IoU tracking) là thay đổi kiến trúc ngoài phạm vi task — ghi nhận là giới hạn đã biết, chưa sửa.
+- Decode bị cắt giữa chừng không bị phát hiện — thật, nhưng cách review đề xuất (so với `duration × 30fps`, ngưỡng 90%) khi test trực tiếp trên 8 video pilot thật sẽ **báo oan 2/8 video (25%)** — `07WqS-ccIrw`/`0OxHEDu5dFE` chỉ đạt 83.1% vì native **25fps thật** (verify qua `cv2.CAP_PROP_FPS`), không phải lỗi decode. Sửa bằng cách so với `cv2.CAP_PROP_FRAME_COUNT` thật của từng video (không giả định fps), chỉ warning chứ không raise cứng.
+
+**Đã verify KHÔNG phải vấn đề / là hành vi kế thừa:**
+- Lo ngại `SLURM_NTASKS` (nếu quên `srun` sẽ chỉ chạy rank 0) — đã bị bác bỏ bằng thực tế: log 2 job thật đều cho thấy đúng 4 rank chạy song song.
+- "Discontinuity" giữa confidence liên tục và toạ độ zero — review hiểu ngược: `WildDetDataset` của MotionBERT vốn thiết kế nhận confidence liên tục từ detector thật, bản nhị phân hoá cũ mới là cái lệch chuẩn.
+- mmpose có thể trả tensor thay vì numpy — code y nguyên bản gốc, đã chạy sạch 32 video thật + 40,804 video FineVideo trên đúng bản mmpose đang dùng — thêm phòng hờ (miễn phí) chứ không phải sửa bug đang xảy ra.
+- RAM giữ cả video trong list tới cuối — tính lại bằng số thật (video dài nhất 180s = 5,400 frame) chỉ ~10MB/video, không phải "hàng trăm MB" như review nói.
+- Path phụ thuộc CWD — đây là convention chung của TOÀN pipeline (Phase 1-7), mọi sbatch đều `cd` đúng chỗ trước khi gọi — không phải rủi ro thật, đổi riêng file này sẽ làm nó khác biệt với cả hệ thống.
+
+### 5. Câu hỏi thiết kế fps — giữ nguyên convention cũ, phát hiện 1 lỗ hổng thật
+
+Xác nhận: giữ native fps ở Phase 1/2 (không resample sớm), Phase 2.5 mới resample về 30fps — đúng convention cũ của FineVideo, driver hiện tại đã tự động đúng (đọc frame tuần tự, không ép fps). Verify thật: OmniVideo-100K có fps gốc KHÔNG đồng nhất (`07WqS-ccIrw`/`0OxHEDu5dFE` = 25fps, `0GPO9qLraB8`/`iGVvChGEQdM` = 30fps, đo bằng `cv2.CAP_PROP_FPS`) — đúng kiểu tình huống Phase 2.5 sinh ra để xử lý.
+
+**Lỗ hổng thật phát hiện (chưa chặn ở Phase 1 hiện tại):** `fps_lookup.json` (43,751 entry) chỉ có video FineVideo — 0 video OmniVideo-100K. Phase 2.5 tự ghi rõ sẽ "skip với warning" video thiếu trong file này — chạy thẳng sẽ mất trắng toàn bộ pose OmniVideo-100K ở bước 30fps. Đã ghi vào `JUPITER_POSE_PILOT_TASK.md`: cần chạy `tools/extract/extract_fps.py` rồi **merge** (không ghi đè) vào `fps_lookup.json` chung trước khi chạy Phase 2.5.
+
+### 6. Fix cuối + submit full-scale
+
+Áp 4 fix nhỏ: dedup video_ids (data thật hiện tại 0 trùng, phòng hờ), `getsize() > 2` trong resume check, tensor→numpy an toàn cho mmpose, warning decode-truncation dùng frame-count thật. Verify: syntax pass, test dedup bằng ID trùng cố ý (log đúng "Removed 1 duplicate"), test lại đường lỗi video hỏng vẫn đúng. Theo yêu cầu user đẩy nhanh tiến độ, không re-verify riêng đường thành công đầy đủ với dòng warning mới trước khi submit — thay đổi rủi ro thấp (chỉ thêm 1 điều kiện + print, không đổi luồng), và job full-scale với 1,126 video thật sẽ tự lộ nếu có vấn đề.
+
+**Đã submit:** `submit_phase1_full.sbatch` — job **`976705`**, 8 node × 4 GPU (32 GPU), toàn bộ 1,126 video, `--time=04:00:00` (ước tính ~2.6h dựa trên throughput đo thật 263s/video/GPU). Xác nhận `RUNNING` ngay sau submit, 8 node cấp đủ, log lỗi sạch.
+
+### Trạng thái cuối phiên
+
+Job `976705` đang chạy. Commit phiên này: `2f3d675`, `7dc1ca0`, `8e688c4`, `2024da4`, `f9eb687` — đã push hết. Phase 2 trở đi chưa bắt đầu.
+
+---
+
 ## Cập nhật phiên làm việc — 19/07/2026 (chiều — chạy pilot pose pipeline that tren JUPITER, fix 2 bug ha tang)
 
 **Việc chính:** Pull `JUPITER_POSE_PILOT_TASK.md` (task handoff từ phiên trưa) trên JUPITER và thực hiện. Trước khi viết driver, kiểm tra theo đúng yêu cầu "giữ confidence score, đừng vứt" — phát hiện `phase1_hrnet_gpu.py` gốc **nhị phân hoá** confidence (1.0/0.0) thay vì giữ giá trị thật, trong khi MotionBERT (`infer_wild.py`) đọc trực tiếp cột này làm input feature cho model lifting; Phase 2 tự nó không có confidence nào để giữ (output `X3D.npy` chỉ có toạ độ 3D thuần). Viết driver mới `phase1_hrnet_omnivideo.py` sửa đúng điểm này. Trong lúc chuẩn bị chạy, phát hiện + fix 2 vấn đề hạ tầng không liên quan tới code phiên này, rồi chạy smoke-test + pilot SLURM 24 video — cả 2 đều sạch.
