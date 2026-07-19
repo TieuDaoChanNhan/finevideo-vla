@@ -1,8 +1,8 @@
-> **CẬP NHẬT 18/07/2026 tối muộn — task này ĐÃ LÀM XONG, đọc trước khi bắt đầu lại từ đầu.**
+> **CẬP NHẬT 19/07/2026 — task này ĐÃ XÁC NHẬN XONG HOÀN TOÀN, đọc trước khi bắt đầu lại từ đầu.**
 > Driver đã viết: `data_prep/omnivideo_100k/step_a_tokenize_video.py` (+ `submit_step_a_full.sbatch`, `submit_step_a_pilot.sbatch`).
-> Job full-scale đang chạy: `970099` (8 node×4 GPU=32 GPU, 5,214 video, có resume).
+> Job full-scale `970099` (8 node×4 GPU=32 GPU, 5,214 video, có resume) — **`sacct` xác nhận COMPLETED, exit 0:0**, chạy 18/7 19:30→22:01 (2h30'). Verify output thật: 32/32 file `step_a_rank_*.jsonl` (39GB), đúng 5,214/5,214 dòng, log lỗi chỉ có warning vô hại, sample 163 video (`rank_0`) không có video nào bị seed2=0 (bug cũ không tái phát ở full-scale), đủ cả 4 loại token (seed2/cosmos/avclm/caption/speech). **Không cần chạy lại.** Bước Megatron tokenize (`tokenizer_vla_qwen3`) sẽ làm ở JUWELS, ngoài phạm vi task này.
 >
-> **3 bug thật đã bắt được, đọc kỹ trước khi debug lại nếu job fail:**
+> **3 bug thật đã bắt được, đọc kỹ trước khi debug lại nếu cần viết driver tương tự cho dataset khác:**
 > 1. `env_stable_vla` có `transformers==4.57.6` (khác `4.52.4` checkpoint gốc yêu cầu) — làm seed2 tokenizer hỏng 2 lớp (import path bị dời + `tie_weights()` crash trên `Qformer.cls=None` cố ý). Đã fix bằng monkeypatch **chỉ trong `step_a_tokenize_video.py`**, không đụng `seed2_tokenizer.py`/`pipeline.py`/env chung. Nếu seed2 lại ra `0` hoặc lỗi mới liên quan `transformers`, đọc lại monkeypatch ở đầu file trước khi sửa thêm.
 > 2. **Đừng bao giờ trích toàn bộ frame 1 video ra đĩa tạm cùng lúc** (bug tự gây ra ở lần full-scale đầu, job `970087`, làm tràn quota đĩa khi 32 rank chạy song song — pilot 8 rank không lộ ra vì footprint đồng thời còn thấp). Code hiện tại đã sửa thành streaming từng chunk 8-frame (`extract_chunk_frames()`), giới hạn ~8 frame/rank tại một thời điểm, có resize 512×512. Nếu viết lại driver mới cho dataset khác, giữ đúng pattern streaming này.
 > 3. Anchor caption/speech: chỉ chèn **1 lần/segment** (chunk đầu tiên của segment), không phải mọi chunk overlap — segment ~11s (~40 chunk) nhưng caption dài 300-500 từ, chèn mọi chunk sẽ lặp lại đoạn văn hàng chục lần.

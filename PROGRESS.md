@@ -7,6 +7,16 @@
 
 ---
 
+## Cập nhật phiên làm việc — 19/07/2026 (xác nhận job `970099` OmniVideo-100K Step A đã xong)
+
+**Việc chính:** Track lại trạng thái job full-scale `970099` (Step A OmniVideo-100K, submit cuối phiên 18/7) — **xác nhận đã COMPLETED sạch, đã verify output thật** chứ không chỉ dựa vào SLURM state.
+
+`sacct -j 970099`: `COMPLETED`, exit `0:0`, chạy 19:30:45→22:01:21 (18/7), 2h30'. Verify output: 32/32 file `step_a_rank_*.jsonl` (39GB), đúng **5,214/5,214 dòng** — khớp chính xác tổng số video OmniVideo-100K. Log lỗi (`970099_omni100k_stepA_full_err.log`) chỉ có warning vô hại (`GenerationMixin`/`torch_dtype` deprecation), không có Traceback/Exception thật. Kiểm tra riêng bug seed2 cũ có tái phát ở full-scale không: sample `rank_0` (163 video) — **0 video bị seed2=0**, cả 2 bug fix ở `env_stable_vla` (phiên 18/7 tối muộn) giữ vững ở quy mô đầy đủ. Nội dung mẫu đủ cả 4 loại token (seed2/cosmos/avclm + caption/speech blocks) với số lượng hợp lý.
+
+**Kết luận: Step A (phần cần GPU, chỉ chạy được ở JUPITER) cho OmniVideo-100K đã xong hoàn toàn.** Bước tokenize Megatron với `tokenizer_vla_qwen3` sẽ được đẩy sang chạy ở JUWELS — không thuộc phạm vi task Step A này.
+
+---
+
 ## Cập nhật phiên làm việc — 18/07/2026 (tối muộn — phiên bổ sung 3, đọc phần này trước)
 
 **Việc chính:** Viết driver Step A mới cho OmniVideo-100K theo đúng yêu cầu ("tận dụng pipeline cũ nhưng đừng viết code mới vào đó, viết vào `data_prep/omnivideo_100k`") — `step_a_tokenize_video.py` import 3 class tokenizer từ `/e/project1/reformo/nguyen38/prototype/pipeline.py` gốc (không sửa gì ở đó), tự viết toàn bộ logic mới: list video, chunk 8-frame, và **chèn caption/speech chỉ 1 lần tại chunk đầu mỗi segment** (không phải mọi chunk overlap — tránh lặp lại đoạn caption 300-500 từ tới ~40 lần/segment). Trong lúc pilot phát hiện + fix **2 bug seed2 thật** trong `env_stable_vla` (transformers trôi lên 4.57.6, ảnh hưởng cả FineVideo nếu chạy lại Step A bằng env hiện tại) — xem chi tiết mục 2. Submit full-scale lần 1 (`970087`, 32 GPU) thì **lộ thêm 1 bug thật khác trong chính code mới của tôi** — trích toàn bộ frame gốc cả video ra đĩa tạm không resize, 32 rank chạy song song làm tràn quota đĩa của user, gần như mọi video đều lỗi. Đã `scancel`, dọn ~40GB rác, viết lại theo streaming từng chunk 8-frame + resize 512×512, verify lại bằng pilot (`970095`, 48/48 video sạch, nhanh hơn bản cũ), rồi **submit lại full-scale (`970099`, 8 node×4 GPU=32 GPU) — đang chạy lúc ghi entry này**.

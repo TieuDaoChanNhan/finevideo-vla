@@ -1804,3 +1804,17 @@ Before re-running, cancelled `970087` (`scancel`) and deleted ~40GB of leftover 
 ### State at end of session
 
 `970099` is running. Once complete: tokenize with `tokenizer_vla_qwen3` (257,901 vocab) — the JUWELS session's own hard lesson (§23) applies here too, do not use `tokenizer_vla_adaptive_v2`. Blend ratio with FineVideo-VLA/MV-Omni is a training-time decision, not scoped here.
+
+### Confirmed complete (Jul 19, 2026)
+
+`sacct -j 970099` — `COMPLETED`, exit `0:0`, ran 2026-07-18T19:30:45→22:01:21 (2h30m). Output verified directly, not just from SLURM state:
+
+| Check | Result |
+|---|---|
+| Output files | 32/32 `step_a_rank_*.jsonl`, 39GB total |
+| Videos processed | **5,214/5,214 lines** — exact match to the full OmniVideo-100K video count |
+| Error log (`970099_omni100k_stepA_full_err.log`) | Only harmless deprecation warnings (`GenerationMixin`, `torch_dtype`) — no Traceback/Exception |
+| Seed2 bug regression check | Sampled `rank_0` (163 videos): **0 videos with seed2=0** — the two `env_stable_vla` fixes (§24 above) held at full scale |
+| Content sanity | `rank_0` sample: 546,912 seed2 tokens / 12,809,800 cosmos tokens / 317,687,832 avclm tokens / 1,511 caption blocks / 1,468 speech blocks across 163 videos — all four expected token types present with plausible volumes |
+
+**Step A (the GPU-dependent stage, JUPITER-only) is done for OmniVideo-100K.** Megatron-side tokenization with `tokenizer_vla_qwen3` will be run from the JUWELS side, out of scope for this task.
