@@ -44,7 +44,7 @@ CONF_THRESHOLD = 0.5
 
 DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k"
 DEFAULT_VIDEOS_DIR = os.path.join(DATA_ROOT, "videos")
-DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(__file__), "sports_subset_video_ids.txt")
+DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(__file__), "sports_subset_video_ids_filtered.txt")
 DEFAULT_OUTPUT_DIR = "outputs/2d_json"  # cung thu muc voi FineVideo -- xem docstring
 
 RANK = int(os.environ.get("SLURM_PROCID", 0))
