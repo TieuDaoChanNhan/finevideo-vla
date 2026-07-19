@@ -1874,3 +1874,43 @@ Talking-head content (23.2% of the corpus, second-largest category after sports)
 ### State at end of session
 
 OmniVideo-100K's video track is now fully tokenized and training-ready (456.5M real tokens, verified via `.idx` header). The pose-pipeline pilot is scoped and handed off as a task doc but **not yet run** — waiting on the JUPITER side to pull the repo and execute per `JUPITER_POSE_PILOT_TASK.md`. Blend ratio with FineVideo-VLA for training is still an open, training-time decision.
+
+---
+
+## 26. Pose-Pipeline Pilot Executed on JUPITER: Two Infra Regressions Found and Fixed (broken `outputs/` symlink, stale env paths), New Phase 1 Driver Preserves Continuous Confidence, 24-Video Pilot Clean (Jul 19, 2026, afternoon)
+
+**Main work:** Pulled `JUPITER_POSE_PILOT_TASK.md` (§25 handoff) on the JUPITER side and executed it. Before writing the new driver, verified — per explicit user instruction not to discard confidence scores wherever Phase 1/2 store them — that `phase1_hrnet_gpu.py`'s `coco_to_h36m()` actually **binarizes** HRNet/detector confidence to `1.0`/`0.0` at `CONF_THRESHOLD`, discarding the real continuous score that MotionBERT's `infer_wild.py` (via `WildDetDataset`) reads as a model input feature; confirmed separately that Phase 2's own output (`X3D.npy`) carries no confidence channel at all, so there is nothing to preserve on that side. Wrote `data_prep/omnivideo_100k/phase1_hrnet_omnivideo.py`, a new Phase 1 driver that fixes this (keeps the real float score) while reading OmniVideo-100K's flat mp4s directly instead of the FineVideo HF arrow dataset. While preparing to run it, found and fixed two real infrastructure regressions unrelated to any of this session's code, then ran a smoke test and a real 24-video SLURM pilot — both clean.
+
+### 1. Two infra regressions found before any GPU job was submitted
+
+- **`outputs/` symlink was gone.** CLAUDE.md documents `3d-human-pose/outputs/` as a symlink to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/` (145GB+ of real Phase 1-6 data: `2d_json/`, `3d_npy/`, `states_jsonl/`, etc.). In this checkout it had become a plain, nearly-empty local directory (only `fps_lookup.json`, no symlink) — `git status`/`ls -la` showed a real directory, not an `l`-mode entry. Any Phase 1-6 script run with `outputs/2d_json` (a CWD-relative path, as all of them use) from `/e/project1/.../3d-human-pose/` as CWD would silently read/write the wrong, disconnected location instead of the real 145GB+ corpus. Root cause not established (no evidence in prior session logs of an intentional change) — likely fallout from a filesystem/quota event, not something introduced this session. **Fixed:** moved the stray local directory to `outputs_local_backup/` (preserving `fps_lookup.json`, not deleted), recreated `outputs` as a real symlink to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/outputs/`, verified it resolves (`outputs/2d_json/` lists real FineVideo `*_2d.json` files).
+- **`env_hrnet_datasets_v1`/`env_motion_final` conda envs were not where `setup_hrnet_gpu.sh`/`setup_motionbert.sh` expected.** Both scripts `conda activate /e/project1/reformo/nguyen38/3d-human-pose/env_{hrnet_datasets_v1,motion_final}` — neither directory exists there anymore (confirmed via `conda env list` from that base, not just `ls`). Found both envs, fully intact (real `python3.9` binaries, correct `mmpose`/`mmdet`/`torch` installs), at `/e/data1/datasets/playground/mmlaion/shared/nguyen38/3d-human-pose/env_{hrnet_datasets_v1,motion_final}/` instead — same data1 mount as the `outputs/` fix above, suggesting a related migration that moved heavy artifacts off `/e/project1` (lighter quota) without updating the two setup scripts that reference them by absolute path. **Fixed:** updated both scripts' `conda activate` lines to the correct data1 path. Verified both activate cleanly with real GPU access (`torch.cuda.is_available() == True`, `NVIDIA GH200 480GB`), and that `env_hrnet_datasets_v1` imports `mmpose==1.3.2`/`mmdet==3.3.0` successfully.
+
+Flagged both to the user before touching anything (via `AskUserQuestion`), since a repo-wide symlink/env-path fix has blast radius beyond this one task; user approved the direct fix.
+
+### 2. New driver: `data_prep/omnivideo_100k/phase1_hrnet_omnivideo.py`
+
+Per `JUPITER_POSE_PILOT_TASK.md` §3: does not modify `pipeline_pose/phase1_hrnet_gpu.py`. Reuses the model-agnostic parts verbatim (HRNet/Faster-RCNN config+checkpoint paths, `init_pose_model`/`init_detector` calls, the COCO→H36M joint mapping structure) but replaces the FineVideo-arrow input path with direct `cv2.VideoCapture` on `$DATA/omnivideo_100k/videos/{video_id}.mp4`, and shards via `video_ids[RANK::WORLD_SIZE]` (matching `step_a_tokenize_video.py`'s convention, §24) over `sports_subset_video_ids.txt` rather than the original's more complex `--offset/--total_workers` scheme (sized for FineVideo's 200-worker/40K-video run; unnecessary at this dataset's 1,256-video scale). Output format is unchanged (`{"frame_id", "keypoints": [[x,y,conf]×17]}` per file) and written to the same `outputs/2d_json/` directory FineVideo uses, so Phase 2 (`phase2_motionbert_gpu.py`) can consume it with zero changes — safe because the two corpora's video IDs don't collide.
+
+**Confidence fix (§ intro):** `coco_to_h36m()` was rewritten so `get_pt()` still zeroes the `(x, y)` position below `CONF_THRESHOLD` (unchanged behavior — avoids feeding MotionBERT garbage coordinates for undetected joints) but now returns the real float confidence in all cases instead of collapsing it to `1.0`/`0.0`. Derived joints (pelvis, neck, spine, head-top — the 4 points synthesized from pairs of raw COCO keypoints) now store `min()` of their two contributing raw confidences rather than a hardcoded `1.0`, and their presence-gating condition was changed from the original's `> 0` (which relied on the old binarization) to an explicit `>= CONF_THRESHOLD` to preserve the same gating semantics now that raw scores can be small-but-nonzero below threshold.
+
+### 3. Smoke test (1 video, interactive) then real SLURM pilot (24 videos) — both clean
+
+Before spending any SLURM queue time, ran the new driver directly in an interactive shell on one video (`iGVvChGEQdM`, first entry in the sports subset) — completed in a few minutes, 2,564 frames, no errors. Verified the confidence fix worked as intended by inspecting the output JSON directly: 915 distinct non-binary confidence values across the file (e.g. `0.004`, `0.008`, `0.012`, ...), not just `{0.0, 1.0}`.
+
+Submitted `data_prep/omnivideo_100k/submit_phase1_pilot.sbatch` (1 node × 4 GPU, first 24 videos of `sports_subset_video_ids.txt`, 6/rank) as job `976467`. `sacct` confirms `COMPLETED`, exit `0:0`, 26m18s. Output written to a pilot-only directory (`$DATA/omnivideo_100k/pose_2d_json_pilot/`, deliberately kept separate from the shared `outputs/2d_json/` production path until quality is confirmed, rather than defaulting straight into it).
+
+Aggregate quality check across all 24 output files:
+
+| Metric | Result |
+|---|---|
+| Total frames | 60,506 |
+| Frames with a detected person (any non-zero keypoint) | 47,639 (**78.7%**) |
+| Videos ≥80% frame-level detection | 16/24 |
+| Videos <20% frame-level detection | 2/24 (`28jYYH6WrA0`: 5.1%, `dXv4oInXqiE`: 17.6%) |
+
+The two low-yield outliers are consistent with the `select_sports_subset.py` heuristic's known false-positive risk (§25 §3 — text-summary keyword match, not a visual check); not investigated further this session. 78.7% frame-level detection is well above the 24-41% *joint-level* skeleton coverage figure §2.2 reports for FineVideo (different metric, not a direct comparison, but a reasonable directional signal that the sports subset is yielding real person-motion content as intended).
+
+### State at end of session
+
+Per explicit user instruction, **stopped here for review rather than proceeding to the full 1,256-video Phase 1 run** — the 24-video pilot is clean and the aggregate numbers look good, but the user wants to look at the results before committing the larger GPU allocation. Phase 2-6 (§ `JUPITER_POSE_PILOT_TASK.md` §3: MotionBERT likely reusable as-is, Phase 6 merge almost certainly needs a new driver mirroring `flatten_step_a_video.py`) not yet started.

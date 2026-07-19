@@ -7,6 +7,33 @@
 
 ---
 
+## Cập nhật phiên làm việc — 19/07/2026 (chiều — chạy pilot pose pipeline that tren JUPITER, fix 2 bug ha tang)
+
+**Việc chính:** Pull `JUPITER_POSE_PILOT_TASK.md` (task handoff từ phiên trưa) trên JUPITER và thực hiện. Trước khi viết driver, kiểm tra theo đúng yêu cầu "giữ confidence score, đừng vứt" — phát hiện `phase1_hrnet_gpu.py` gốc **nhị phân hoá** confidence (1.0/0.0) thay vì giữ giá trị thật, trong khi MotionBERT (`infer_wild.py`) đọc trực tiếp cột này làm input feature cho model lifting; Phase 2 tự nó không có confidence nào để giữ (output `X3D.npy` chỉ có toạ độ 3D thuần). Viết driver mới `phase1_hrnet_omnivideo.py` sửa đúng điểm này. Trong lúc chuẩn bị chạy, phát hiện + fix 2 vấn đề hạ tầng không liên quan tới code phiên này, rồi chạy smoke-test + pilot SLURM 24 video — cả 2 đều sạch.
+
+### 1. 2 bug hạ tầng phát hiện trước khi submit job GPU nào
+
+- **Symlink `outputs/` bị đứt:** CLAUDE.md ghi `outputs/` là symlink trỏ `/e/data1/.../nguyen38/outputs/` (145GB+ data thật). Thực tế đã thành thư mục thường gần rỗng (chỉ có `fps_lookup.json`) — mọi script Phase 1-6 dùng path tương đối `outputs/...` từ CWD project1 sẽ đọc/ghi nhầm chỗ. **Đã fix:** đổi tên thư mục cũ thành `outputs_local_backup/` (không mất file), tạo lại symlink đúng, verify resolve ra data thật.
+- **Path env sai trong `setup_hrnet_gpu.sh`/`setup_motionbert.sh`:** cả 2 trỏ `conda activate .../3d-human-pose/env_{hrnet_datasets_v1,motion_final}` ở project1 — không còn tồn tại ở đó (`conda env list` xác nhận). Tìm ra env thật còn nguyên vẹn ở `/e/data1/.../nguyen38/3d-human-pose/env_*` (cùng mount với fix outputs/ ở trên — khả năng cao cùng 1 đợt di chuyển data nhưng chưa cập nhật 2 script). **Đã fix:** sửa path trong 2 script, verify activate được, CUDA True, `mmpose`/`mmdet` import OK.
+
+Đã hỏi user qua `AskUserQuestion` trước khi đụng vào (ảnh hưởng path dùng chung toàn repo), được đồng ý tự sửa.
+
+### 2. Driver mới `phase1_hrnet_omnivideo.py` — giữ confidence liên tục thật
+
+Không sửa `phase1_hrnet_gpu.py` gốc. Tái dùng phần model-agnostic (path config/checkpoint, `coco_to_h36m` cấu trúc mapping) nhưng đọc mp4 phẳng trực tiếp qua `cv2.VideoCapture`, shard `video_ids[RANK::WORLD_SIZE]` theo `sports_subset_video_ids.txt`. Output cùng format/cùng thư mục `outputs/2d_json/` để Phase 2 dùng thẳng không cần sửa. `coco_to_h36m()` viết lại: vẫn zero-hoá vị trí khi dưới `CONF_THRESHOLD` (giữ nguyên logic tránh toạ độ rác) nhưng **lưu confidence float thật** thay vì ép 1.0/0.0; các khớp suy ra (pelvis/neck/spine/head-top) dùng `min()` của 2 confidence gốc thay vì hardcode 1.0.
+
+### 3. Smoke-test 1 video → pilot SLURM 24 video — cả 2 sạch
+
+Chạy thử trực tiếp 1 video (`iGVvChGEQdM`) — 2,564 frame, 0 lỗi, verify output có 915 giá trị confidence liên tục khác nhau (không phải chỉ 0/1). Submit `submit_phase1_pilot.sbatch` (1 node × 4 GPU, 24 video đầu) — job `976467`, **COMPLETED**, 26 phút, 0 lỗi. Output ghi vào thư mục pilot riêng (`pose_2d_json_pilot/`, tách khỏi `outputs/2d_json/` sản xuất chính cho tới khi verify chất lượng).
+
+Kết quả tổng hợp: 60,506 frame, **47,639 frame có detect người (78.7%)** — 16/24 video ≥80%, chỉ 2/24 video <20% (`28jYYH6WrA0`: 5.1%, `dXv4oInXqiE`: 17.6%, nhiều khả năng sai dương của keyword filter). 78.7% cao hơn hẳn 24-41% coverage joint-level ghi nhận cho FineVideo trước đây.
+
+### Trạng thái cuối phiên
+
+Theo đúng quyết định của user, **dừng lại ở pilot 24 video để xem xét**, chưa mở rộng full 1,256 video. Phase 2-6 chưa bắt đầu.
+
+---
+
 ## Cập nhật phiên làm việc — 19/07/2026 (trưa — flatten + tokenize video track xong, khảo sát nội dung, lên kế hoạch pilot pose)
 
 **Việc chính:** Sau khi xác nhận Step A xong (mục dưới), hoàn tất luôn phần còn lại của video track: viết + chạy `flatten_step_a_video.py` (chuyển token thô Step A → format Megatron), submit + xác nhận xong job tokenize Megatron thật (`14120433`/`tok_omni_video`). Đối chiếu số token với FineVideo-VLA v5 để giải thích tại sao OmniVideo-100K "ít token" (không phải bug — do ít document hơn, không phải do density thấp). Phân loại nội dung toàn bộ 5,214 video theo `video_summary`, phát hiện ~24% là sports/hoạt động thể chất thật — quyết định pilot pose pipeline (agent token) trên tập con này, đóng gói thành task handoff cho JUPITER.

@@ -12,7 +12,7 @@ echo "Initializing Miniforge..."
 source /e/project1/reformo/nguyen38/3d-human-pose/miniforge3/bin/activate
 
 echo "Activating env_motion_final..."
-conda activate /e/project1/reformo/nguyen38/3d-human-pose/env_motion_final
+conda activate /e/data1/datasets/playground/mmlaion/shared/nguyen38/3d-human-pose/env_motion_final
 
 echo "------------------------------------------------"
 python -c "import torch; print('🚀 GPU H100 Status:', torch.cuda.is_available()); import numpy; print('🔢 NumPy Version:', numpy.__version__)"
