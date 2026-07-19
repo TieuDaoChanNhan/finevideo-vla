@@ -115,6 +115,13 @@ def process_video_to_json(video_path, output_json_path, det_model, pose_model):
         if not cap.isOpened():
             raise RuntimeError(f"cv2.VideoCapture could not open {video_path}")
 
+        # Container-reported frame count, used only as a post-hoc sanity check
+        # below -- NOT used to derive an expected frame count from duration
+        # (OmniVideo-100K has mixed native fps, e.g. 25fps vs 30fps; a
+        # duration*30fps estimate would falsely flag legit 25fps videos as
+        # "truncated" at ~83% -- verified empirically on 2 real pilot videos).
+        container_frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
         all_frames_data = []
         frame_idx = 0
 
@@ -140,7 +147,16 @@ def process_video_to_json(video_path, output_json_path, det_model, pose_model):
                 if len(pose_results) > 0:
                     kpts = pose_results[0].pred_instances.keypoints[0]
                     scores = pose_results[0].pred_instances.keypoint_scores[0]
-                    coco_final = np.concatenate([kpts, scores[:, None]], axis=1)
+                    # Defensive: some mmpose versions/configs can return torch
+                    # tensors here instead of numpy arrays; this codebase's
+                    # installed mmpose==1.3.2 returns numpy (verified on 32
+                    # real videos this session), but converting explicitly
+                    # costs nothing and removes the version dependency.
+                    if hasattr(kpts, "detach"):
+                        kpts = kpts.detach().cpu().numpy()
+                    if hasattr(scores, "detach"):
+                        scores = scores.detach().cpu().numpy()
+                    coco_final = np.concatenate([np.asarray(kpts), np.asarray(scores)[:, None]], axis=1)
                     h36m_keypoints = coco_to_h36m(coco_final)
                     frame_data["keypoints"] = h36m_keypoints.tolist()
 
@@ -166,6 +182,17 @@ def process_video_to_json(video_path, output_json_path, det_model, pose_model):
         # with no error trail.
         raise RuntimeError(f"Read 0 frames from {video_path} (empty/corrupt video?)")
 
+    if container_frame_count > 0 and frame_idx < 0.9 * container_frame_count:
+        # Soft warning, not a hard failure: CAP_PROP_FRAME_COUNT is itself
+        # sometimes an unreliable estimate for web-sourced/VFR video, so a
+        # mismatch here isn't proof of a truncated decode -- but it's worth
+        # a visible trail to spot-check later rather than staying silent.
+        print(
+            f"[Rank {RANK}] WARNING: {video_path} decoded {frame_idx}/{container_frame_count} "
+            f"container-reported frames ({100 * frame_idx / container_frame_count:.1f}%) "
+            "-- possible truncated decode, worth a manual check"
+        )
+
     with open(output_json_path, "w") as f:
         json.dump(all_frames_data, f)
     return frame_idx
@@ -182,7 +209,10 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     with open(args.video_ids_file) as f:
-        video_ids = [line.strip() for line in f if line.strip()]
+        raw_ids = [line.strip() for line in f if line.strip()]
+    video_ids = list(dict.fromkeys(raw_ids))  # dedup, order-preserving
+    if len(video_ids) != len(raw_ids):
+        print(f"[Rank {RANK}] Removed {len(raw_ids) - len(video_ids)} duplicate video IDs from {args.video_ids_file}")
     if args.limit > 0:
         video_ids = video_ids[: args.limit]
     my_ids = video_ids[RANK::WORLD_SIZE]
@@ -202,7 +232,10 @@ def main():
         final_json = os.path.join(args.output_dir, f"{video_id}_2d.json")
         tmp_json = final_json + f".tmp_rank{RANK}"
 
-        if os.path.exists(final_json):
+        # getsize() > 2 rules out a bare "[]" (or empty file) left over from an
+        # older/interrupted run -- such a file would otherwise be treated as
+        # permanently done and never reprocessed.
+        if os.path.exists(final_json) and os.path.getsize(final_json) > 2:
             print(f"[Rank {RANK}] ({i + 1}/{len(my_ids)}) Skip (already exists): {video_id}")
             n_skip += 1
             continue
