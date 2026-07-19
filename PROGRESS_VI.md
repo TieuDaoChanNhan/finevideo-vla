@@ -1,9 +1,57 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 18/07/2026  
+**Cập nhật lần cuối:** 19/07/2026  
 **Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **đã lên lại**, job batch chạy bình thường tính đến 15/7  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
+
+---
+
+## Cập nhật phiên làm việc — 19/07/2026 (trưa — flatten + tokenize video track xong, khảo sát nội dung, lên kế hoạch pilot pose)
+
+**Việc chính:** Sau khi xác nhận Step A xong (mục dưới), hoàn tất luôn phần còn lại của video track: viết + chạy `flatten_step_a_video.py` (chuyển token thô Step A → format Megatron), submit + xác nhận xong job tokenize Megatron thật (`14120433`/`tok_omni_video`). Đối chiếu số token với FineVideo-VLA v5 để giải thích tại sao OmniVideo-100K "ít token" (không phải bug — do ít document hơn, không phải do density thấp). Phân loại nội dung toàn bộ 5,214 video theo `video_summary`, phát hiện ~24% là sports/hoạt động thể chất thật — quyết định pilot pose pipeline (agent token) trên tập con này, đóng gói thành task handoff cho JUPITER.
+
+### 1. Flatten + tokenize Megatron cho video track — xong thật
+
+`data_prep/omnivideo_100k/flatten_step_a_video.py` (mới, cùng convention drop-rate với `phase7_flatten.py`: avc_lm luôn bỏ, cosmos drop 50%, seed2/caption/speech luôn giữ) — chạy thật, input `omnivideo_100k_video_flat/` (32 file, từ JUPITER) → output `omnivideo_100k_video_flattened/` (32 file), **5,214/5,214 dòng khớp chính xác**, 0 mất video.
+
+Tokenize Megatron: job `14120433` (`tok_omni_video`), **COMPLETED** (06:09→06:26, 17'), output `/p/data1/mmlaion/shared/vla/tokenized_output/omnivideo_100k_video/data_shard_00000.bin/.idx`. Đọc trực tiếp header `.idx` (dtype `int32`, 5,214 sequence khớp đúng số video) → **456,487,128 token thật (~456.5M)**. (Không tìm thấy sbatch script lưu trong repo cho job này — có thể chạy trực tiếp bằng lệnh, chưa commit; nếu cần tái tạo lệnh, tra `sacct -j 14120433 --format=SubmitLine`.)
+
+### 2. Giải thích số token "ít" — so sánh với FineVideo-VLA v5, không phải bug
+
+Đối chiếu FineVideo-VLA v5 (10,554,076,391 token / 371,888 document, ~28,375 token/document) với OmniVideo-100K video (456,487,128 token / 5,214 document, ~87,556 token/document) — **OmniVideo-100K thực ra nhiều token/document hơn FineVideo ~3.1 lần**. Chênh lệch tổng ~23x hoàn toàn do chênh số document ~71x: FineVideo chia mỗi video thành nhiều record scene/activity (371,888 record từ ~40K video gốc, ~9.3 record/video), còn OmniVideo-100K theo đúng thiết kế 1 video = 1 document (không có cấu trúc scenes/activities). Không phải lỗi flatten/tokenize.
+
+### 3. Phân loại nội dung toàn corpus — phát hiện quan trọng, sửa lại nhận định sai trước đó
+
+Nhận định ban đầu trong phiên ("chỉ tin tức/cartoon, không có hoạt động thể chất") **sai** — user nhắc lại nhớ dataset có khá nhiều người, kiểm lại bằng keyword-match trên `video_summary` toàn bộ 5,214 video (không chỉ vài sample nhỏ):
+
+| Loại nội dung | Số video | Tỷ lệ |
+|---|---|---|
+| Sports/hoạt động thể chất thật | 1,256 | 24.1% |
+| News/talking-head | 1,210 | 23.2% |
+| Cartoon/animation | 325 | 6.2% |
+| Gambling/slot machine | 129 | 2.5% |
+| Gaming/gameplay | 115 | 2.2% |
+| Vlog/travel | 79 | 1.5% |
+| Còn lại (misc) | 2,503 | 48.0% |
+
+Đây là heuristic thô dựa trên text summary cấp video, chưa verify hình ảnh thật — nếu cần chính xác hơn có thể lọc thêm ở field `segments[].caption` (chi tiết hơn theo từng đoạn).
+
+### 4. Quyết định pilot pose pipeline trên tập con sports — kèm giới hạn đã thống nhất
+
+Kiểm tra `phase1_hrnet_gpu.py`, xác nhận model hiện dùng (`td-hm_hrnet-w48...coco-256x192`) là **COCO-17 body-only, không có keypoint bàn tay/ngón tay** — chuyển sang video sports sẽ không cải thiện phần tay, chỉ đa dạng hoá chuyển động toàn thân/cánh tay. **User xác nhận: chấp nhận giới hạn này, bàn tay sẽ là dataset/effort riêng sau**, không cần giải quyết trong pilot này.
+
+Loại nhóm news/talking-head khỏi pilot dù có người: (1) framing thường cận cảnh ngực trở lên → hông/gối/mắt cá ngoài khung hình → zero-fill trong `coco_to_h36m()` (`CONF_THRESHOLD = 0.5`); (2) chuyển động gần như tĩnh, giá trị training thấp, khả năng trùng lặp với dữ liệu lifestyle FineVideo đã có sẵn. Suy luận từ text summary, **chưa verify bằng frame thật** (video ở JUPITER `/e`, không mount được từ session JUWELS) — đã nói rõ với user, đề xuất JUPITER-side pilot có thể đo thử yield thật nếu cần chắc chắn hơn.
+
+### 5. Deliverables — đã viết + commit (`95f2927`)
+
+- `select_sports_subset.py`: script phân loại, chạy thật ra 1,256/5,214 video (24.1%)
+- `sports_subset_video_ids.txt`: danh sách 1,256 video_id thật
+- `JUPITER_POSE_PILOT_TASK.md`: task handoff cho JUPITER — cảnh báo `phase1_hrnet_gpu.py` hard-code đọc từ FineVideo HF dataset (cùng dạng vấn đề Step A từng gặp với `pipeline.py`), Phase 6 merge cũng gần chắc chắn cần viết lại tương tự `flatten_step_a_video.py`; đề xuất lộ trình thận trọng (pilot ~20-30 video trước, học từ 3 bug thật đã gặp ở Step A) trước khi chạy full 1,256 video.
+
+### Trạng thái cuối phiên
+
+Video track OmniVideo-100K giờ có đủ: Step A xong + flatten/tokenize xong (456.5M token sẵn sàng train) + kế hoạch pilot pose pipeline đã đóng gói, **chưa chạy** (chờ JUPITER pull task này về thực hiện). Chưa quyết định tỷ lệ trộn với FineVideo-VLA lúc train.
 
 ---
 

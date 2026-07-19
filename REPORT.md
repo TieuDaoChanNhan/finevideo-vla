@@ -1818,3 +1818,59 @@ Before re-running, cancelled `970087` (`scancel`) and deleted ~40GB of leftover 
 | Content sanity | `rank_0` sample: 546,912 seed2 tokens / 12,809,800 cosmos tokens / 317,687,832 avclm tokens / 1,511 caption blocks / 1,468 speech blocks across 163 videos — all four expected token types present with plausible volumes |
 
 **Step A (the GPU-dependent stage, JUPITER-only) is done for OmniVideo-100K.** Megatron-side tokenization with `tokenizer_vla_qwen3` will be run from the JUWELS side, out of scope for this task.
+
+---
+
+## 25. OmniVideo-100K Video Track Flattened + Tokenized (456.5M Real Tokens); Token-Count Gap vs FineVideo-v5 Explained (Document-Count, Not Density); Content-Type Survey Corrects Earlier Wrong Claim (24.1% Real Sports Content Found); Pose-Pipeline Pilot Scoped and Handed Off to JUPITER (Jul 19, 2026, morning/midday)
+
+**Main work:** With Step A confirmed complete (§24), finished the rest of the video track: wrote and ran `flatten_step_a_video.py` (raw Step A token stream → Megatron-ready JSONL), then a real Megatron tokenize job. Cross-checked the resulting token count against FineVideo-v5 to explain an apparent "too few tokens" discrepancy the user flagged — turned out to be a document-count artifact, not a real problem. Surveyed the full 5,214-video corpus by content type after the user pushed back on an earlier too-hasty "no physical activity in this dataset" claim — found a real 24.1% sports/physical-activity subset. Scoped a pose-pipeline pilot on that subset and wrote a handoff task doc for the JUPITER side, deliberately excluding hand/finger-keypoint improvement (current pipeline's HRNet config is COCO-17 body-only) and excluding the talking-head subset (framing + low-motion-value reasoning) from the pilot.
+
+### 1. Flatten + Megatron tokenize for the video track — both real, both complete
+
+`data_prep/omnivideo_100k/flatten_step_a_video.py`: parses Step A's raw `<seed2>`/`<cosmos>`/`<avc_lm>` (raw integer IDs, not yet atomic vocab tokens) plus inline `<caption>`/`<speech>` blocks into the atomic `<seed2_N>`/`<cosmos_N>` form the Qwen3 tokenizer registers, using the same drop-rate convention as `pipeline_pose/phase7_flatten.py` (avc_lm payload always dropped, cosmos dropped 50%/chunk, seed2/caption/speech always kept). Real run: input `/p/data1/mmlaion/shared/vla/omnivideo_100k_video_flat/` (32 files, copied from JUPITER's Step A output) → output `omnivideo_100k_video_flattened/` (32 files), **5,214/5,214 lines preserved exactly**, 0 videos lost.
+
+Megatron tokenize job `14120433` (`tok_omni_video`): `sacct` confirms `COMPLETED`, ran 06:09:16→06:26:45 (17m29s). Output: `/p/data1/mmlaion/shared/vla/tokenized_output/omnivideo_100k_video/data_shard_00000.bin` (1.83GB) + `.idx`. No sbatch script was found saved in-repo for this job (likely run as a direct command, not committed) — worth reconstructing via `sacct -j 14120433 --format=SubmitLine` if this needs to be repeated. Verified the real token count by parsing the `.idx` header directly (Megatron `MMIDIDX` mmap format: magic + version + 1-byte dtype code `4` = `np.int32` + uint64 sequence count `5214`, matching the video count exactly) rather than trusting any printed job summary: **456,487,128 tokens (456.5M)**.
+
+### 2. Token-count "discrepancy" investigated at the user's request — resolved, not a bug
+
+User noticed the 456.5M figure looked small next to FineVideo-v5's 10.55B and asked why. Real comparison:
+
+| | FineVideo-VLA v5 | OmniVideo-100K video |
+|---|---|---|
+| Total tokens | 10,554,076,391 | 456,487,128 |
+| Documents | 371,888 | 5,214 |
+| Tokens/document | ~28,375 | ~87,556 |
+
+OmniVideo-100K actually has **~3.1x more tokens per document** than FineVideo — the ~23x gap in totals is fully explained by the ~71x gap in document count, which is a structural artifact: FineVideo splits each source video into multiple scene/activity records (371,888 records from ~40K raw videos, ~9.3 records/video), while OmniVideo-100K's Step A driver was deliberately designed as 1 video = 1 document (§24, no scenes/activities structure to split on). Not a flatten or tokenize bug.
+
+### 3. Content-type survey — corrected an earlier wrong claim about the dataset
+
+Initial assessment in this session ("OmniVideo-100K content is news/cartoons/challenges, no real physical activity") was **wrong** and was corrected after the user pushed back, recalling the dataset had "quite a lot of people" in it. Re-investigated properly: wrote a keyword classifier over the `video_summary` field (video-level synopsis in `omnivideo_100k_segment_captions.jsonl`) across the full 5,214-video corpus (not just a small manual sample):
+
+| Category | Count | % |
+|---|---|---|
+| Sports/physical activity (basketball/soccer/dance/boxing/gym/wrestling/tennis/etc.) | 1,256 | 24.1% |
+| News/talking-head | 1,210 | 23.2% |
+| Cartoon/animation | 325 | 6.2% |
+| Gambling/slot machine | 129 | 2.5% |
+| Gaming/gameplay | 115 | 2.2% |
+| Vlog/travel | 79 | 1.5% |
+| Other/misc | 2,503 | 48.0% |
+
+This is a coarse text-summary heuristic, not a verified visual check — flagged explicitly as such, with segment-level `caption` fields available as a finer-grained fallback if the video-level heuristic proves too noisy in the pilot.
+
+### 4. Pose-pipeline pilot scoped for the sports subset — with an explicit, user-confirmed limitation
+
+Checked `pipeline_pose/phase1_hrnet_gpu.py`'s actual model config before making any claims about what running the pose pipeline on new video would achieve: it uses `td-hm_hrnet-w48_8xb32-210e_coco-256x192`, i.e. **COCO-17, body-only keypoints** (most distal upper-limb point is the wrist; no finger/hand keypoints at all), mapped to H36M-17. Flagged to the user that no choice of source video — sports or otherwise — would improve hand/finger detail under the current pipeline; that requires a different pose model (e.g. COCO-WholeBody-133) as a separate future effort. **User confirmed this is acceptable** — hand data is expected to come from a separate dataset/effort later; this pilot's goal is just adding arm/body motion diversity beyond FineVideo's largely lifestyle/vlog motion profile.
+
+Talking-head content (23.2% of the corpus, second-largest category after sports) was deliberately excluded from the pilot despite clearly containing people, for two reasons laid out to the user: (1) typical medium/close-up framing likely puts hip/knee/ankle keypoints outside the frame, so `coco_to_h36m()`'s confidence-threshold zero-fill (`CONF_THRESHOLD = 0.5`, phase1_hrnet_gpu.py:31) would degenerate much of the lower-body skeleton; (2) near-static standing/sitting motion has low training value and likely overlaps with motion profiles FineVideo already covers well. Explicitly caveated as unverified reasoning from text summaries, not confirmed against real extracted frames (OmniVideo-100K's mp4s live on JUPITER's `/e`, not mounted from this JUWELS session) — offered to let the JUPITER-side pilot report per-category yield stats to settle it empirically if the user wants.
+
+### 5. Deliverables written and committed (`95f2927`)
+
+- `data_prep/omnivideo_100k/select_sports_subset.py` — the classifier above; real run output 1,256/5,214 (24.1%).
+- `data_prep/omnivideo_100k/sports_subset_video_ids.txt` — the real resulting video_id list (one per line, no extension).
+- `data_prep/omnivideo_100k/JUPITER_POSE_PILOT_TASK.md` — handoff task for JUPITER's Claude instance. Documents: why only the sports subset (not all 5,214); what data already exists on JUPITER vs. needs transfer (video mp4s already moved there for Step A; only the new ID-list file needs to arrive, via `git pull` or manual copy); the hand-keypoint limitation (§4) already resolved with the user, out of scope; and — most importantly — flags that `phase1_hrnet_gpu.py` is hard-coded to read from the FineVideo HF arrow dataset (`load_from_disk` + `cached_video_ids.json`) exactly the way `pipeline_video/pipeline.py` was for Step A (§24), so a new driver is needed (reuse the model-loading + `coco_to_h36m()` logic verbatim, replace the input path with direct `cv2.VideoCapture` on `$DATA/omnivideo_100k/videos/{video_id}.mp4`). Also flags that Phase 6 (`phase6_merge_adaptive.py`) almost certainly needs an equivalent rewrite (it expects FineVideo's `scenes[].activities[]` structure), and recommends the same staged-pilot discipline that caught 3 real bugs in Step A (§24) — a tiny ~20-30-video pilot before committing to the full 1,256.
+
+### State at end of session
+
+OmniVideo-100K's video track is now fully tokenized and training-ready (456.5M real tokens, verified via `.idx` header). The pose-pipeline pilot is scoped and handed off as a task doc but **not yet run** — waiting on the JUPITER side to pull the repo and execute per `JUPITER_POSE_PILOT_TASK.md`. Blend ratio with FineVideo-VLA for training is still an open, training-time decision.
