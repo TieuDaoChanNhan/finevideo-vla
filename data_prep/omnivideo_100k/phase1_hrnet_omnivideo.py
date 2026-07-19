@@ -106,44 +106,59 @@ def process_video_to_json(video_path, output_json_path, det_model, pose_model):
     from mmengine.registry import init_default_scope
 
     cap = cv2.VideoCapture(video_path)
-    all_frames_data = []
-    frame_idx = 0
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"cv2.VideoCapture could not open {video_path}")
 
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
+        all_frames_data = []
+        frame_idx = 0
 
-        init_default_scope("mmdet")
-        det_result = inference_detector(det_model, frame)
-        pred_instances = det_result.pred_instances
-        person_mask = (pred_instances.labels == 0) & (pred_instances.scores > 0.5)
-        bboxes = pred_instances.bboxes[person_mask].cpu().numpy()
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
 
-        frame_data = {"frame_id": frame_idx, "keypoints": []}
-        if len(bboxes) > 0:
-            areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
-            best_bbox = bboxes[np.argmax(areas)]
+            init_default_scope("mmdet")
+            det_result = inference_detector(det_model, frame)
+            pred_instances = det_result.pred_instances
+            person_mask = (pred_instances.labels == 0) & (pred_instances.scores > 0.5)
+            bboxes = pred_instances.bboxes[person_mask].cpu().numpy()
 
-            init_default_scope("mmpose")
-            pose_results = inference_topdown(pose_model, frame, bboxes=[best_bbox])
+            frame_data = {"frame_id": frame_idx, "keypoints": []}
+            if len(bboxes) > 0:
+                areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
+                best_bbox = bboxes[np.argmax(areas)]
 
-            if len(pose_results) > 0:
-                kpts = pose_results[0].pred_instances.keypoints[0]
-                scores = pose_results[0].pred_instances.keypoint_scores[0]
-                coco_final = np.concatenate([kpts, scores[:, None]], axis=1)
-                h36m_keypoints = coco_to_h36m(coco_final)
-                frame_data["keypoints"] = h36m_keypoints.tolist()
+                init_default_scope("mmpose")
+                pose_results = inference_topdown(pose_model, frame, bboxes=[best_bbox])
 
-        if not frame_data["keypoints"]:
-            frame_data["keypoints"] = [[0.0, 0.0, 0.0]] * 17
+                if len(pose_results) > 0:
+                    kpts = pose_results[0].pred_instances.keypoints[0]
+                    scores = pose_results[0].pred_instances.keypoint_scores[0]
+                    coco_final = np.concatenate([kpts, scores[:, None]], axis=1)
+                    h36m_keypoints = coco_to_h36m(coco_final)
+                    frame_data["keypoints"] = h36m_keypoints.tolist()
 
-        all_frames_data.append(frame_data)
-        frame_idx += 1
-        if frame_idx % 1000 == 0:
-            print(f"   -> [Rank {RANK}] Frame: {frame_idx}", end="\r")
+            if not frame_data["keypoints"]:
+                frame_data["keypoints"] = [[0.0, 0.0, 0.0]] * 17
 
-    cap.release()
+            all_frames_data.append(frame_data)
+            frame_idx += 1
+            if frame_idx % 1000 == 0:
+                print(f"   -> [Rank {RANK}] Frame: {frame_idx}", end="\r")
+    finally:
+        # Dam bao giai phong VideoCapture ke ca khi loi giua chung (vd OOM tren
+        # 1 frame) -- neu khong, cap bi ro ri toi khi GC don, co the tich luy
+        # het file descriptor qua nhieu video loi lien tiep trong 1 rank chay
+        # lau (~280 video/rank o quy mo full 1,126 video).
+        cap.release()
+
+    if frame_idx == 0:
+        # cap.isOpened() co the True nhung stream rong/hong ngay frame dau --
+        # khong ghi "thanh cong" voi 0 frame, tranh resume logic coi nhu video
+        # da xong vinh vien ma khong co dau vet loi nao.
+        raise RuntimeError(f"0 frame doc duoc tu {video_path} (video rong/hong?)")
+
     with open(output_json_path, "w") as f:
         json.dump(all_frames_data, f)
     return frame_idx
