@@ -18,7 +18,7 @@ export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-log-login
 nvidia-cuda-mps-control -d
 echo "NVIDIA MPS activated for login-node GPU 0."
 
-NUM_WORKERS=16
+NUM_WORKERS=4
 echo "Launching $NUM_WORKERS workers on the single login-node GPU (nice -n 15)..."
 
 for i in $(seq 1 $NUM_WORKERS); do

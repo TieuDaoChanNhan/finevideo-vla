@@ -18,6 +18,46 @@ discipline not keeping pace with the widening data-source scope.
 
 ---
 
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 5 — điều tra RoboVQA + synth_llava, viết + chạy seed2 tokenize cho synth_llava, viết detokenizer chung cosmos/avc_lm, giảm tải GPU login node)
+
+**Việc chính:** Trả lời loạt câu hỏi tổng hợp về 3 dataset mới (RoboVQA, synth_llava) và cơ chế decode 3 loại token video (seed2/cosmos/avc_lm) — đều verify bằng cách chạy code thật, không suy đoán. Viết + launch full-scale seed2 tokenize cho `synth_llava` (603,999 ảnh). User lo ngại GPU login node bị admin report vì Phase 4 FineVideo chiếm 100% GPU liên tục nhiều giờ — giảm từ 16 xuống 4 worker. Viết 2 tool detokenize tổng quát (`tools/decode/decode_cosmos.py`, `decode_avclm.py`), bắt được 1 bug thật trong avc_lm decode.
+
+### 1. RoboVQA — datasets.md sai (ghi "chưa tải" nhưng thực tế đã tải+xử lý 1 phần từ 18/7)
+
+Audit lại: `/p/data1/mmlaion/shared/vla/robovqa/` có đủ 184 shard TFRecord (175 train + 9 val) + `json/` (đã pre-extract) + **9,999 video `.mp4` thật** + `instructions/*.txt` + `LICENSE.txt` (Apache 2.0, permissive thật). Đã làm: `flatten_text.py` xong (221,912 dòng text, **cố tình bỏ `video_id`** — có ghi rõ trong docstring là quyết định deprioritized, không phải bug như vụ OmniVideo QA). `extract_frames.py` dở dang: **130/184 shard (~70.6%)**, không có job nào đang chạy.
+
+**Câu hỏi user: text có anchor theo frame để interleave không?** Parse trực tiếp TFRecord thật (`tfrecord_lite.py`, tự viết vì không có tensorflow trong env nào): mỗi episode có `texts_start`/`texts_end` — verify 15 record thật, **luôn luôn = 15** (frame cuối trong 16 frame/episode). Nghĩa là toàn bộ multi-task QA (affordance/planning/success/future_prediction...) đã gộp thành **1 blob duy nhất, neo vào 1 điểm** (cuối episode) — không thể interleave từng loại QA riêng theo thời gian như FineVideo's caption/speech. Đơn vị hợp lý nhất để interleave: **cả episode (16 frame) = 1 chunk**, không phải nhiều điểm trong episode.
+
+### 2. synth_llava — format xác nhận lại, viết + chạy tokenize seed2
+
+Format thật (verify từ data, không chỉ nhớ lại): mỗi shard = `.jsonl` (`{"text": "<caption><image_0>...</caption>", "metadata", "language", "media": {"<image_0>": "filename.png"}}`) + `.wds` (tar POSIX chứa ảnh PNG thật). Verify 4,000 dòng shard đầu: **luôn đúng 1 ảnh/record**, placeholder `<image_0>` luôn nằm ngay đầu caption.
+
+Viết `data_prep/synth_llava/tokenize_seed2.py` — tái dùng chính xác import/shim của `step_a_tokenize_video.py` (fix bug transformers-version + Qformer.cls=None đã biết), thay `<image_0>` bằng chuỗi `<seed2_N>` atomic trực tiếp tại vị trí đó (không cosmos/avc_lm vì ảnh tĩnh không cần). Test đo throughput thật: **~30 ảnh/giây** trên GPU rảnh, 0 lỗi. **Đã launch full-scale** (151 shard, 603,999 ảnh) trong tmux `synth_llava_seed2`, ETA ước tính ~6 giờ. Tại thời điểm ghi entry: 8/151 shard xong, 0 lỗi.
+
+### 3. GPU login node bị chiếm 100% liên tục — user lo bị admin report, giảm tải
+
+Phase 4 FineVideo (16 worker) khiến GPU 100% util suốt ~2 tiếng trong khi 12 user khác cũng online trên login node. Theo yêu cầu user: **kill session, restart với 4 worker** (giảm `slurm/run_yolo_login.sh` từ `NUM_WORKERS=16` xuống `4`) — verify GPU về 0% trước khi restart, không mất tiến độ (script skip-existing). Sau restart: GPU ~83-99% khi chạy đơn lẻ nhưng **có headroom hơn**, và giờ chia sẻ với job seed2 (2 job cùng chạy). Test throughput seed2 trên GPU rảnh trước khi quyết định tạm dừng Phase 4 nhường chỗ — kết luận seed2 đủ nhanh (~6h) nên **không cần dừng hẳn Phase 4**, chỉ giảm worker.
+
+Cũng thử submit 1 job SLURM test (`985910`) để kiểm tra maintenance đã hết chưa — vẫn bị chặn y hệt (`ReqNodeNotAvail, Reserved for maintenance`), đã cancel ngay.
+
+### 4. Điều tra decode seed2/cosmos/avc_lm — đọc paper, viết tool tổng quát, bắt 1 bug thật
+
+**Seed2 (đọc paper user để trong `documents/2310.01218v1 (1).pdf` — "Making LLaMA SEE and Draw with SEED Tokenizer", Tencent AI Lab):** SEED không phải codec nén — là tokenizer bậc ngữ nghĩa cao, "de-tokenize" thật ra là **sinh lại ảnh mới cùng ngữ nghĩa** qua 1 pipeline Stable Diffusion riêng (`stable-diffusion-2-1-unclip`), verify từ chính README `ontocord/seed2`. Không tìm được paper "SEED2" chính thức nào — chỉ có "SEED"/SEED-LLaMA từ Tencent; checkpoint `ontocord/seed2` là bản build của 1 tổ chức khác, lý do đặt tên "2" không rõ, không đoán bừa.
+
+**Cosmos — viết `tools/decode/decode_cosmos.py` (tool tổng quát, không phải script 1 lần):** verify shape thật — 8 frame/160x160 → encode ra indices `(1,2,10,10)` = 200 token/chunk. Decode qua `Cosmos-Tokenizer-DV8x16x16/decoder.jit` → `(1,3,9,160,160)`. Support cả 2 format token trong project (atomic `<cosmos_N>` cho data đã flatten, raw block `<cosmos>N N N</cosmos>` cho Step A chưa flatten) và cả 2 schema record (`{"text":...}` phẳng kiểu OmniVideo, `{"scenes":[...]}` lồng nhau kiểu FineVideo raw).
+
+**AVC-LM — viết `tools/decode/decode_avclm.py`, bắt 1 bug thật:** `avc_lm_v2/tokenizer.json` không có `decoder` component (`decoder: None`) — gọi `tokenizer.decode()` mặc định sẽ tự chèn dấu cách giữa mỗi token, phá byte stream (verify: ffmpeg báo "non-existing PPS 0 referenced" khi test round-trip thật). **Fix:** nối trực tiếp `tok.id_to_token(id)` cho từng id, không dấu cách (đúng vì mỗi token là substring latin-1 thô, không có ByteLevel remap). Sau fix: ffmpeg decode sạch (returncode 0, 8 frame thật) — AVC-LM là **byte-exact**, khác hẳn seed2 (generative) và cosmos (neural reconstruct lossy).
+
+Đã decode thử + gửi user xem: 1 chunk cosmos + 1 chunk avc_lm từ sample OmniVideo (`samples/omnivideo_100k_final_sample/`), và 1 record FineVideo-VLA thật (`d6b4OmUFt7I`, `samples/finevideo-vla/`) cho cả cosmos lẫn avc_lm.
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- Cluster vẫn maintenance (job test `985910` xác nhận, đã cancel).
+- **Phase 4 FineVideo** (tmux `yolo_login_finevideo`, 4 worker) — đang chạy, 4,073/40,305 video.
+- **synth_llava seed2 tokenize** (tmux `synth_llava_seed2`, 1 process) — đang chạy, 8/151 shard, 0 lỗi, ETA ~6h.
+- RoboVQA: `extract_frames.py` vẫn dở dang 130/184 shard, chưa resume (không phải việc đang làm phiên này).
+- Việc tồn đọng: tách `pipeline_pose/`+`pipeline_video/` vào `data_prep/finevideo/` (chờ Phase 4 FineVideo xong); resume `extract_frames.py` cho RoboVQA nếu muốn đẩy tiếp; quyết định `MixtureVitae-Backup` SNAC + "moss" token (chờ Huu).
+
 ## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 4 — hoàn tất merge OmniVideo-100K 3 track, sample+upload script, chỉ còn chờ Phase 4 FineVideo)
 
 **Việc chính:** Chạy xong + verify sạch cả 2 bước còn lại của plan merge OmniVideo-100K (Bước 2 `phase6_merge_omnivideo.py`, Bước 3 `phase7_finalize_omnivideo.py`), viết sample + script upload HF theo đúng convention `laion_emotional_roleplay`, tự sửa lại mô tả cấu trúc record sau khi user chỉ ra thiếu phần "Context" ở đầu. Phase 4 FineVideo (tmux `yolo_login_finevideo`) vẫn chạy nền bình thường suốt phiên, không có gì khác cần làm ngoài chờ nó xong.
