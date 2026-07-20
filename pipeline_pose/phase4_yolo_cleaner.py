@@ -38,9 +38,39 @@ Example:
     python phase4_yolo_cleaner_slurm.py \
         --videos-dir /data/videos \
         --input-dir /data/phase3_states \
+        --resampled-npy-dir /data/outputs/3d_npy_30fps \
         --output-dir /data/phase4_cleaned \
         --threshold 0.75 \
         --batch-size 128
+
+--- Fix (2026-07-20): frame-index / fps mismatch ---
+window_id in --input-dir's *_states.jsonl is indexed on the 30fps grid
+Phase 2.5 (phase2_5_resample_30fps.py) resampled every pose to -- NOT on
+the native fps of the file this script decodes from --videos-dir. The
+previous version of this script used the raw sequential decode-order
+index straight from the native-fps video as the frame_cache key, silently
+assuming the two were the same timeline. They are not for any video whose
+native fps != 30 (measured: 35% of FineVideo, 15,321/43,751 videos in
+outputs/fps_lookup.json deviate >=5% from 30fps). Concretely, verified on
+real production output for a 25fps video (-2MKTg-LNio): native frame count
+is 12,758 but its states_jsonl_30fps runs up to window_id+8=15,304 -- so
+every window past 12,758 was silently dropped (losing the last ~1/6 of
+the video), and every window that WAS kept read YOLO's person-presence
+result from the wrong point in time, drifting by up to ~20% of the
+video's duration by the end.
+
+Fix: build an explicit native_idx <-> resampled_idx mapping via
+np.round(np.linspace(0, N-1, M)) (N = native frame count from the video
+file, M = resampled frame count read directly from the corresponding
+--resampled-npy-dir/{video_id}.npy shape -- the exact M Phase 2.5
+produced). This is the same endpoint-aligned linspace mapping
+resample_pose() used going the other direction. Frames are still decoded
+sequentially with no random seeks (same performance design as before);
+each decoded native frame's YOLO result is now written into frame_cache
+under every resampled_idx that maps back to it, so windows are always
+keyed/read in the timeline they were actually defined in (resampled-space,
+matching window_id). For already-30fps videos the mapping is the
+identity and behaviour is unchanged.
 """
 
 from __future__ import annotations
@@ -103,6 +133,14 @@ def parse_args() -> argparse.Namespace:
         help="Directory containing input JSONL files named <video_id>_states.jsonl",
     )
     parser.add_argument(
+        "--resampled-npy-dir",
+        type=Path,
+        required=True,
+        help="Directory containing Phase 2.5 output <video_id>.npy (30fps-resampled), "
+             "used to read the exact resampled frame count M for the native<->resampled "
+             "index mapping (see module docstring).",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         required=True,
@@ -146,6 +184,11 @@ def validate_args(args: argparse.Namespace) -> None:
     if not args.input_dir.is_dir():
         raise NotADirectoryError(f"--input-dir is not a directory: {args.input_dir}")
 
+    if not args.resampled_npy_dir.exists():
+        raise FileNotFoundError(f"Resampled npy directory not found: {args.resampled_npy_dir}")
+    if not args.resampled_npy_dir.is_dir():
+        raise NotADirectoryError(f"--resampled-npy-dir is not a directory: {args.resampled_npy_dir}")
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if not args.output_dir.is_dir():
         raise NotADirectoryError(f"--output-dir is not a directory: {args.output_dir}")
@@ -182,14 +225,36 @@ def get_video_frame_count(video_path: Path) -> int:
     return total_frames
 
 
+def build_native_resampled_maps(native_frames: int, resampled_frames: int):
+    """Endpoint-aligned linspace mapping, inverse of resample_pose()'s own
+    linspace(0,1,N) <-> linspace(0,1,M) (phase2_5_resample_30fps.py). Returns
+    (native_for_resampled, resampled_for_native): the first is an array of
+    length M giving the matching native frame index for each resampled
+    index; the second is the reverse lookup (native_idx -> list of
+    resampled indices)."""
+    if resampled_frames < 1:
+        return np.zeros(0, dtype=np.int64), defaultdict(list)
+    native_for_resampled = np.round(
+        np.linspace(0, max(native_frames - 1, 0), resampled_frames)
+    ).astype(np.int64)
+    resampled_for_native: DefaultDict[int, List[int]] = defaultdict(list)
+    for j, native_idx in enumerate(native_for_resampled):
+        resampled_for_native[int(native_idx)].append(j)
+    return native_for_resampled, resampled_for_native
+
+
 def load_windows_and_needed_frames(
     jsonl_path: Path,
-    total_video_frames: int,
+    resampled_frames: int,
 ) -> Tuple[List[WindowRecord], Set[int]]:
     """
     Read JSONL, validate window_id, return:
     - sorted list of WindowRecord
     - needed_frames = union of all frames used by valid windows
+
+    window_id is indexed on the resampled (30fps) grid -- the out-of-range
+    bound must be checked against resampled_frames (M, from Phase 2.5's
+    output), not the native video's frame count (see module docstring).
     """
     grouped: DefaultDict[int, List[WindowRecord]] = defaultdict(list)
     skipped = 0
@@ -218,7 +283,7 @@ def load_windows_and_needed_frames(
                 )
 
             end_frame = start_frame + WINDOW_SIZE - 1
-            if start_frame < 0 or end_frame >= total_video_frames:
+            if start_frame < 0 or end_frame >= resampled_frames:
                 skipped += 1
                 continue
 
@@ -373,16 +438,19 @@ def cleanup_frame_cache(
 def process_video(
     video_path: Path,
     jsonl_in: Path,
+    resampled_npy_path: Path,
     jsonl_out: Path,
     model: YOLO,
     threshold: float,
     batch_size: int,
     imgsz: int,
 ) -> Tuple[int, int, int, RunMetrics]:
-    total_video_frames = get_video_frame_count(video_path)
-    all_records, needed_frames = load_windows_and_needed_frames(
+    native_frames = get_video_frame_count(video_path)
+    resampled_frames = int(np.load(resampled_npy_path, mmap_mode="r").shape[0])
+
+    all_records, needed_resampled_frames = load_windows_and_needed_frames(
         jsonl_in,
-        total_video_frames=total_video_frames,
+        resampled_frames=resampled_frames,
     )
 
     total_input = len(all_records)
@@ -398,10 +466,19 @@ def process_video(
         )
         return 0, 0, 0, empty_metrics
 
+    native_for_resampled, resampled_for_native = build_native_resampled_maps(
+        native_frames, resampled_frames,
+    )
+    # Only native frames that map back to at least one *needed* resampled index are worth decoding into a batch.
+    needed_native_frames = {
+        native_idx for native_idx, resampled_idxs in resampled_for_native.items()
+        if any(j in needed_resampled_frames for j in resampled_idxs)
+    }
+
     pending_windows: Deque[WindowRecord] = deque(all_records)
     frame_cache: Dict[int, bool] = {}
 
-    last_needed_frame = max(needed_frames)
+    last_needed_native_frame = max(needed_native_frames) if needed_native_frames else -1
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -443,8 +520,11 @@ def process_video(
         yolo_infer_time_sec += time.perf_counter() - infer_start
         frames_sent_to_yolo += len(batch_frames)
 
-        for frame_idx, has_person in zip(batch_indices, person_flags):
-            frame_cache[frame_idx] = has_person
+        # batch_indices are native-fps decode indices; fan each result out to
+        # every resampled-space index that maps back to it (see build_native_resampled_maps).
+        for native_idx, has_person in zip(batch_indices, person_flags):
+            for resampled_idx in resampled_for_native.get(native_idx, []):
+                frame_cache[resampled_idx] = has_person
 
         cut, keep = try_resolve_ready_windows(
             pending_windows=pending_windows,
@@ -460,7 +540,7 @@ def process_video(
     try:
         with jsonl_out.open("w", encoding="utf-8") as fout:
             with tqdm(total=total_input, desc="Cleaning windows", unit="window") as pbar:
-                frame_idx = 0
+                native_idx = 0
 
                 while True:
                     ok, frame = cap.read()
@@ -469,15 +549,15 @@ def process_video(
 
                     video_read_frames += 1
 
-                    if frame_idx > last_needed_frame:
+                    if native_idx > last_needed_native_frame:
                         break
 
-                    if frame_idx not in needed_frames:
-                        frame_idx += 1
+                    if native_idx not in needed_native_frames:
+                        native_idx += 1
                         continue
 
                     batch_frames.append(frame)
-                    batch_indices.append(frame_idx)
+                    batch_indices.append(native_idx)
 
                     if len(batch_frames) >= batch_size:
                         cut, keep = flush_batch(fout)
@@ -485,7 +565,7 @@ def process_video(
                         total_keep += keep
                         pbar.update(cut + keep)
 
-                    frame_idx += 1
+                    native_idx += 1
 
                 if batch_frames:
                     cut, keep = flush_batch(fout)
@@ -653,6 +733,7 @@ def main() -> int:
         for idx, jsonl_in in enumerate(assigned_files, start=1):
             video_id = infer_video_id_from_jsonl(jsonl_in)
             video_path = args.videos_dir / f"{video_id}.mp4"
+            resampled_npy_path = args.resampled_npy_dir / f"{video_id}.npy"
             output_path = args.output_dir / f"{video_id}_cleaned.jsonl"
             temp_path = Path(f"{output_path}.tmp")
 
@@ -660,6 +741,7 @@ def main() -> int:
             print(f"[{idx}/{len(assigned_files)}] video_id   : {video_id}")
             print(f"JSONL in            : {jsonl_in}")
             print(f"Video path          : {video_path}")
+            print(f"Resampled npy       : {resampled_npy_path}")
             print(f"Output path         : {output_path}")
             print(f"Temp path           : {temp_path}")
 
@@ -673,12 +755,18 @@ def main() -> int:
                 failed += 1
                 continue
 
+            if not resampled_npy_path.exists():
+                print(f"[ERROR] Resampled npy not found: {resampled_npy_path}", file=sys.stderr)
+                failed += 1
+                continue
+
             remove_file_if_exists(temp_path)
 
             try:
                 total_input, total_cut, total_keep, metrics = process_video(
                     video_path=video_path,
                     jsonl_in=jsonl_in,
+                    resampled_npy_path=resampled_npy_path,
                     jsonl_out=temp_path,
                     model=model,
                     threshold=args.threshold,

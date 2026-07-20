@@ -1,0 +1,16 @@
+{
+  "voice_description": "A youthful female voice with a clear, earnest tone. The delivery is slightly breathless and dramatic, with precise diction and a soft, gentle cadence.",
+  "text": "Oh, sir, it will break bones. I am very glad to see you. This question absorbed all his mental powers. Before going away forever, I'll tell him all. I told you it was mother.",
+  "language": "English",
+  "realized_gender": "female",
+  "instruction": "A 38-year-old male speaker with a warm, clear tenor timbre, exhibiting a slightly breathy and subtly nasal delivery, delivering this high-quality studio voice recording with no background noise. The delivery conveys a sense of excited gratitude and a touch of wistful remembrance, with precise articulation and a steady, natural pace. He’s projecting a feeling of genuine pleasure and a desire to share a significant story.",
+  "adherence_score": "5",
+  "duration": 15.92,
+  "req_character": null,
+  "req_gender": null,
+  "req_volume": null,
+  "req_emotion": null,
+  "source": "ears",
+  "id": "ears_00002",
+  "audio_file": "ears_00002.mp3"
+}

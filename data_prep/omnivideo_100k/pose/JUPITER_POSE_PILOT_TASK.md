@@ -1,5 +1,5 @@
 > **CẬP NHẬT 19/07/2026 (chiều) — pilot Phase 1 đã chạy that (24 video, job `976467`, COMPLETED, 0 loi), 78.7% frame co detect nguoi. Doc truoc khi tiep tuc.**
-> Driver da viet: `data_prep/omnivideo_100k/phase1_hrnet_omnivideo.py` (+ `submit_phase1_pilot.sbatch`) — doc mp4 phang truc tiep, GIU NGUYEN confidence lien tuc (khong binarize nhu ban goc).
+> Driver da viet: `data_prep/omnivideo_100k/pose/phase1_hrnet_omnivideo.py` (+ `submit_phase1_pilot.sbatch`) — doc mp4 phang truc tiep, GIU NGUYEN confidence lien tuc (khong binarize nhu ban goc).
 > 2 bug ha tang phat hien + fix truoc khi chay duoc: symlink `outputs/` bi dut (da tro lai `/e/data1/.../nguyen38/outputs/`), path env sai trong `setup_hrnet_gpu.sh`/`setup_motionbert.sh` (da sua tro `/e/data1/.../3d-human-pose/env_*`).
 > **Dieu tra 2 video ty le detect thap trong pilot -> phat hien filter goc (`select_sports_subset.py`) co sai duong voi noi dung animation** (tu khoa chung chung nhu "dancing"/"running" khop nham video commentary/hoat hinh). Nghiem trong hon ca video 0% detect: 1 video animation trong pilot (`Ncl93lkMpJM`, phim nhac hoat hinh khung long) van ra **56.3% detect** — HRNet/Faster-RCNN co the nham nhan vat hoat hinh thanh nguoi that, MotionBERT (train tren Human3.6M nguoi that) lift len se ra pose 3D SAI chu khong chi la thieu du lieu. Da viet `filter_animation_content.py` loc tiep tren 1,256 video: loai 130 video co video_summary tu nhan la animation/cartoon → con **1,126 video** trong `sports_subset_video_ids_filtered.txt` (driver da doi default sang file nay). Luu y: filter nay CHUA bat het — video hoat hinh kieu nhan vat co ten rieng ("Redhead Girl"...) khong tu nhan "animated" van lot qua, chi co the dua vao ty le detect that tu Phase 1 de loc not.
 > Theo quyet dinh cua user, **da dung lai o pilot 24 video de xem xet, CHUA mo rong full-scale** — xem `PROGRESS_VI.md`/`REPORT.md` muc "§26" de biet chi tiet day du + trang thai job moi nhat truoc khi quyet dinh buoc tiep theo (vd: chay lai pilot nho tren `sports_subset_video_ids_filtered.txt` de kiem tra filter moi, hay mo rong thang full 1,126).
@@ -20,7 +20,7 @@
 
 ## 1. Danh sách video đã chọn sẵn (làm trên JUWELS, đã có trong repo)
 
-`data_prep/omnivideo_100k/select_sports_subset.py` — script phân loại, đọc field `video_summary` trong `omnivideo_100k_segment_captions.jsonl`, regex match các từ khoá:
+`data_prep/omnivideo_100k/dataset_prep/select_sports_subset.py` — script phân loại, đọc field `video_summary` trong `omnivideo_100k_segment_captions.jsonl`, regex match các từ khoá:
 ```
 basketball|soccer|football|boxing|dance|dancing|gym|workout|running|
 fight|fighting|wrestl|tennis|martial art|gymnast|athlete

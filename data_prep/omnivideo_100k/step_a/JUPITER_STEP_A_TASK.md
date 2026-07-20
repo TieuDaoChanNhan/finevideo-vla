@@ -1,5 +1,5 @@
 > **CẬP NHẬT 19/07/2026 — task này ĐÃ XÁC NHẬN XONG HOÀN TOÀN, đọc trước khi bắt đầu lại từ đầu.**
-> Driver đã viết: `data_prep/omnivideo_100k/step_a_tokenize_video.py` (+ `submit_step_a_full.sbatch`, `submit_step_a_pilot.sbatch`).
+> Driver đã viết: `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py` (+ `submit_step_a_full.sbatch`, `submit_step_a_pilot.sbatch`).
 > Job full-scale `970099` (8 node×4 GPU=32 GPU, 5,214 video, có resume) — **`sacct` xác nhận COMPLETED, exit 0:0**, chạy 18/7 19:30→22:01 (2h30'). Verify output thật: 32/32 file `step_a_rank_*.jsonl` (39GB), đúng 5,214/5,214 dòng, log lỗi chỉ có warning vô hại, sample 163 video (`rank_0`) không có video nào bị seed2=0 (bug cũ không tái phát ở full-scale), đủ cả 4 loại token (seed2/cosmos/avclm/caption/speech). **Không cần chạy lại.** Bước Megatron tokenize (`tokenizer_vla_qwen3`) sẽ làm ở JUWELS, ngoài phạm vi task này.
 >
 > **3 bug thật đã bắt được, đọc kỹ trước khi debug lại nếu cần viết driver tương tự cho dataset khác:**
@@ -34,7 +34,7 @@ Và trên `/p` (JUWELS, KHÔNG mount được từ JUPITER — cần tự copy 2
     # xem mục 3 để biết cách join 2 cái này lại).
 ```
 
-`data_prep/omnivideo_100k/flatten_qa_text.py` và `build_segment_captions.py` (đã có trong repo, code build ra 2 file JSONL trên) — không cần chạy lại, chỉ cần hiểu format output nếu muốn debug.
+`data_prep/omnivideo_100k/dataset_prep/flatten_qa_text.py` và `build_segment_captions.py` (đã có trong repo, code build ra 2 file JSONL trên) — không cần chạy lại, chỉ cần hiểu format output nếu muốn debug.
 
 **Phần QA-text riêng (`train_oe_70k`/`train_mcq_30k`) đã tokenize XONG ở JUWELS rồi, KHÔNG liên quan tới task này** — task này chỉ lo phần video+caption/speech.
 

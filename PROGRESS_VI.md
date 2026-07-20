@@ -1,9 +1,314 @@
 # PAB-Spline VLA — Tiến độ dự án
 
 **Tác giả:** Van Khue Nguyen  
-**Cập nhật lần cuối:** 19/07/2026  
-**Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **đã lên lại**, job batch chạy bình thường tính đến 15/7  
+**Cập nhật lần cuối:** 20/07/2026  
+**Cluster:** JUPITER (JSC), partition `booster`, GPU GH200 — **đang bảo trì diện rộng** (18 node `maint`, không rõ ETA kể từ ~06:00 20/7), Phase 3/4 FineVideo đang chạy tạm trên login node (1× GH200) trong lúc chờ  
 **Mục tiêu:** Xây dựng mô hình VLA (Vision-Language-Action) — xem video, nghe tiếng, sinh ra token điều khiển robot.
+
+---
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 4 — hoàn tất merge OmniVideo-100K 3 track, sample+upload script, chỉ còn chờ Phase 4 FineVideo)
+
+**Việc chính:** Chạy xong + verify sạch cả 2 bước còn lại của plan merge OmniVideo-100K (Bước 2 `phase6_merge_omnivideo.py`, Bước 3 `phase7_finalize_omnivideo.py`), viết sample + script upload HF theo đúng convention `laion_emotional_roleplay`, tự sửa lại mô tả cấu trúc record sau khi user chỉ ra thiếu phần "Context" ở đầu. Phase 4 FineVideo (tmux `yolo_login_finevideo`) vẫn chạy nền bình thường suốt phiên, không có gì khác cần làm ngoài chờ nó xong.
+
+### 1. Bước 2 — `phase6_merge_omnivideo.py` — chạy xong, verify hoàn hảo
+
+Lần đầu chạy thử vô tình chạy full 32 file thay vì test 1 file (do quên giới hạn), ghi nhầm ra `/tmp` scratchpad + có `| head -5` dễ gây `BrokenPipeError` giữa chừng — user nhắc kiểm tra thời gian, đã kill và chạy lại đúng trong tmux `phase6_merge_omnivideo`, ghi thẳng vào `/p/data1/mmlaion/shared/vla/omnivideo_100k_video_agent_merged/`.
+
+**Kết quả (verify bằng đếm thật, không chỉ tin log):**
+- 5,214 → 5,214 (0 malformed)
+- **799 video có `<agent>`** — khớp chính xác 100% số file Phase 5 non-empty
+- **62,631 window agent injected** — khớp chính xác 100% tổng số dòng trong toàn bộ `pose_agent_tokens_adaptive/*.jsonl` (đếm riêng, đối chiếu bằng `wc -l`) — không mất window nào
+- Spot-check 1 record thật: `<agent>` xuất hiện đúng ngay sau cosmos của đúng chunk, format `<agent> <fps_30> <pelvis>...</agent>` khớp thiết kế
+
+### 2. Bước 3 — `phase7_finalize_omnivideo.py` — chạy xong, verify hoàn hảo
+
+Join QA (`omnivideo_100k_qa_flat.jsonl`, đã fix giữ `video_id` ở entry trước) vào cuối record Bước 2, gộp theo `video_id`. Kết quả: **5,214 → 5,214, 5,214/5,214 video có QA (100%), 0 warning** (không có video_id nào lệch giữa QA và Step A — tập video_id trùng khớp hoàn toàn cả 2 track). Output: `/p/data1/mmlaion/shared/vla/omnivideo_100k_final/` (32 file, 3.6GB).
+
+**Verify tổng thể dataset cuối:** 17,229,664 token seed2, 201,736,400 token cosmos, 799 video có agent (62,631 window), 5,214/5,214 có QA.
+
+### 3. Sample + script upload HF
+
+Ghi 1 record thật vào `samples/omnivideo_100k_final_sample/` (bản raw 568KB + bản `_PREVIEW_readable.txt` đã cắt bớt run cosmos/seed2 dài cho dễ đọc), gửi cho user qua `SendUserFile`. Viết `data_prep/omnivideo_100k/upload_hf.py` theo đúng pattern `data_prep/laion_emotional_roleplay/upload_hf.py` (gzip nén, split train/test theo shard seed 42, `--repo-id` CLI arg). Dry-run (`--skip-compress`... à `--skip-upload`) trước: nén 32 shard (3.6GB → 648MB, 30 train/2 test), `gzip -t` pass hết. Đã đưa user lệnh upload đầy đủ, user tự export `HF_TOKEN`.
+
+**Tự sửa 1 điểm sau khi user đọc sample không hiểu:** giải thích lần đầu bỏ sót phần `### Context: ...` (header caption tổng quan cả video, lấy nguyên từ `scripts.jsonl` gốc qua `step_a_tokenize_video.py`, giữ nguyên xuyên suốt cả `flatten_step_a_video.py` lẫn `phase6_merge_omnivideo.py`) — cấu trúc record thật là **3 phần**: `### Context: ...` → chuỗi token theo chunk (seed2/cosmos/agent) → QA nối cuối. Đã sửa lại giải thích + sẽ nhớ mô tả đủ 3 phần trong dataset card.
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+Recheck toàn bộ trước khi ghi entry này:
+- Cluster vẫn maintenance (18 node `booster` `maint`, không đổi).
+- Phase 4 FineVideo (tmux `yolo_login_finevideo`) — **2,882/40,305 video, 0 lỗi** trên tất cả worker log, đang chạy khỏe.
+- OmniVideo-100K final dataset + gzip upload bundle — recheck lại, vẫn nguyên vẹn (32 file, gzip integrity pass).
+
+**Không còn việc gì khác đang treo trong phiên này — chỉ còn chờ Phase 4 FineVideo chạy xong (~15h từ lúc submit ~12:22 20/7).** Việc tiếp theo sau khi Phase 4 xong: tách `pipeline_pose/`+`pipeline_video/` (FineVideo) vào `data_prep/finevideo/` cho đối xứng với `data_prep/omnivideo_100k/` (đã hứa từ trước, chưa làm vì job đang import trực tiếp từ đó). Việc tồn đọng khác: chờ Huu quyết định `MixtureVitae-Backup` SNAC (~3.27B code) + ý nghĩa "moss" token cho roleplay dataset; chuyển `mixturevitae_multimodal/synth_llava` đã xong từ entry trước (không còn tồn đọng).
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 3 — reorg data_prep/omnivideo_100k, check chất lượng Phase 5 agent token, lên plan + bắt đầu merge 3 track OmniVideo-100K)
+
+**Việc chính:** Phase 4 FineVideo login-node (tmux `yolo_login_finevideo`) tiếp tục chạy nền, ETA ~15h, không đụng tới. Trong lúc chờ: reorg `data_prep/omnivideo_100k/` (28 file phẳng → 4 thư mục con theo mục đích), check chất lượng Phase 5 agent token (tốt, không lỗi), làm rõ nhầm lẫn về 2 folder Step A tưởng duplicate, tổng hợp lại đúng cấu trúc 3 track của OmniVideo-100K, và bắt đầu viết pipeline merge 3 track thành 1 dataset hoàn chỉnh.
+
+### 1. Reorg `data_prep/omnivideo_100k/` — xong
+
+Từ 28 file phẳng (trộn Step A + Pose + dataset-curation) → 4 thư mục con:
+```
+data_prep/omnivideo_100k/
+  pose/            # Phase 1-4 driver + submit .sbatch + task doc
+  step_a/          # step_a_tokenize_video.py, flatten_step_a_video.py, debug_seed2_load.py
+  dataset_prep/    # select_sports_subset.py, filter_animation_content.py, build_segment_captions.py, flatten_qa_text.py
+  analysis/        # compare_native_vs_30fps_render.py + compare_renders/
+  sports_subset_video_ids*.txt   # giữ top-level, dùng chung bởi pose/*
+```
+Sửa + verify bằng chạy thật (không chỉ đoán):
+- 5 file dùng sys.path trick (`dirname` x3 → x4) để vẫn ra đúng repo root khi bị đẩy sâu 1 cấp — verify bằng cách chạy `--help` thật, xác nhận import `pipeline_pose.*` thành công (chỉ lỗi thiếu numpy/cv2 ở env hệ thống, không lỗi path).
+- 5 file có `DEFAULT_VIDEO_IDS_FILE` — sửa path 1 cấp vì txt vẫn ở top-level, verify `os.path.exists()` = True cho cả 5.
+- `DEFAULT_MODEL` (yolo26n.pt) trong phase4 — verify resolve đúng file thật ở repo root.
+- Sửa path trong tất cả `submit_*.sbatch` + vài dòng docstring tự tham chiếu.
+- Xóa `__pycache__/`.
+Job Phase 4 FineVideo không bị ảnh hưởng (dùng `pipeline_pose/phase4_yolo_cleaner.py` gốc, không liên quan `data_prep/omnivideo_100k/`).
+
+### 2. Giải oan cho `flatten_step_a_video.py` — không phải bug
+
+Phiên trước nói nhầm: "`omnivideo_100k_video_flattened/` KHÔNG CÓ token `<seed2>`" — dựa trên so sánh chỉ 2000 ký tự đầu file nên hiểu sai. Kiểm tra sâu (đếm full file): **CÓ** 3,776 token `<seed2_N>` cho đúng video đó. Lý do nằm sai vị trí: `flatten_token_stream()` chỉ "flush" seed2/cosmos ra output tại đúng điểm gặp `<avc_lm>` (không theo thứ tự xuất hiện gốc trong input) — không phải mất token, thứ tự trong output đơn giản là khác thứ tự trong input. Không sửa gì, code đúng như thiết kế.
+
+### 3. Tổng hợp lại cấu trúc thật của OmniVideo-100K — 3 track độc lập
+
+Dataset gốc tải qua `tools/extract/download_omnivideo_100k.py` (HF `MiG-NJU/OmniVideo-100K`, Apache-2.0, 52.9GB): `videos.tar.part_aa..ae` (5 phần, giải nén ra **5,214 video** thật) + `scripts.jsonl` (149MB, caption/script sẵn có) + `train_oe_70k.jsonl` (70,017 QA mở) + `train_mcq_30k.jsonl` (29,966 QA trắc nghiệm) + 2 bản `_formatted`. Tổng QA 99,983 ≈ "100K" trong tên dataset — hoá ra tên gọi theo số QA pair, không phải số video (chỉ 5,214 video thật).
+
+3 track xử lý song song, độc lập, join bằng `video_id`:
+
+| Track | Pipeline | Scope | Trạng thái |
+|---|---|---|---|
+| 1. QA text (không video) | `dataset_prep/flatten_qa_text.py` | 5,214 video | Xong từ trước |
+| 2. Step A video-tokenize (seed2/cosmos/avc_lm) | `step_a/step_a_tokenize_video.py` → `step_a/flatten_step_a_video.py` | **5,214/5,214 video** | Xong từ trước |
+| 3. Pose pipeline (Phase 1-5, agent token) | `pose/phase1..4_*_omnivideo.py` + `pipeline_pose/phase5_adaptive_pchip.py` (dùng chung FineVideo) | Chỉ sports subset **1,126/5,214** | Vừa xong Phase 5 hôm nay (799 non-empty) |
+
+### 4. Check chất lượng Phase 5 agent token — TỐT, không phát hiện lỗi thật
+
+Sample 8+ video ngẫu nhiên, check kỹ:
+- 17/17 khớp có mặt mọi window (test đầu tưởng thiếu 2 khớp — do tự đoán sai tên `neck`/`head`, tên thật đúng convention H36M là `nose`/`head_top` — lỗi test, không phải lỗi data).
+- `pelvis` luôn = 128,128,128 (giữa range uint8) — **đúng thiết kế**, không phải lỗi: Phase 3 root-centering (`split_root_motion`) trừ vị trí pelvis khỏi mọi khớp nên pelvis luôn là gốc tọa độ.
+- `r_wrist_x` có variation thật (std 6.9–22.6 tùy video) — không degenerate/constant.
+- 0% giá trị bị clip ở biên (0/1 hoặc 254/255) trên 113,040 giá trị xyz sample.
+- Token `t` đúng range 0-7 theo tier CP.
+→ Agent token Phase 5 sẵn sàng dùng để merge.
+
+### 5. Phát hiện quan trọng cho merge: chunk numbering giữa Step A và Pose KHỚP CHÍNH XÁC
+
+Step A (`step_a_tokenize_video.py`) dùng `CHUNK_SIZE=8` frame @ `TARGET_FPS=30` — giống hệt Phase 5's `window_id` (stride 8 @ 30fps). `window_id` Phase 5 = `chunk_idx * 8` của Step A, khớp 1-1, không cần nội suy thời gian (khác các bug fps-mismatch đã fix trước đây — ở đây cả 2 bên đã cùng lưới 30fps/stride-8 cố định từ đầu).
+
+### 6. Plan merge 3 track (đã user duyệt cấu trúc, đang thực hiện)
+
+Quyết định: **1 record/video**, QA nối đuôi sau video tokens (không tách mỗi QA pair thành 1 record riêng — tiết kiệm token, tránh lặp lại video stream N lần).
+
+- **Bước 1 — Fix `flatten_qa_text.py` giữ `video_id`** — **XONG**. Verify: 99,983 dòng, đúng 5,214 video_id unique.
+- **Bước 2 — `phase6_merge_omnivideo.py`** (mới viết) — đọc raw `omnivideo_100k_video_flat/step_a_rank_*.jsonl`, tái dùng logic `flatten_token_stream()` từ `flatten_step_a_video.py` (import trực tiếp, không copy-paste), thêm counter `chunk_idx` tại mỗi lần flush `<avc_lm>`, tính `window_id = chunk_idx*8`, nếu có trong `pose_agent_tokens_adaptive/{video_id}_tokens.jsonl` thì chèn `<agent>{token_str}</agent>` ngay sau cosmos. Output: `/p/data1/mmlaion/shared/vla/omnivideo_100k_video_agent_merged/`. **Đang chạy** (tmux `phase6_merge_omnivideo`, ETA ước tính ~10 phút dựa trên lần test dry-run 11/32 file trong 205s — lần test đó lỡ ghi nhầm ra `/tmp` scratchpad thay vì đích thật + có `| head -5` gây rủi ro `BrokenPipeError`, đã kill và chạy lại đúng trong tmux, ghi thẳng vào `/p`).
+- **Bước 3 — `phase7_finalize_omnivideo.py`** (chưa viết) — left-join `omnivideo_100k_qa_flat.jsonl` (gom QA theo video_id) vào cuối text của Bước 2.
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- Phase 4 FineVideo (tmux `yolo_login_finevideo`) — đang chạy, ETA ~15h từ lúc submit (~12:22).
+- Phase 6 merge OmniVideo (tmux `phase6_merge_omnivideo`) — đang chạy, ETA ước tính ~10 phút.
+- Việc tiếp theo: verify Bước 2 xong (đếm video có `<agent>` phải khớp ≤799, spot-check vị trí đúng thời gian), rồi viết + chạy Bước 3.
+- Việc tồn đọng: tách `pipeline_pose/`+`pipeline_video/` vào `data_prep/finevideo/` (chờ Phase 4 FineVideo xong, ~15h); chờ Huu quyết định `MixtureVitae-Backup` SNAC + "moss" token nghĩa là gì.
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp nữa nữa — Phase 3 FineVideo login-node chạy xong, verify+upload SNAC roleplay lên HF, điều tra thực nghiệm tác dụng Phase 4 YOLO filter, chuyển synth_llava sang đúng chỗ)
+
+**Việc chính:** Cluster vẫn maintenance (`sinfo`/`scontrol` xác nhận job `978074` bị chặn cứng bởi lý do `Reserved for maintenance`, 18 node `booster` ở trạng thái `maint`) — chuyển hẳn Phase 3 FineVideo sang chạy login node (như đã làm với OmniVideo trước đó), xong hoàn toàn. Verify SNAC tokenize `laion/emotional-roleplay` (tưởng còn đang chạy dở theo note phiên trước, thực ra log cho thấy đã DONE), viết script + upload lên HF theo tên user chọn. User nghi ngờ Phase 4 YOLO filter có tác dụng thật hay không — điều tra bằng số liệu thật từ OmniVideo đã chạy xong, kết luận filter cắt thật ~25.7% dữ liệu, không phải bước thừa. Hủy job `978074` (dư thừa vì Phase 3 đã xong qua login node), submit Phase 4 FineVideo login-node luôn. Chuyển `synth_llava/` (107GB) từ `/e/data1/.../nguyen38/mixturevitae_multimodal/` sang đúng convention `/p/data1/mmlaion/shared/vla/`.
+
+### 1. Phase 3 FineVideo — login-node run, XONG hoàn toàn
+
+Cluster vẫn PENDING do maintenance, viết `slurm/run_kinematics_login.sh` (giống hệt `submit_kinematics.sh` về script/args, giảm xuống 32 worker + `nice -n 15`/`ionice -c3` vì login node dùng chung — 72 core, 9 user khác, load trung bình 12/72 lúc launch). Chạy tmux `kin_login_finevideo`. Tốc độ thật đo được: ~47 file/30s → toàn bộ 40,804 video xong trong khoảng 15-20 phút. Kết quả: **40,305 video thành công + 499 video rỗng** (0 window sạch sau hallucination filter, không phải lỗi — cùng loại outcome như 78 video EMPTY của OmniVideo) = đủ 40,804/40,804, **0 exception** trên 32 worker (verify bằng cách grep log tất cả worker). Output ghi thẳng vào `outputs/states_jsonl_30fps/` (thư mục đã đổi tên sạch từ bug fps-mismatch tuần trước).
+
+### 2. SNAC tokenize `laion/emotional-roleplay` — xác nhận DONE + verify kỹ + upload HF
+
+Note phiên trước ghi "đang chạy ~1,000/5,000 dòng shard đầu" nhưng log thật (`logs/snac_roleplay_tokenize.log`) cho thấy **đã DONE từ trước đó**: `ok=67,459 skipped_shards=0 decode_fail=0 snac_fail=0 total_snac_tokens=23,390,760`.
+
+**Verify cấu trúc toàn bộ 14 shard** (không chỉ tin log): parse lại từng dòng bằng regex, kết quả — 67,459/67,459 dòng, **0 ID trùng, 0 lỗi format, 0 token ngoài range hợp lệ** (3 offset `OFFSET_L0/L1A/L1B` đúng theo `tokenize_snac.py`), tổng token khớp chính xác log.
+
+**Phát hiện 1 vấn đề thật ở data nguồn (không phải bug tokenize):** 103/67,459 dòng (0.15%) có audio ngắn bất thường so với độ dài text — ví dụ 1 dòng text 128 ký tự nhưng token SNAC chỉ tương ứng 0.16s audio. Verify bằng ffprobe thật trên đúng bytes MP3 gốc lấy lại từ parquet (`id=cv_charming flity woman__b1_08_Hope_Enthusiasm_Optimism_2`): file chỉ 813 byte, **Duration thật = 0.14s** — xác nhận đây là audio bị cắt/hỏng sẵn trong dataset gốc, script tokenize xử lý đúng những gì có. Phần còn lại phân bố hợp lý (median 7.92s, p99 22.96s, max 66.48s, khớp README "~184h/67,491 clip").
+
+Ghi 4 sample thật từ output đầy đủ vào `samples/laion_emotional_roleplay_sample/fullrun_*.txt` (3 dòng bình thường từ 3 shard khác nhau + 1 dòng anomaly để user tự xem).
+
+**Upload lên HF:** viết `data_prep/laion_emotional_roleplay/upload_hf.py` (theo đúng pattern `tools/upload/upload_flattened_hf.py` — gzip nén, split train/test theo shard seed 42, `--repo-id` là CLI arg để user tự chọn tên chứ không hardcode). Dry-run (`--skip-upload`) trước: nén 14 shard 339MB→55MB, `gzip -t` pass hết. User tự export `HF_TOKEN` và chạy thật — **upload thành công**: `EmpathicRobotics/emotional-roleplay-finetuning-dataset-flattened` (67,459 dòng, 23.39M token, train 13 shard/test 1 shard).
+
+**Verify thêm theo yêu cầu user — decode ngược 1 sample ngẫu nhiên từ chính repo HF vừa upload:** cài `snac`+`soundfile` vào `env_stable_vla` (trước đó tìm nhầm hướng đi lục lại môi trường cũ, user nhắc đúng — chỉ cần pip install thêm, không cần tìm env nào khác). Tải 1 shard train thật từ HF (`hf_hub_download`), chọn ngẫu nhiên 1 dòng (`id=force_ogress-male-shouting-terrified_004944_b0`, 201 token). Phát hiện: **listen-format encode chỉ giữ `codes[0]`+`codes[1]` của SNAC (bỏ `codes[2]`, tầng chi tiết nhất, tốc độ 4x)** — decode cần đủ 3 tầng nên phải zero-fill `codes[2]` để nghe thử được (audio nghe được nhưng mất chi tiết tần số cao, là preview lossy chứ không phải chất lượng gốc). Tải lại audio gốc từ parquet nguồn (23,181 byte MP3) để so sánh cạnh nhau. Đã gửi cả 2 file (`hf_random_sample_decoded.wav` + `hf_random_sample_ORIGINAL.mp3`) cho user nghe trực tiếp.
+
+### 3. Điều tra thực nghiệm: Phase 4 YOLO filter có tác dụng thật không?
+
+User nghi ngờ đúng chỗ đáng nghi (chạy lại YOLO trên video có vẻ trùng việc Phase 1 đã detect person rồi) — trả lời bằng số liệu thật thay vì suy đoán.
+
+**Khác biệt kiến trúc quan trọng tìm được:** Phase 1 (`phase1_hrnet_gpu.py`) dùng **MMDetection**, threshold 0.5, chọn bbox lớn nhất mỗi frame. Phase 4 dùng **Ultralytics YOLO**, threshold 0.75 — là 1 detector hoàn toàn độc lập, không phải lặp lại.
+
+**Số liệu thật trên 1,048 video OmniVideo đã chạy xong Phase 3+4** (so `pose_states_jsonl_30fps` trước lọc với `pose_yolo_cleaned_30fps` sau lọc, đếm dòng thật từng file):
+
+| Metric | Giá trị |
+|---|---|
+| Tổng window trước lọc | 387,226 |
+| Tổng window sau lọc | 287,881 |
+| **Tỷ lệ cắt tổng** | **25.7%** |
+| Cắt trung vị/video | 18.8% (p25=4.7%, p75=37.2%) |
+| Video bị cắt 100% (có window trước, 0 sau) | **25 video** |
+
+Kiểm tra mẫu 8/25 video "cắt 100%": mỗi video có 224-504+ window pass được Phase 3 (hợp lệ về hình học) nhưng YOLO không tìm thấy người ở ≥4/8 frame trong MỌI window — gần như chắc chắn là case MMDet detect nhầm vật gì đó thành người (score>0.5) ở Phase 1, HRNet/MotionBERT vẫn lift ra bộ xương "hợp lý về hình học" từ input rác, chỉ YOLO độc lập mới bắt được.
+
+**Kết luận:** Phase 4 giữ lại, đang làm đúng việc — nếu bỏ, ước tính ~1/4 dữ liệu training sẽ lẫn pose giả từ video không có người thật.
+
+### 4. Hủy job SLURM dư thừa + submit Phase 4 FineVideo login-node
+
+`scancel 978074` (Phase 3 SLURM cũ — dư thừa vì đã xong qua login node ở mục 1). Viết `slurm/run_yolo_login.sh` (giống `submit_yolo.sh` về script/args, giảm từ 128 worker/4 GPU xuống **16 worker/1 GPU** — login node chỉ có 1× GH200 480GB, xác nhận bằng `nvidia-smi` lúc launch: 0% util, 0MiB used, hoàn toàn rảnh). Bật NVIDIA MPS riêng cho login node (pipe/log dir khác job SLURM để tránh đụng). Chạy tmux `yolo_login_finevideo`, verify worker 1 chạy khỏe (~52 window/s cho video đầu). **Đang chạy lúc ghi entry này**, chưa xong.
+
+### 5. Chuyển `synth_llava/` sang đúng convention lưu trữ
+
+Theo đúng quy tắc đã thống nhất trước đó (dataset tải ngoài → `/p/data1/mmlaion/shared/vla/`, không phải `/e/data1/.../nguyen38/`): confirm 2 mount khác nhau thật (`exa_data1` vs `data1`, 2 filesystem ID GPFS khác nhau) nên không thể `mv` tức thời, phải rsync. Chạy `rsync -a` (107GB: `data/` 53GB gốc .tar.gz + `extracted/` 55GB đã giải nén 151 shard) trong tmux `move_synth_llava`, tốc độ thật ~500MB/s. **Đang chạy lúc ghi entry này**, chưa xong, chưa xóa bản gốc (chỉ xóa sau khi verify copy xong).
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- Cluster vẫn maintenance, không còn job SLURM nào pending (đã cancel `978074`).
+- Phase 4 FineVideo (login-node, tmux `yolo_login_finevideo`) — đang chạy, 16 worker.
+- Chuyển `synth_llava/` (tmux `move_synth_llava`) — đang chạy rsync, chưa xóa bản gốc.
+- Việc tồn đọng chưa làm: tách `pipeline_pose/`+`pipeline_video/` vào `data_prep/finevideo/`; chờ Huu quyết định `MixtureVitae-Backup` SNAC (~3.27B code) và ý nghĩa "moss" token cho roleplay dataset.
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp nữa — so sánh paper iFLYTEK-Embodied-Omni, phân tích + SNAC tokenize dataset laion/emotional-roleplay, chuẩn bị tắt session)
+
+**Việc chính:** User đưa paper `iFLYTEK-Embodied-Omni` (arXiv 2607.02542, Huu chia sẻ trong chat) để so sánh với project — đọc toàn bộ 16 trang, kết luận: **họ đã có model thật, train thật, SOTA thật** (89.6% LIBERO-Plus, 93.68%/93.16% RoboTwin 2.0), nhưng **~30% data mix của họ không permissive đã xác nhận** (Ego4D 12.72% proprietary, AgiBot 11.65% CC-BY-NC-SA — 2 dataset mà **project mình đã tự điều tra và loại bỏ từ trước**). Xác nhận claim của user ("technical report chứ không phải science paper") hợp lý — chính iFLYTEK cũng tự đặt tên bài là "Technical Report". Đã lưu toàn bộ so sánh vào memory (`project_iflytek_omni_comparison.md`, `project_omni_scope_clarification.md`). Sau đó phân tích kỹ dataset `laion/emotional-roleplay-finetuning-dataset` (theo chỉ đạo Huu: "concatenate text, interleave snac/moss tokens"), viết + chạy full-scale script SNAC tokenize trên login node (tmux), verify Phase 4 OmniVideo đã DONE hoàn toàn.
+
+### 1. So sánh với iFLYTEK-Embodied-Omni — đã lưu chi tiết vào memory
+
+Tóm tắt (chi tiết đầy đủ trong memory `project_iflytek_omni_comparison.md`):
+- **Họ hơn:** data robot trajectory THẬT (không phải proxy như agent-token pose-từ-video của mình), eval task-success THẬT trên simulator chuẩn ngành (LIBERO-Plus, RoboTwin 2.0), data mixture định lượng rõ ràng, ablation kiểm soát.
+- **Mình hơn/ngang:** đã có audio (SNAC) tích hợp sẵn — họ còn chưa có, tự ghi "future work: incorporate speech"; IMU cả 2 bên đều chưa làm; kỷ luật license chặt hơn (đã loại AgiBot/EgoDex/stera-10m vì lý do license, họ thì vẫn dùng AgiBot+Ego4D+EgoDex dù non-permissive).
+- **Kết luận:** chưa đạt tới mức ngay cả "technical report" — thiếu robot-action thật, eval task-success, data mixture định lượng, ablation kiểm soát. 4 việc này là danh sách ưu tiên cụ thể nếu muốn bắt kịp.
+
+### 2. Phân tích `laion/emotional-roleplay-finetuning-dataset` — đọc kỹ README, sửa 1 hiểu nhầm
+
+Verify data thật: **67,491 dòng chính xác** (khớp README), **183.96h** (khớp "~184 hours"), audio xác nhận thật `24000 Hz, mono` qua ffmpeg probe. Phân bố: source `fill_creature` 37%/`emolia`/`ears`/`gemini`/`emotional_va`/`character`/`fill_human`; ngôn ngữ Đức 59% áp đảo. Phát hiện nhỏ: ~32/67,491 dòng `adherence_score` giá trị lạ (8/9/10/80/0) ngoài thang 1-5 README ghi — lỗi nhập liệu nhỏ, đã loại khi tokenize.
+
+**Tự sửa 1 điểm hiểu nhầm sau khi đọc kỹ README (user yêu cầu đọc lại trước khi tóm tắt):** 5 field mới (`genuineness`, `vocal_burst_blend`, `voiceclap_commercial_embedding`, `is_human`, `archetype`) **CHỈ có trong bản `webdataset/` (tar shard), KHÔNG có trong 6 file `data/*.parquet` đã tải** — README ghi rõ "the original parquet files under data/ are unchanged". Nếu sau này cần dùng các field này để lọc/cân bằng human vs non-human, phải tải thêm `webdataset/` (~3.13GB), chưa làm.
+
+### 3. Format tokenize + interleave — đã thống nhất, verify bằng chạy thật 1 sample
+
+```
+USER: <text> [Voice: <voice_description>] ASSISTANT:
+<snac> <snac_N> <snac_N> ... </snac>
+```
+
+Cố tình bỏ `instruction`/`req_*` — README's Limitations tự ghi rõ model lệch giọng nam/bình tĩnh mặc định, `req_*` overstate nữ/to tiếng so với thực tế → chỉ tin `voice_description`/`realized_gender` (audio-verified thật), không tin field ý định. Verify bằng chạy thật (không phải giả định) trên `sample5_ears`: decode MP3→float32 24kHz qua ffmpeg (audio đã sẵn 24kHz mono, không cần resample), load model `hubertsiuzdak/snac_24khz` thật trên GPU, encode ra **561 token SNAC thật**, ghép thành record hoàn chỉnh 8,220 ký tự — lưu vào `samples/laion_emotional_roleplay_sample/sample5_ears_flattened_snac.txt` để đối chiếu trực tiếp với `.mp3`/`.json` gốc.
+
+### 4. Viết + chạy full-scale `tokenize_snac.py`
+
+`data_prep/laion_emotional_roleplay/tokenize_snac.py` — không import `pipeline_pose/snac_finevideo.py` (dùng type hint `X | None` kiểu Python 3.10+, vỡ ở `env_motion_final` Python 3.9) — viết lại độc lập phần toán học SNAC encode (offset giống hệt, không đổi). Không cần `split_snac_by_chunks()` như FineVideo vì mỗi dòng là 1 clip độc lập, không có chunk video nào để căn theo — encode nguyên clip thành 1 khối token phẳng.
+
+Đo throughput thật trước khi cam kết quy mô (đúng thói quen dự án): 300 dòng thật mất 21s (trừ overhead load model ~4-5s) → ước tính **~63 phút cho toàn bộ 67,459 dòng** trên login node GPU — hợp lý, không cần SLURM. **Đã submit chạy full trong tmux session `snac_roleplay`** (không dùng background task tool, theo đúng yêu cầu user từ trước), output ghi vào `/p/data1/mmlaion/shared/vla/laion_emotional_roleplay/flattened/roleplay_snac_flat_{00000..00013}.jsonl` (13-14 shard × 5,000 dòng), log tại `logs/snac_roleplay_tokenize.log`. **Đang chạy lúc ghi entry này** (~1,000/5,000 dòng shard đầu).
+
+### 5. Sửa lộn vị trí lưu trữ (nhắc lại từ mục trước) — đã thống nhất rõ
+
+Theo đúng quy tắc user chốt: dataset tải ngoài → `/p/data1/mmlaion/shared/vla/`. Đã áp dụng đúng cho `laion_emotional_roleplay` (tải + output tokenize đều ở đây). **`mixturevitae_multimodal/synth_llava/` (107GB) vẫn còn ở `/e/data1/.../nguyen38/`** — chưa chuyển, cần hỏi lại user.
+
+### Trạng thái cuối phiên (user chuẩn bị tắt/mở lại session)
+
+- **`978074`** (Phase 3 FineVideo full-scale rerun, 40,804 video) — vẫn PENDING, cluster bảo trì diện rộng, chưa rõ ETA. Chưa submit lại Phase 4 FineVideo (`slurm/submit_yolo.sh`, đã fix + verify) vì phải chờ `978074` xong trước.
+- **Phase 4 OmniVideo** — **XONG HOÀN TOÀN** (verify thật): 1,037 done + 11 skip + 78 no_input (đúng số video Phase 3 rỗng) = 1,126/1,126, 0 lỗi. Output: `$DATA/omnivideo_100k/pose_yolo_cleaned_30fps/` (1,048 file).
+- **`snac_roleplay`** (tmux) — đang chạy, ETA ~1 giờ từ lúc submit (07:59). Kiểm tra bằng `tmux attach -t snac_roleplay` hoặc `tail -f logs/snac_roleplay_tokenize.log`.
+- **Việc lớn đã thống nhất nhưng CHƯA làm:** tách `pipeline_pose/`+`pipeline_video/` (FineVideo) vào `data_prep/finevideo/` — chờ Phase 3/4 FineVideo chạy xong hẳn để tránh đổi path giữa lúc job đang chạy. Chuyển `mixturevitae_multimodal/synth_llava/` sang `/p/data1/mmlaion/shared/vla/` — chưa hỏi/làm.
+
+---
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp — làm rõ scope "omni", khảo sát + tải 2 dataset mới ngoài scope video/pose, chạy Phase 4 OmniVideo trên login node)
+
+**Việc chính:** User hỏi tại sao Huu (leader) lại nhắc tới ảnh tĩnh/audio roleplay trong khi tưởng project chỉ làm VLA video cho humanoid — dẫn tới làm rõ **scope thật của project rộng hơn nhiều** so với những gì `CLAUDE.md` mô tả (đã cập nhật toàn bộ `.md` — xem mục 1). Khảo sát 2 dataset mới theo yêu cầu Huu: `synth_llava`/`synth_llava2` (ảnh+caption tổng hợp, Huu tự tạo) và `laion/emotional-roleplay-finetuning-dataset` (audio+text TTS tổng hợp). Trong lúc chờ cluster hết bảo trì (job Phase 3 FineVideo `978074` vẫn PENDING), chạy Phase 4 OmniVideo trực tiếp trên GPU login node (qua tmux theo yêu cầu user, không dùng background task tool).
+
+### 1. Làm rõ scope "omni" — cập nhật toàn bộ file `.md` cấp cao
+
+Huu xác nhận trực tiếp trong chat: dự án là **omni-modal** — bind bất kỳ tổ hợp modal nào (ảnh, video, âm thanh, action, IMU...), miễn **license permissive + cân bằng tỷ trọng modal + tạo được cross-modal binding thật**, không bắt buộc phải liên quan robot/humanoid như khung `PAB-Spline VLA` (video+pose) hiện tại — khung đó chỉ là **1 modal-pair branch** trong bức tranh lớn hơn. Đã thêm ghi chú scope này vào: `CLAUDE.md` (project-wide), `3d-human-pose/README.md`, `REPORT.md` (section "Project Scope Update" mới), `PROGRESS.md` (tiếng Anh), `datasets.md`. Cũng ghi nhận lo ngại thật của user về tính khoa học/khả thi paper khi scope liên tục mở rộng mà eval protocol vẫn "Still open" — chưa có 1 câu hỏi nghiên cứu trung tâm cố định để justify từng nguồn data mới — đã nêu với user, chưa hành động (quyết định hướng nghiên cứu thuộc về Huu).
+
+### 2. `synth_llava` / `synth_llava2` — khảo sát xong, đã tải + giải nén
+
+Theo lịch sử chat, đây là 2 file trong path `mixture-vitae-backup/MixtureVitae-Backup/data/multimodal` mà đợt khảo sát 9/7 (`tools/inventory/peek_multimodal.py`) **chưa kịp peek tới** (report cũ dừng đúng trước 2 file này). Peek trước (không tải full, stream qua HTTP) rồi mới tải full theo yêu cầu user (56.2GB) — ban đầu tải nhầm vào `/e/data1/.../nguyen38/mixturevitae_multimodal/`, **user sửa lại đúng convention: dataset tải ngoài phải vào `/p/data1/mmlaion/shared/vla/`** (giống `omnivideo_100k`/`robovqa`/`sensenova_si8m` cũ) — đã note lại, chưa move (chỉ áp dụng cho download mới từ giờ, xem mục 4).
+
+**Cấu trúc xác nhận bằng data thật:** 151 shard liên tục (`shard-0000000`→`shard-0000150`, 2 file chia nhau không trùng), mỗi shard = 1 `.jsonl` (4000 dòng caption) + 1 `.wds` (**thực chất cũng là tar**, xác nhận qua `file`) chứa 4000 cặp `image_N.png` (256×256) + `metadata.json` khớp 1-1 với `.jsonl`. Tổng **603,999 sample thật** (đếm chính xác). Nguồn: `llava_pretrain|shard-N|create_multimodal_data.generate_images_then_captions` — ảnh sinh tổng hợp (AI-generated) rồi mới auto-caption, không phải ảnh chụp thật. Xem 3 mẫu thật (1 mẫu có artifact sinh ảnh rõ — bàn poker chữ vô nghĩa; 2 mẫu khá thực tế) — đã copy vào `samples/synth_llava_sample/`.
+
+**Đánh giá kỹ thuật (trước khi biết rõ scope omni):** seed2 là loại token DUY NHẤT khớp được (cosmos cần chuỗi 8-frame thời gian thật, avc_lm mã hoá bitstream H.264 — cần video thật, agent cần pose 3D chuyển động) — nhưng data này chỉ có seed2, không transition được sang modal khác, có nguy cơ củng cố lỗi eval đã biết ("model kẹt ở seed2, không tự chuyển cosmos→avclm→agent") nếu tỷ trọng quá cao. Sau khi biết rõ scope omni (mục 1), kết luận: vẫn hợp lệ như 1 modal-pair (ảnh↔text) trong tổ hợp lớn hơn, miễn **tỷ trọng nhỏ, cân bằng** — không phải lý do loại bỏ, chỉ là điều kiện khi trộn.
+
+### 3. `laion/emotional-roleplay-finetuning-dataset` — khảo sát + tải xong
+
+Theo chỉ đạo trực tiếp Huu: "concatenate the text and interleave with snac and/or moss tokens". Kiểm tra: public, không gated, license cc-by-4.0. **67,491 clip audio tổng hợp** (mono MP3 24kHz, ~184h, sinh bởi MOSS-TTS-Local v1.5 fine-tune riêng của Huu `laion/moss-1.5-roleplay-finetune`), đa ngôn ngữ Đức(chủ đạo)/Anh/Tây Ban Nha/Pháp, nhiều giọng nhân vật giả tưởng (orc/goblin/dragon...). Field chính: `text` (lời thoại), `voice_description` (mô tả giọng kiểu DramaBox, do gemini-3.5-flash **nghe audio thật** rồi viết — không phải mô tả mù), `instruction` (ý định gốc), `adherence_score`, `realized_gender`, cùng VoiceCLAP embedding (768-d) + `genuineness`/`vocal_burst_blend` (attribute mới). Khớp đúng ý Huu: audio → `snac` (đã có sẵn trong project, không cần token mới) và/hoặc "moss" (chưa rõ nghĩa — có thể là token riêng của model MOSS-TTS, cần hỏi lại). Đã tải 6 file parquet (2.5GB) vào `/p/data1/mmlaion/shared/vla/laion_emotional_roleplay/` — đúng convention, chưa tokenize.
+
+### 4. Sửa lộn vị trí lưu dataset tải ngoài — quy tắc rõ từ giờ
+
+User chỉ ra: dataset tải từ ngoài (HF) phải lưu ở `/p/data1/mmlaion/shared/vla/` (nơi `omnivideo_100k`/`robovqa`/`sensenova_si8m` cũ đã ở đó), **không phải** `/e/data1/.../nguyen38/` (nơi này dành cho pipeline output/working data của chính project, ví dụ `omnivideo_100k/pose_*` là kết quả pipeline tự chạy ra, không phải "tải ngoài"). Đã xoá thư mục tải nhầm (`/e/data1/.../nguyen38/laion_emotional_roleplay`, mới tải dở), tải lại đúng chỗ. **Việc còn để ngỏ, CHƯA làm:** `mixturevitae_multimodal/synth_llava/` (107GB, cả 2 file `.tar.gz` gốc + phần đã giải nén) hiện vẫn đang ở `/e/data1/.../nguyen38/` — cần hỏi lại user có muốn chuyển sang `/p/data1/mmlaion/shared/vla/` không trước khi tự ý di chuyển 107GB.
+
+### Trạng thái cuối phiên (tiếp)
+
+Job Phase 4 OmniVideo chuyển từ SLURM (`978072`, huỷ) sang chạy trực tiếp GPU login node trong tmux session `phase4_omnivideo` (theo yêu cầu user, không dùng background task tool) — đang chạy tốt, ~52% (585/1,126 video) tính tới lúc ghi entry này. Job `978074` (Phase 3 FineVideo full-scale rerun) vẫn PENDING, cluster bảo trì diện rộng chưa rõ ETA.
+
+---
+
+## Cập nhật phiên làm việc — 20/07/2026 (Phase 2→4 OmniVideo-100K, tách output riêng khỏi FineVideo, bắt 2 bug fps-mismatch thật ảnh hưởng cả FineVideo, fix + rerun)
+
+**Việc chính:** Track lại Phase 2 OmniVideo-100K (đã COMPLETED từ phiên trước, verify lại bằng data thật), chạy tiếp Phase 2.5 (resample 30fps) và Phase 3 (kinematics). Theo yêu cầu user, **tách hẳn output OmniVideo-100K ra khỏi thư mục `outputs/` dùng chung với FineVideo** (trước đó 2 phiên convention là "an toàn vì video_id không trùng" — nhưng gây khó đếm/kiểm tra/dọn dẹp riêng). Trong lúc viết driver Phase 4, **phát hiện 1 bug fps-mismatch thật, nghiêm trọng, có từ trước** trong `phase4_yolo_cleaner.py` gốc — ảnh hưởng 35% video FineVideo đã chạy production (dùng để train cả 2 model hiện có). Điều tra sâu hơn phát hiện thêm **bug thứ 2 cùng loại** trong `apply_2d_mask()` (Phase 3) — cũng ảnh hưởng FineVideo, và ảnh hưởng cả Phase 3 OmniVideo vừa chạy xong. Fix cả 2, verify bằng data thật, rerun Phase 3 cho cả OmniVideo (xong) và FineVideo (đang submit, chờ cluster hết bảo trì). Chạy phân tích tương quan confidence-vs-hallucination theo yêu cầu user — kết quả ngược kỳ vọng, kết luận không nên dùng confidence làm filter bổ sung.
+
+### 1. Phase 2 (MotionBERT) — xác nhận đã xong từ phiên trước
+
+Verify lại bằng data thật (không chỉ tin SLURM state): job `977337` COMPLETED, **1,126/1,126 video** ra `.npy` hợp lệ, 0 error trên 32 rank. 2 lần pilot trước đó (`977034` lỗi 100% do `os.rename()` xuyên mount, `977128` fix bằng `shutil.move()` mới OK) — bài học đã áp dụng đúng cho pilot lần 2 trước khi chạy full.
+
+### 2. Tách output OmniVideo-100K ra khỏi `outputs/` dùng chung — theo yêu cầu user
+
+User đặt câu hỏi đúng: tại sao để chung 1 folder với FineVideo. Quyết định cũ ("video_id không trùng nên an toàn") đúng về mặt kỹ thuật nhưng sai về mặt vận hành (khó đếm/dọn/kiểm tra riêng). Đã:
+- Di chuyển 1,126×3 file (`2d_json`, `3d_npy`, preview `.mp4`) từ `outputs/` sang `$DATA/omnivideo_100k/pose_2d_json/`, `pose_3d_npy/` (cùng mount `exa_data1` nên `os.rename()` tức thời, không phải copy 262GB).
+- Revert merge `fps_lookup.json` chung (đã lỡ merge 5,214 entry OmniVideo vào — revert sạch về đúng 43,751 entry FineVideo cũ), tách riêng thành `$DATA/omnivideo_100k/fps_lookup.json` (5,214 entry).
+- Cập nhật default path trong `phase1_hrnet_omnivideo.py`/`phase2_motionbert_omnivideo.py` cho khớp.
+
+### 3. Phase 2.5 (resample 30fps) — driver mới, chạy login node (20 giây)
+
+`data_prep/omnivideo_100k/phase2_5_resample_omnivideo.py` — import `resample_pose()` từ bản gốc (không đụng file gốc, hàm này vốn dataset-agnostic), chỉ viết lại phần iteration (theo video_id list, không glob cả thư mục `outputs/3d_npy` 43,751 file của FineVideo). Chạy `tools/extract/extract_fps.py` cho toàn bộ 5,214 video OmniVideo trước (12 giây), verify 0 ID trùng FineVideo. **1,126/1,126 video xong trong 20 giây trên login node** — đúng dự đoán, việc này quá nhẹ để cần SLURM. Render skeleton so sánh trước/sau cho 1 video 25fps (gửi user xem) — timing khớp chính xác (120.00s cả 2 bên), video control 30fps ra byte-identical.
+
+### 4. Phase 3 (kinematics) — chạy 2 lần (trước và sau khi phát hiện bug §6)
+
+Lần đầu (trước khi phát hiện bug): login node, 1,126 video xong trong ~2 phút. Kết quả: **928 video OK, 198 EMPTY** (không lỗi, chỉ quá nhiễu để có window sạch). Hallucination filter loại trung bình 30.4% frame, chủ yếu do `rogue_joint_filter` (khớp bị kéo dài bất thường — đặc trưng lỗi lifting khi chuyển động nhanh, xác nhận bằng cách phân rã riêng từng loại filter trên 1 video mẫu, phân bố đều theo thời gian chứ không phải bug cục bộ).
+
+### 5. Phát hiện bug thật #1 — fps-mismatch trong `phase4_yolo_cleaner.py` gốc (ảnh hưởng cả FineVideo)
+
+Trong lúc viết driver Phase 4 cho OmniVideo, phát hiện: script gốc đọc **frame tuần tự từ video native-fps** nhưng `window_id` trong `states_jsonl_30fps` lại đánh số theo **lưới 30fps đã resample** (Phase 2.5) — 2 timeline khác nhau bị coi là một. Verify bằng data FineVideo thật (`-2MKTg-LNio`, 25fps): `native_frames=12,758` nhưng `states` có `max_window+8=15,304` — lệch ~2,546 frame. Hệ quả: (a) mọi window vượt quá `native_frames` bị **âm thầm bỏ** (mất ~1/6 cuối video ở video 25fps), (b) window còn lại đọc nhầm thời điểm, lệch dần tới ~20% tổng thời lượng. Đo thật: **35% FineVideo** (15,321/43,751 video fps lệch ≥5% so với 30) và **37.3% OmniVideo subset** (420/1,126) sẽ bị ảnh hưởng nếu copy y hệt logic gốc.
+
+**Fix:** viết mapping `native_idx ↔ resampled_idx` qua `np.round(np.linspace(0, N-1, M))` (cùng công thức endpoint-aligned mà `resample_pose()` dùng chiều ngược lại) — áp dụng cả cho `pipeline_pose/phase4_yolo_cleaner.py` (sửa tại chỗ, vì đây là bug thật trong code dùng chung, không phải vấn đề tương thích dataset) và driver mới `data_prep/omnivideo_100k/phase4_yolo_cleaner_omnivideo.py`. Verify bằng cả gọi hàm trực tiếp lẫn qua đúng CLI/`main()` trên video FineVideo thật: `total_input=1,913` (đủ, không mất), `max window_id giữ lại=14,712` (gần đúng 15,304 thay vì bị chặn cứng ở ~12,750 như bản cũ).
+
+### 6. Phát hiện bug thật #2 — `apply_2d_mask()` (Phase 3) cùng loại lỗi + 1 lỗi riêng cho OmniVideo
+
+Lúc chuẩn bị phân tích confidence, phát hiện `apply_2d_mask()` cũng so `pose2d` (native fps) với `pose3d` (đã resample 30fps) qua `num_frames = min(len(pose3d), len(pose2d))` — **cùng bug fps-mismatch như mục 4**, verify trên `z-Qcz_FMW7Q` (25fps): 600/3,600 frame cuối (resampled-space) **không bao giờ được mask**.
+
+**Bug riêng #2b (chỉ OmniVideo):** check "khớp bị thiếu" của hàm này yêu cầu `x=y=conf=0` cả 3 — đúng cho driver FineVideo gốc (ép conf về 0/1) nhưng **sai cho driver OmniVideo** (`phase1_hrnet_omnivideo.py` cố tình giữ conf liên tục, chỉ zero x,y). Verify thật: **9,162/13,404 (68.4%)** khớp lẽ ra phải bị mask lại bị bỏ sót do check sai field.
+
+**Fix (`pipeline_pose/phase3_kinematics_processor.py`, sửa tại chỗ):** thêm mapping native↔resampled giống mục 4 (bản không phụ thuộc torch/ultralytics, viết riêng thay vì import từ `phase4_yolo_cleaner.py` để tránh kéo dependency nặng không cần thiết); đổi check zero-mask chỉ nhìn `x,y` (bỏ `conf` khỏi điều kiện) — không đổi hành vi với driver FineVideo gốc (x,y và conf vốn cùng về 0 ở đó), chỉ fix đúng cho OmniVideo. Verify: video mẫu giờ có 2,909/3,600 frame được mask đúng (từ 0 → 546/600 ở 600 frame cuối từng bị bỏ sót).
+
+### 7. Rerun sau fix — không xoá, đổi tên output cũ để có đường lùi
+
+Thay vì `rm -rf` (không thể hoàn tác), **đổi tên** các thư mục output cũ bị ảnh hưởng (cùng mount nên tức thời, không tốn thời gian copy):
+- `outputs/yolo_cleaned_30fps` → `outputs/yolo_cleaned_30fps_buggy_fps_mismatch_2026-07-20` (107GB, FineVideo)
+- `outputs/states_jsonl_30fps` → `outputs/states_jsonl_30fps_buggy_2026-07-20` (193GB, FineVideo)
+- `$DATA/omnivideo_100k/pose_states_jsonl_30fps` → `..._buggy_2026-07-20` (OmniVideo)
+
+Rerun Phase 3 OmniVideo ngay (login node, rẻ): **928→1,048 video OK** (198→78 EMPTY) — fix không chỉ đúng hơn mà còn tăng yield thật, vì mask đúng giúp hallucination-filter không còn bị nhiễu bởi khớp lẽ ra đã phải NaN từ trước.
+
+User xác nhận (qua `AskUserQuestion`) muốn rerun full-scale Phase 3 cho FineVideo luôn (không chỉ pilot) — đã submit `978074` (`slurm/submit_kinematics.sh`, không cần sửa vì đã dataset-agnostic, fix nằm trong `phase3_kinematics_processor.py`).
+
+**Job `978073`** (Phase 4 FineVideo, submit trước khi phát hiện bug #2) đã bị `scancel` — lý do: nó đọc `states_jsonl_30fps` mà mình vừa đổi tên để `978074` ghi lại, nếu chạy trước sẽ đọc nhầm thư mục thiếu/rỗng. Sẽ submit lại sau khi `978074` xong.
+
+### 8. Phân tích tương quan confidence ↔ hallucination — kết quả ngược kỳ vọng, không nên dùng làm filter
+
+Theo yêu cầu user, đối chiếu confidence trung bình/frame (đã align đúng qua mapping ở mục 5) với việc frame có bị geometric hallucination filter loại hay không (60 video, 176,656 frame):
+
+| Confidence bucket | Tỷ lệ bị hallucination-filter loại |
+|---|---|
+| 0.00–0.30 | 7.6% |
+| 0.30–0.50 | 15.8% |
+| 0.50–0.70 | **34.5%** |
+| 0.70–0.85 | 27.3% |
+| 0.85–1.01 | 0.7% |
+
+Hệ số Pearson **+0.21** (yếu, **dương** — ngược kỳ vọng "confidence thấp → dễ hallucination"). Giải thích hợp lý: khớp confidence thấp bị zero-out ở Phase 1 rồi được `interpolate_nan_gaps()` làm mượt trước khi vào bộ lọc → ít bị coi là rogue joint; ngược lại khớp confidence 0.5–0.85 thường là chi chuyển động nhanh, rõ nét 2D nhưng khó cho MotionBERT lift đúng độ sâu → dễ hallucination hơn. **Kết luận: không nên dùng confidence làm filter bổ sung/dự đoán hallucination** — tương quan yếu và sai chiều so với giả thuyết ban đầu.
+
+### Trạng thái cuối phiên
+
+Job đang PENDING (cluster bảo trì, `Reserved for maintenance`, nhiều node `booster` ở trạng thái `maint`, không có ETA rõ): `978072` (Phase 4 OmniVideo, 928/1,126→1,048/1,126 sau rerun Phase 3), `978074` (Phase 3 FineVideo full-scale rerun, 40,804 video). Cần làm tiếp sau khi `978074` xong: submit lại Phase 4 FineVideo (đã fix, script đã sẵn `slurm/submit_yolo.sh` + `pipeline_pose/phase4_yolo_cleaner.py`). Việc lớn tiếp theo đã thống nhất nhưng CHƯA làm: tách `pipeline_pose/` + `pipeline_video/` (FineVideo) vào `data_prep/finevideo/` để đối xứng với `data_prep/omnivideo_100k/`, `data_prep/robovqa/` — sẽ làm sau khi các job Phase 3/4 hiện tại chạy xong (tránh sửa path giữa lúc job đang chạy).
 
 ---
 

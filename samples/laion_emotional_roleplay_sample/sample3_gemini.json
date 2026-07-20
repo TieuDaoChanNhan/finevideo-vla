@@ -1,0 +1,16 @@
+{
+  "voice_description": "A soft-spoken female voice with a hesitant, intimate tone. Her delivery is slow and fragmented, characterized by frequent pauses and sighs that convey a sense of vulnerability and self-consciousness.",
+  "text": "Yeah, I know it's probably ridiculous. He just... listens, you know? ... Like, *really* listens. And now all I can think about is what he *thinks* when I talk. ... God, it's pathetic. I haven't felt this way since high school.",
+  "language": "English",
+  "realized_gender": "female",
+  "instruction": "Hollywood movie quality voice acting, valley girl accent, this voice conveys VERY INTENSE understanding, creating a distinctive vocal character that resonates with authentic emotional depth. The delivery conveys anguish and infatuation. Speaking with a US accent.",
+  "adherence_score": "5",
+  "duration": 21.6,
+  "req_character": null,
+  "req_gender": null,
+  "req_volume": null,
+  "req_emotion": null,
+  "source": "gemini",
+  "id": "gem_Achernar__Achernar__sample_en_no-bursts",
+  "audio_file": "gem_Achernar__Achernar__sample_en_no-bursts.mp3"
+}

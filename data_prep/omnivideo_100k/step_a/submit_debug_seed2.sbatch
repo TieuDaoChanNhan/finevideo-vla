@@ -20,4 +20,4 @@ module load torchvision/0.20.1
 
 source /e/project1/reformo/nguyen38/env_stable_vla/bin/activate
 
-python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/debug_seed2_load.py
+python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/step_a/debug_seed2_load.py

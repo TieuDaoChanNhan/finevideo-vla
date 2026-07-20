@@ -25,4 +25,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 # Full-scale: 32 rank * ~163 video = 5,214 video. ~4.3h ước tính từ pilot
 # (93.8s/video/GPU, xem PROGRESS_VI.md). Có resume — an toàn để submit lại
 # nguyên lệnh này nếu job bị timeout/crash giữa chừng, video đã xong sẽ skip.
-srun python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/step_a_tokenize_video.py
+srun python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py

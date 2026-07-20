@@ -19,4 +19,4 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 # default), measured pilot throughput ~263s/video/GPU -> ~2.6h estimated, --time=04:00:00
 # for safety margin. Resume is global (skips video_ids whose output already exists across
 # ALL step_a_rank_*.jsonl-equivalent 2d_json files), safe to resubmit unchanged on timeout/crash.
-srun python -u data_prep/omnivideo_100k/phase1_hrnet_omnivideo.py
+srun python -u data_prep/omnivideo_100k/pose/phase1_hrnet_omnivideo.py

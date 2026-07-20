@@ -16,8 +16,13 @@ it explains *why* the answer requires cross-modal (audio+visual) reasoning,
 which is exactly the kind of signal DISCUSS-1 wants, so it's kept rather
 than dropped.
 
+Output keeps `video_id` (present on every source row) alongside `text` --
+needed to join this QA text onto the Step A + pose merge output later
+(phase7_finalize_omnivideo.py groups all QA rows for a video_id and appends
+them after that video's token stream).
+
 Usage:
-    python3 data_prep/omnivideo_100k/flatten_qa_text.py
+    python3 data_prep/omnivideo_100k/dataset_prep/flatten_qa_text.py
 """
 import json
 import os
@@ -72,7 +77,9 @@ def main():
                 if not rec.get("question") or not rec.get("answer"):
                     n_skipped += 1
                     continue
-                out_f.write(json.dumps({"text": format_oe(rec)}, ensure_ascii=False) + "\n")
+                out_f.write(json.dumps(
+                    {"video_id": rec["video_id"], "text": format_oe(rec)},
+                    ensure_ascii=False) + "\n")
                 n_oe += 1
 
         with open(MCQ_FILE) as f:
@@ -83,7 +90,9 @@ def main():
                 if not question or not options or not rec.get("answer"):
                     n_skipped += 1
                     continue
-                out_f.write(json.dumps({"text": format_mcq(rec)}, ensure_ascii=False) + "\n")
+                out_f.write(json.dumps(
+                    {"video_id": rec["video_id"], "text": format_mcq(rec)},
+                    ensure_ascii=False) + "\n")
                 n_mcq += 1
 
     print(f"open-ended: {n_oe}, mcq: {n_mcq}, skipped: {n_skipped} -> {OUT_PATH}")

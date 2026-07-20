@@ -26,9 +26,14 @@ original -- avoids feeding MotionBERT garbage coordinates); only the
 confidence value is kept at its real, continuous value.
 
 Output keeps the original's exact format ({"frame_id", "keypoints": [[x,y,conf]x17]}),
-written to outputs/2d_json/{video_id}_2d.json (same directory as FineVideo, per
-the design in JUPITER_POSE_PILOT_TASK.md section 3, so Phase 2 can read it with
-zero changes -- safe since video_ids from the two corpora never collide).
+written to $DATA/omnivideo_100k/pose_2d_json/{video_id}_2d.json.
+
+Note: this used to write into the shared outputs/2d_json/ (same directory
+FineVideo uses, on the reasoning that video_ids from the two corpora never
+collide, so it was "safe"). Moved to its own directory under the
+OmniVideo-100K data root instead -- mixing a 1,126-file subset into a
+40,804-file FineVideo directory made it needlessly hard to inspect, count,
+or clean up this corpus independently, even though it was never incorrect.
 """
 import argparse
 import json
@@ -48,8 +53,8 @@ CONF_THRESHOLD = 0.5
 
 DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k"
 DEFAULT_VIDEOS_DIR = os.path.join(DATA_ROOT, "videos")
-DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(__file__), "sports_subset_video_ids_filtered.txt")
-DEFAULT_OUTPUT_DIR = "outputs/2d_json"  # same directory FineVideo uses -- see module docstring
+DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sports_subset_video_ids_filtered.txt")
+DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "pose_2d_json")
 
 RANK = int(os.environ.get("SLURM_PROCID", 0))
 WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))

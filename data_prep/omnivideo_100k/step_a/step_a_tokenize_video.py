@@ -47,7 +47,7 @@ for _name in ("apply_chunking_to_forward", "find_pruneable_heads_and_indices", "
 # ourselves first (pipeline.py's Seed2Tokenizer.load_tokenizer() re-imports the
 # same cached module later) and patch both classes with this pattern to return
 # None (== "no output embeddings") instead of crashing, matching the original
-# intent. Verified via data_prep/omnivideo_100k/debug_seed2_load.py.
+# intent. Verified via data_prep/omnivideo_100k/step_a/debug_seed2_load.py.
 sys.path.insert(0, os.path.join(PROTOTYPE_DIR, "seed2"))  # noqa: E402
 import seed2_tokenizer as _seed2_tokenizer  # noqa: E402
 

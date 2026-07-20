@@ -28,7 +28,7 @@ Output: one JSONL, one line per video:
                     "speech": "<joined 'Speaker: text' lines>"}, ...]}
 
 Usage:
-    python3 data_prep/omnivideo_100k/build_segment_captions.py
+    python3 data_prep/omnivideo_100k/dataset_prep/build_segment_captions.py
 """
 import json
 import os

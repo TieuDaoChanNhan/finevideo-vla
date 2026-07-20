@@ -6,7 +6,7 @@ a visual check) -- meant to narrow down which videos are worth spending pose-
 pipeline GPU compute on, not a precise content classifier.
 
 Usage:
-    python data_prep/omnivideo_100k/select_sports_subset.py
+    python data_prep/omnivideo_100k/dataset_prep/select_sports_subset.py
 """
 
 import json

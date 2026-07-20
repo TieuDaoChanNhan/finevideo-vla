@@ -1,0 +1,16 @@
+{
+  "voice_description": "A deep, raspy, and menacing male voice with a slow, deliberate cadence and a dark, villainous tone.",
+  "text": "You offer me silver? I have no use for your shiny trinkets. I only deal in souls.",
+  "language": "English",
+  "realized_gender": "male",
+  "instruction": "Speak with a harsh, raspy edge of fury, feeling insulted by a cheap offering.",
+  "adherence_score": "5",
+  "duration": 7.52,
+  "req_character": "banshee",
+  "req_gender": "female",
+  "req_volume": "normal",
+  "req_emotion": "furious",
+  "source": "fill_creature",
+  "id": "fill_banshee-female-normal-speaking-furious-angry_012558",
+  "audio_file": "fill_banshee-female-normal-speaking-furious-angry_012558.mp3"
+}

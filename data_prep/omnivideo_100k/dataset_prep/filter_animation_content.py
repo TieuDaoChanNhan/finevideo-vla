@@ -23,7 +23,7 @@ match. Frame-level detection-rate stats from the real Phase 1 run remain the
 final backstop for whatever this text heuristic misses.
 
 Usage:
-    python data_prep/omnivideo_100k/filter_animation_content.py
+    python data_prep/omnivideo_100k/dataset_prep/filter_animation_content.py
 """
 
 import json

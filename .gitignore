@@ -5,6 +5,11 @@ env_motion_final/
 env_hrnet_datasets_v1/
 miniforge3/
 env_pose/
+env_flatten/
+
+# Local pipeline output symlinks/backups (environment-specific, not code)
+/outputs
+/outputs_local_backup/
 
 # Local venvs (Windows dev machine)
 tools/inventory/env_multimodal_inventory/

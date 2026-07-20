@@ -18,7 +18,7 @@ one-record-per-video schema (no scenes/activities nesting, no agent/snac
 blocks).
 
 Usage:
-    python data_prep/omnivideo_100k/flatten_step_a_video.py [--skip-existing]
+    python data_prep/omnivideo_100k/step_a/flatten_step_a_video.py [--skip-existing]
 """
 
 import argparse

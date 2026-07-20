@@ -6,6 +6,43 @@
 
 ---
 
+## ⚠️ Project Scope Update (Jul 20, 2026)
+
+Everything in this report describes the **FineVideo/OmniVideo-100K video + 3D-pose branch** — the
+most-built-out part of the project and the origin of the "VLA for humanoid robot" framing. As of
+Jul 20, 2026, Huu (project lead) clarified directly (Discord) that the actual project scope is
+broader: an **omni-modal** model binding *any* modality pair — image, video, sound, action, IMU,
+etc. — not specifically humanoid-robot data. Quote: *"omni means all modes... as long as we
+balance the dataset and create cross modal bindings."* The acceptance bar for a new data source is
+**license permissiveness + balanced modality mix + demonstrable cross-modal binding**, not "does
+it involve video/pose/action."
+
+Two sources pulled in under this broader scope, neither of which fits the video+pose branch at
+all:
+- **`synth_llava`/`synth_llava2`** (`mixture-vitae-backup/MixtureVitae-Backup/data/multimodal`,
+  Huu's own dataset) — ~604K synthetic (AI-generated) image+caption pairs, 256×256 PNG, WebDataset
+  format (151 shards). No video, no action, no audio. Intended to be tokenized as `<seed2_N>` —
+  the only existing tokenizer in this project that accepts a standalone image (`cosmos` needs an
+  8-frame temporal window, `avc_lm` encodes H.264 *video* bitstream motion, `agent` needs a lifted
+  3D pose sequence). Samples in `samples/synth_llava_sample/`.
+- **`laion/emotional-roleplay-finetuning-dataset`** — 67,491 fully-synthetic TTS speech clips
+  (~184h, MOSS-TTS-generated, German-dominant + en/es/fr) pairing `text` + a DramaBox-style
+  `voice_description` caption with generated audio (mono MP3 24kHz). Intended for `snac` and/or
+  "moss" tokens (per Huu's instruction: "concatenate the text and interleave with snac and/or moss
+  tokens"). Downloaded to `/p/data1/mmlaion/shared/vla/laion_emotional_roleplay/`.
+
+**Open concern (not resolved, raised by Van Khue Jul 20):** the project's eval protocol is still
+listed as "Still open" below (Pre-training Blockers, item 3), and there is not yet a single fixed
+central research question that each new data-source addition is being justified against — data
+sources are currently being added per ad-hoc Discord instruction rather than against a documented
+acceptance test. This is a real risk to paper/scientific-rigor feasibility if scope keeps expanding
+without eval discipline catching up; flagged to the team, not yet acted on.
+
+See `../CLAUDE.md`'s Project Overview and `datasets.md` for the fuller external-dataset inventory,
+and `PROGRESS_VI.md`'s 2026-07-20 entries for the full discussion.
+
+---
+
 ## Repo Reorg Note (Jul 9, 2026)
 
 `tools/` was split into subfolders (`upload/`, `tokenizer/`, `inventory/`, `eval/`, `visualize/`, `analysis/`, `extract/`) and ambiguously-named dirs were renamed (`multimodal/` → `investigations/mixturevitae_multimodal/`, `data_prep/` → `investigations/mv_omni_seed_conversion/`, `test/` → `manual_checks/`; `dev/` archived). **Script paths referenced below in older sections reflect the pre-reorg flat `tools/` structure** — e.g. `tools/data_inventory.py` is now `tools/inventory/data_inventory.py`. See the updated root `README.md` for the current layout.
@@ -86,6 +123,38 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - Output: `outputs/states_jsonl_30fps/{video_id}_states.jsonl` — shape `(windows, 8, 153)`
 - **40,200 videos** (604 dropped due to too-short sequences), **193 GB**
 
+**⚠ Bug found and fixed (Jul 20, 2026): `apply_2d_mask()` frame-index mismatch + missed occlusion masks.**
+While extending this pipeline to a new dataset (OmniVideo-100K, see
+`data_prep/omnivideo_100k/`), two real bugs were found in
+`apply_2d_mask()`, used by every Phase 3 run to date:
+
+1. **fps-mismatch:** the function compared `pose3d` (already resampled to
+   the 30fps grid by Phase 2.5) against the 2D confidence JSON (still on
+   the video's *native* fps timeline) frame-for-frame, via
+   `num_frames = min(len(pose3d), len(pose2d))`. For any video whose
+   native fps != 30, this both (a) left every resampled frame past the
+   native frame count completely unmasked, and (b) masked the frames it
+   did cover against the wrong real-world timestamp — same class of bug
+   found independently in Phase 4 (below). Verified on real production
+   data (25fps video): 600/3,600 resampled frames were never masked at
+   all. **35% of FineVideo's 43,751 videos** have native fps deviating
+   ≥5% from 30 and are affected to varying degrees.
+2. A second, OmniVideo-100K-specific bug (the "missing joint" check
+   required confidence == 0.0 too, which only holds for this script's
+   original binarized-confidence convention) does not affect FineVideo,
+   whose upstream Phase 1 driver already binarizes confidence.
+
+**Fix:** `pipeline_pose/phase3_kinematics_processor.py` was patched in place
+(endpoint-aligned `native_idx <-> resampled_idx` linspace mapping, same
+technique as the Phase 4 fix; the "missing joint" check now looks at x,y
+only). **Full-dataset rerun in progress** (SLURM job `978074`, submitted
+Jul 20, 2026, pending on a cluster maintenance window) — this invalidates
+`outputs/states_jsonl_30fps/` as previously described above; the pre-fix
+output was moved (not deleted) to
+`outputs/states_jsonl_30fps_buggy_2026-07-20/` for rollback. Everything
+downstream (Phase 4 cleaning, agent tokens, both trained models) was built
+on the pre-fix output — see the Phase 4 note below for the same caveat.
+
 #### Phase 4 — YOLO Person-Presence Cleaning
 **Script:** `pipeline_pose/phase4_yolo_cleaner.py` | **SLURM:** `slurm/submit_yolo.sh`
 
@@ -94,6 +163,45 @@ Each activity contains: `text_prompt`, `speech_transcript`, `video_tokens` (with
 - Removes windows where subject is off-screen, occluded, or in scene transitions
 - Output: `outputs/yolo_cleaned_30fps/{video_id}_cleaned.jsonl`
 - **40,195 videos**, **107 GB**
+
+**⚠ Bug found and fixed (Jul 20, 2026): native-fps/resampled-fps frame-index mismatch.**
+Found while writing an equivalent driver for OmniVideo-100K: this script
+decodes frames sequentially from the *native-fps* source video
+(`videos_staging/`) and used the raw decode-order index directly as the
+`frame_cache` key — but `window_id` in `states_jsonl_30fps` is indexed on
+the *resampled-30fps* grid Phase 2.5 produced. For any video whose native
+fps != 30, those are different timelines. Verified on real production
+output (25fps video `-2MKTg-LNio`): native frame count is 12,758 but its
+`states_jsonl_30fps` runs up to `window_id+8=15,304` — so every window
+past 12,758 was silently dropped (losing the last ~1/6 of the video), and
+every window that *was* kept read YOLO's person-presence result from the
+wrong point in time, drifting by up to ~20% of the video's duration by the
+end. **35% of FineVideo's 43,751 videos** (native fps deviating ≥5% from
+30) are affected to varying degrees; the same issue does not occur for
+already-30fps sources.
+
+**Fix:** `pipeline_pose/phase4_yolo_cleaner.py` was patched in place (added
+`--resampled-npy-dir`, builds an explicit `native_idx <-> resampled_idx`
+mapping via `np.round(np.linspace(0, N-1, M))` — the same endpoint-aligned
+mapping `resample_pose()` uses going the other direction — instead of
+assuming the two index spaces are the same). Verified against real data via
+both a direct function call and the full CLI path before touching
+production output. **The pre-fix output (`outputs/yolo_cleaned_30fps/`,
+107GB) was moved — not deleted — to
+`outputs/yolo_cleaned_30fps_buggy_fps_mismatch_2026-07-20/`** for rollback,
+and a full-dataset rerun is queued (`slurm/submit_yolo.sh`, updated with
+the new `--resampled-npy-dir` arg) behind the Phase 3 rerun above (job
+`978074` must finish first, since Phase 4 reads Phase 3's output).
+
+**Caveat for existing artifacts:** both trained models
+(`vla-1.7b-pab-spline-25b-test`, `vla-1.7b-pab-spline-adaptive`) and the
+`FineVideo-Phase4-YOLOPose`/agent-token/tokenized datasets described
+elsewhere in this report were built from the **pre-fix** Phase 3/4 output.
+This does not make them "wrong" outright — 65% of videos (already ~30fps)
+were never affected by either bug — but the ~35% non-30fps videos in the
+mix had systematically mistimed occlusion masking and person-presence
+cleaning. Re-tokenizing/re-training on the fixed data is a separate,
+not-yet-scheduled decision.
 
 **Data quality analysis (Jul 2, 2026):**
 

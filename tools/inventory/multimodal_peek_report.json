@@ -1,27 +1,37 @@
 {
-  "train_data_snac.jsonl.gz": {
-    "format": "jsonl.gz",
-    "records": [
+  "synth_llava2.tar.gz": {
+    "format": "tar.gz",
+    "members": [
       {
-        "unparsed_preview": "{\"file_name\": \"-mbNY4yL_qI_256.ogg\", \"media_type\": \"audio\", \"text\": \"Так, что у нас там? Что у нас тут? Так. Дождь стрел обрушивает на врага. Так, это воля.\", \"language\": \"ru\", \"snac_token\": [130981, 134194, 146993, 130754, 134052, 148190, 129791, 136392, 148364, 129090, 132542, 145621, 131796, 136262, 148685, 131089, 135807, 146611, 132333, 133888, 148210, 132333, 135206, 146176, 129307, 135174, 147149, 131339, 133132, 147501, 130148, 134295, 145527, 131538, 135148, 145420, 130899, 133481, 1473"
+        "name": "synth_llava2/shard-0000001.jsonl",
+        "size": 3053490,
+        "ext": ".jsonl",
+        "preview": "{\"text\": \"<caption><image_0>The image is a portrait of a young boy wearing a green graduation cap and gown. He is smiling and looking directly at the camera. The cap is green with a yellow tassel hanging from the top. The gown is a dark green color with a white collar and a green tie. The background is a solid green color. The image is framed in a green ornate frame.</caption>\", \"metadata\": \"{\\\"source\\\": \\\"llava_pretrain|shard-0000006|create_multimodal_data.generate_images_then_captions.50\\\", \\\""
       },
       {
-        "unparsed_preview": "{\"file_name\": \"-mZStjomW80_5.ogg\", \"media_type\": \"audio\", \"text\": \"Maria Betoneri e Giovanni Raspini. Lei ha donato la parte della Toscana? Era quasi automatico, non poteva rimanere questo archivio incompleto della parte che\", \"language\": \"it\", \"snac_token\": [131751, 134158, 148629, 132292, 133366, 147407, 132203, 133432, 148157, 130164, 133977, 144949, 129628, 133828, 146495, 129971, 136036, 148534, 129938, 136341, 145501, 129938, 132898, 146035, 132021, 132947, 146337, 130875, 135267, 146841, "
+        "name": "synth_llava2/shard-0000014.wds",
+        "size": 382812160,
+        "ext": ".wds"
       },
       {
-        "unparsed_preview": "{\"file_name\": \"-mXxIK0WX1Q_12.ogg\", \"media_type\": \"audio\", \"text\": \"ticket DK what do we want um again we don't really want to trinket because the thought gauge has been super cool it's got the AOE CC after some\", \"language\": \"en\", \"snac_token\": [130949, 132531, 146052, 130789, 136308, 148051, 131928, 133822, 146589, 131464, 135712, 146884, 129591, 136173, 148685, 129310, 136311, 148599, 129310, 135773, 148291, 129004, 136078, 145411, 129534, 133352, 146802, 130837, 135113, 145912, 131254, 13271"
+        "name": "synth_llava2/shard-0000138.wds",
+        "size": 382545920,
+        "ext": ".wds"
       },
       {
-        "unparsed_preview": "{\"file_name\": \"-mXxIK0WX1Q_5.ogg\", \"media_type\": \"audio\", \"text\": \"sucks that is a uh better big sad I looted a leech Shield last night but a 270 you can't you know I'm not going to I do believe we have keys on Demon Hunter and death night and I think\", \"language\": \"en\", \"snac_token\": [129412, 134824, 147825, 131924, 135303, 147816, 130691, 136294, 147230, 132102, 135901, 148603, 132027, 134135, 145325, 130138, 134432, 147979, 131056, 132613, 147816, 129202, 133293, 146172, 130402, 135773, 14506"
+        "name": "synth_llava2/shard-0000132.jsonl",
+        "size": 3057643,
+        "ext": ".jsonl",
+        "preview": "{\"text\": \"<caption><image_0>The image shows a man in a blue suit sitting at a desk in an office. He is holding a piece of paper in his hands and appears to be reading it intently. The desk is cluttered with papers, a laptop, and a perfume bottle. The man has a beard and is wearing glasses. The office has large windows and a plant in the background. The overall mood of the image is professional and focused.</caption>\", \"metadata\": \"{\\\"source\\\": \\\"llava_pretrain|shard-0000132|create_multimodal_dat"
       },
       {
-        "unparsed_preview": "{\"file_name\": \"-m_Gee281sE_46.ogg\", \"media_type\": \"audio\", \"text\": \"Sie wollen mir jetzt nochmal drohen oder was? Sie sind gerade eben mitten im Dienst. Du knallst hier niemanden außer deine haarige Frau. Du kannst den Yeti ja gerne flachlegen. Ich frage sie nur ohne Sonnen, okay? Sir, ich wollte nur von dir ein Pflaster eigentlich. Hier, ist dein Pflaster genug? Hey, hey, das ist dein Job. Und ja, wenn es so zu wird, ich bin dein vorgesetzter Kollege.\", \"language\": \"de\", \"snac_token\": [129235, "
+        "name": "synth_llava2/shard-0000010.wds",
+        "size": 385484800,
+        "ext": ".wds"
       }
     ],
     "flag": "text-only",
     "vla_types_seen": [],
-    "raw_bytes_read": 3000000,
-    "truncated": true,
-    "elapsed_s": 1.6
+    "elapsed_s": 14.2
   }
 }

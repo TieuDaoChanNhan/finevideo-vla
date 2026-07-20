@@ -358,6 +358,18 @@ def to_safe_json_list(arr):
     arr_obj[np.isnan(arr)] = None
     return arr_obj.tolist()
 
+def _native_for_resampled(native_frames, resampled_frames):
+    """Endpoint-aligned linspace mapping: for each resampled-grid frame index
+    (0..resampled_frames-1), the nearest matching native-fps frame index.
+    Same mapping resample_pose() (phase2_5_resample_30fps.py) used going the
+    other direction -- inverse of it, kept here as a tiny, dependency-free
+    duplicate (see fix note below) rather than importing phase4_yolo_cleaner
+    just for this, which would pull in torch/ultralytics unnecessarily."""
+    if resampled_frames < 1:
+        return np.zeros(0, dtype=np.int64)
+    return np.round(np.linspace(0, max(native_frames - 1, 0), resampled_frames)).astype(np.int64)
+
+
 def apply_2d_mask(pose3d, json_2d_path):
     if pose3d.ndim != 3 or pose3d.shape[1:] != (17, 3):
         raise ValueError(f"Input must be (N, 17, 3), got {pose3d.shape}")
@@ -371,9 +383,37 @@ def apply_2d_mask(pose3d, json_2d_path):
     pose2d_list = []
     for item in data:
         pose2d_list.append(item["keypoints"])
-    pose2d = np.asarray(pose2d_list, dtype=np.float64)
+    pose2d_native = np.asarray(pose2d_list, dtype=np.float64)  # (N_native, 17, 3) x,y,conf
 
-    num_frames = min(len(pose3d), len(pose2d))
+    # --- Fix (2026-07-20): two bugs found while investigating Phase 4 ---
+    # (1) pose3d here is the Phase-2.5-resampled (30fps grid) array while
+    #     pose2d_native is indexed on the *native* fps of the source video
+    #     (Phase 1 output, never resampled). The previous version compared
+    #     pose2d[i] to pose3d[i] directly (min(len(pose3d), len(pose2d)) frames)
+    #     -- correct only when native fps == 30. For any other native fps this
+    #     both (a) leaves every resampled frame past len(pose2d_native)
+    #     completely unmasked, and (b) masks the frames it does cover against
+    #     the wrong real-world timestamp (same class of bug as Phase 4's
+    #     frame-index mismatch, see phase4_yolo_cleaner.py). Verified on real
+    #     data (25fps video, OmniVideo-100K "z-Qcz_FMW7Q"): pose3d has 3,600
+    #     resampled frames vs pose2d_native's 3,000 -- the last 600 (100s-120s
+    #     of the video) were never masked at all.
+    # (2) The "was this joint zeroed at Phase 1" check required x, y, AND
+    #     confidence to all be exactly 0.0. That's only true for the original
+    #     phase1_hrnet_gpu.py, which binarizes confidence to 0.0/1.0. The
+    #     OmniVideo-100K driver (phase1_hrnet_omnivideo.py) deliberately keeps
+    #     the real continuous confidence value even when x,y are zeroed (see
+    #     its docstring) -- so requiring conf==0.0 too missed 68.4% of
+    #     genuinely-zeroed joints on the same test video. Fixed by checking
+    #     only the x,y channels, which is what "zeroed position" actually means;
+    #     this doesn't change behavior for the original driver's output (its
+    #     x,y are 0 in exactly the same frames its own conv is 0).
+    resampled_frames = len(pose3d)
+    native_frames = len(pose2d_native)
+    native_idx_for_resampled = _native_for_resampled(native_frames, resampled_frames)
+    pose2d = pose2d_native[native_idx_for_resampled] if native_frames > 0 else pose2d_native
+    num_frames = resampled_frames
+
     masked_pose3d = pose3d.astype(np.float64, copy=True)
 
     # 2D Gate: Translation dictionary COCO (HRNet) -> Human3.6M (MotionBERT)
@@ -393,7 +433,7 @@ def apply_2d_mask(pose3d, json_2d_path):
         16: 3   # R_Ankle
     }
 
-    zero_joint_mask = np.all(pose2d[:num_frames] == 0.0, axis=-1)
+    zero_joint_mask = np.all(pose2d[:num_frames, :, :2] == 0.0, axis=-1)
 
     # Only mark NaN on the corresponding joints; leave interpolated joints (e.g. Pelvis) untouched
     for coco_idx, h36m_idx in coco_to_h36m.items():

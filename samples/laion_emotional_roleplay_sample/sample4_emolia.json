@@ -1,0 +1,16 @@
+{
+  "voice_description": "A mature, deep male voice with a calm and measured delivery. The tone is clear and serious, with a slightly raspy quality.",
+  "text": "Ein Brief des Wolfgang Misensky, der damals Bereichsleiter der EMA 12 war, ist ja der Vorgängerorganisation des Fonds Soziales Wien, der uns damals geschrieben hat, welche Projekte er denn gern in Wien umgesetzt hätte.",
+  "language": "German",
+  "realized_gender": "male",
+  "instruction": "A very young infant gender-ambiguous speaker with a scratchy and elevated-pitch voice, delivering this high-quality studio voice recording with no background noise. The delivery is composed and earnest, conveying palpable gratitude, faint emotional numbness, the faintest pride and gentle affection.",
+  "adherence_score": "1",
+  "duration": 11.92,
+  "req_character": null,
+  "req_gender": null,
+  "req_volume": null,
+  "req_emotion": null,
+  "source": "emolia",
+  "id": "emolia_DE_0-CVLYiO13c_W000001",
+  "audio_file": "emolia_DE_0-CVLYiO13c_W000001.mp3"
+}

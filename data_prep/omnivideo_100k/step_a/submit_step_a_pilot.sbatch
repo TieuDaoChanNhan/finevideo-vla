@@ -23,6 +23,6 @@ export FFMPEG_PATH=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # Pilot: 8 rank * 6 video = 48 video, đo throughput thật trước khi tính quy mô full-scale.
-srun python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/step_a_tokenize_video.py \
+srun python -u /e/project1/reformo/nguyen38/3d-human-pose/data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py \
     --output-dir /e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k/step_a_output_pilot \
     --limit 48
