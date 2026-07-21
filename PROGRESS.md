@@ -2,7 +2,7 @@
 
 **Author:** Van Khue Nguyen  
 **Last updated:** July 21, 2026  
-**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — maintenance mostly over (18 stray nodes still `maint`, not blocking scheduling), Phase 4 FineVideo back on normal SLURM (128 workers / 4 GPUs)  
+**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — maintenance mostly over. Phase 4 FineVideo **DONE** (40,300/40,305). Phase 5 **DONE**. Phase 6 running.  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
 **⚠️ Scope update (Jul 20, 2026):** the "watch video, hear speech, generate robot motion" framing
@@ -15,6 +15,89 @@ tokenize as `<seed2_N>`) and `laion/emotional-roleplay-finetuning-dataset` (spee
 via `snac`/"moss"). See `REPORT.md`'s "Project Scope Update" section and `PROGRESS_VI.md`'s
 2026-07-20 entries for full detail, including an open concern about eval-protocol/research-question
 discipline not keeping pace with the widening data-source scope.
+
+---
+
+## Cập nhật phiên làm việc — 21/07/2026 (tiếp lần 3 — Phase 4 xác nhận DONE, phân tích chat Discord với Huu → pivot chiến lược sang nguồn data pose đã annotate sẵn, chốt Harmony4D, chạy lại Phase 5→6 cho FineVideo, phát hiện + xử lý JUWELS/Jupiter storage mismatch, bắt đầu tải Harmony4D)
+
+**Việc chính:** Track lại Phase 4 (job `1004747`) và phát hiện đã **COMPLETED thật sự** (docs cũ ghi ~67%, thực tế đã xong lúc 08:19 sáng cùng ngày) — tính được số liệu Huu hỏi từ lâu ("how much data was filtered out"): **45.9% window bị occlusion filter drop** (43.0M → 23.2M), 8.3% video (3,359/40,300) mất trắng hoàn toàn. Sau đó đọc + phân tích 1 đoạn chat Discord dài giữa Huu và Van Khue về đúng chủ đề này, dẫn tới quyết định pivot chiến lược: **ngừng đầu tư cải thiện pose detector, chuyển sang tìm dataset pose-video đã annotate sẵn** để bù gap occlusion + multi-person. Điều tra 3 ứng viên (MotionVid, OCHuman-Pose, Harmony4D) + rà thêm `Awesome-Video-Datasets` — chốt **Harmony4D** (MIT, đúng cả 2 gap), loại JRDB-Pose3D dù fit kỹ thuật tốt hơn (CC BY-NC-SA, vi phạm chính sách permissive-only). Chạy lại Phase 5 (agent tokens) trên Phase 4 mới, rồi chuẩn bị Phase 6 — phát hiện `submit_merge_adaptive_v4.sh` cũ trỏ vào 1 checkout repo khác trên `/p` (JUWELS storage, lùi sau 3 commit, agent-tokens-dir trỏ vào file `.tar` chưa giải nén) — nếu chạy thẳng sẽ merge caption/speech mới vào agent token cũ/rỗng. Test xác nhận **compute node của Jupiter không mount được `/p`** (chỉ login node thấy) → quyết định cuối: xử lý toàn bộ trên `/e`. Bắt đầu tải Harmony4D (352GB) song song.
+
+### 1. Phase 4 FineVideo — xác nhận COMPLETED, tính số liệu filter nợ Huu
+
+`sacct` xác nhận job `1004747` COMPLETED lúc 08:19:09 (không còn job nào trên `squeue`) — entry phiên trước ghi ~67% chỉ là snapshot cũ. Kết quả cuối: **40,300/40,305 video (99.99%)**, 5 lỗi (3 CUDA OOM do 128 worker tranh GPU qua MPS, 2 "windows could not be resolved") — tỷ lệ lỗi 0.012%, không đáng retry riêng.
+
+Đếm window thật (Phase 3 output vs Phase 4 output, `xargs -P16 wc -l` + sum đúng qua mọi batch — lần đầu dùng `tail -1` sai vì xargs chia nhiều batch, mỗi batch có dòng "total" riêng, phát hiện + sửa ngay):
+- Trước filter: 42,994,892 window
+- Sau filter: 23,245,694 window
+- **Bị drop: 19,749,198 (45.9%)** — đây là con số trả lời câu Huu hỏi trong đoạn chat Discord bên dưới
+- 3,359/40,300 video (8.3%) mất trắng toàn bộ (0 window nào pass)
+
+### 2. Phân tích chat Discord Huu ↔ Van Khue → pivot chiến lược nguồn data pose
+
+User dán 1 đoạn chat Discord dài, yêu cầu đọc + phân tích. Chuỗi logic: Huu hỏi tại sao drop pose bị occlude → truy ra root cause là **giới hạn detector** (HRNet hallucinate, ví dụ nhận nhầm cây thành người, nên phải thêm YOLO filter chặn) chứ không phải chủ đích thiết kế → hệ quả là dataset loại hết mọi cảnh có occlusion (người đi khuất sau cây) lẫn multi-person (pipeline hiện chỉ lấy 1 bbox tự tin nhất/frame). Huu quyết định: **không đầu tư cải thiện detector nữa** ("it might be a rabbit hole"), vì đang chạy đua thời gian ("summer is almost over") — 2 hướng train mùa này: model nhỏ (omni-VLA + RL trong simulation) và model lớn (dataset MV2, làm POC omni model tốt cả ở language). Thay vào đó: **tìm dataset pose-video đã annotate sẵn** trên HF.
+
+Chi tiết đáng chú ý: 1 list dataset gợi ý do AI generate mà Huu paste có **`FineVideo-Phase2-3DPose` — chính dataset team đã upload** — bị liệt kê như của bên thứ 3; Huu tự nhận xét điều này cho thấy data pose-video permissive-license công khai thực sự khan hiếm.
+
+Lưu vào memory (`project_pivot_pose_dataset_sourcing`): không đề xuất sửa detector nữa cho các phiên sau; "VALID" và "Leo" (JUWELS/Leonardo) là 2 proper noun Huu nhắc tới trong chat, chưa xác nhận rõ nghĩa, cần verify trước khi giả định.
+
+### 3. Điều tra 3 ứng viên (agent nền) + rà Awesome-Video-Datasets — chốt Harmony4D
+
+Launch 1 agent nghiên cứu song song (không sửa code, chỉ tra cứu):
+- **MotionVid**: loại — HF repo chỉ có caption+keypoint 2D (DWPose), **không có video thật** (phải tự ghép lại từ 9 dataset gốc, nhiều cái non-commercial)
+- **OCHuman-Pose**: loại — chỉ ảnh tĩnh (không video/temporal), 2D only, chỉ có eval split, license mâu thuẫn (HF ghi MIT nhưng nguồn khác nói CC BY-NC)
+- **Harmony4D**: ✅ chọn — MIT xác nhận từ nguồn gốc tác giả (`jyuntins/harmony4d` trên GitHub + `Jyun-Ting/Harmony4D` trên HF, không phải bản mirror `Voxel51/Harmony4D` ghi thiếu license). 208 sequence, 24 subject, luôn 2 người/cảnh (hugging/grappling/sword/ballroom/karate/mma), multi-view video + 3D pose 17-joint + SMPL mesh fit contact-aware — giải đúng cả occlusion lẫn multi-person
+- Rà `xiaobai1217/Awesome-Video-Datasets` (list thiên action-recognition, không hiệu quả lắm cho pose): tìm ra **JRDB-Pose3D** (SMPL multi-person 3D, 5-35 người/frame, nhãn occlusion rõ ràng — fit kỹ thuật tốt hơn cả Harmony4D) nhưng **CC BY-NC-SA → loại thẳng, không bàn thêm**, đúng chính sách permissive-only. NTU RGB+D/120, UAV-Human cũng bị loại (non-commercial / viewpoint không hợp / license chưa xác nhận).
+
+User chốt trực tiếp: **Harmony4D**, bỏ qua JRDB-Pose3D dù kỹ thuật tốt hơn, vì "chỉ quan tâm permissive thôi, làm open source mà". Đồng thời làm rõ dynamic quyết định: "Huu chỉ là PI thôi", Van Khue tự quyết kỹ thuật trực tiếp, không cần chờ Huu duyệt từng bước — đã lưu vào memory feedback (`feedback_decision_authority_and_license_policy`) để các phiên sau không tự thêm rào cản "cần confirm với Huu trước" không cần thiết.
+
+### 4. Chạy lại Phase 5 (agent tokens) trên Phase 4 mới
+
+`outputs/agent_tokens_adaptive/` cũ (18,847 file, 19/06) được dựng trên Phase 3/4 **trước khi fix bug fps-mismatch** — script Phase 5 chỉ skip theo `os.path.exists()`, không biết input đã đổi, nên phải move (không xóa) sang `agent_tokens_adaptive_buggy_fps_mismatch_2026-07-20/` trước khi submit lại, tránh bị skip nhầm. Submit `slurm/submit_phase5_adaptive.sh` (job `1006884`, 64 worker) — **COMPLETED trong 5 phút28s**: 19,076 video có agent token, 21,224 video rỗng (đa số do joint tay bị NaN gần như toàn bộ trong footage YouTube, đúng như REPORT.md đã ghi từ trước), 0 skip.
+
+### 5. Phase 6 — phát hiện kiến trúc `/p` (JUWELS) vs `/e` (Jupiter) không tương thích, xử lý xong
+
+Định submit thẳng `slurm/submit_merge_adaptive_v4.sh` (script cũ, có đủ `--captions-dir`/`--speech-segments-dir` như note đã ghi từ phiên trước) nhưng phát hiện 2 vấn đề nghiêm trọng trước khi chạy:
+1. `--input-glob` trỏ vào `final_dataset_adaptive_v3` — bản này được build từ Phase 3/4/5 **trước khi fix fps-mismatch** (v3 tạo 12/07, fix bug 20/07) — nếu dùng sẽ merge caption/speech mới vào agent/pose token cũ lỗi, phí công regen Phase 4+5 vừa xong.
+2. Script chạy trên checkout `/p/data1/mmlaion/nguyen38/3d-human-pose` — **lùi sau 3 commit** so với `/e` (thiếu cả fix fps-mismatch lẫn wrapper-token hôm trước) — đã `git pull` đồng bộ lại.
+3. `--agent-tokens-dir` của bản `/p` trỏ vào 1 file `agent_tokens_adaptive.tar` **chưa giải nén** (chỉ là bản backup từ 19/07), không phải thư mục thật.
+
+User làm rõ: `/p/data1` là storage của **JUWELS**, `account=laionize` là account riêng JUWELS — không dùng được từ session Jupiter hiện tại. Test trực tiếp bằng `srun` xác nhận **compute node của Jupiter/booster không mount được `/p`** (chỉ login node thấy) — đây chính là lý do các script cũ phải chạy qua JUWELS. Sau khi cân nhắc (ban đầu định đưa hết data về `/p` theo policy mới của user, rồi phát hiện conflict này), **quyết định cuối: toàn bộ pipeline xử lý trên `/e`** (đã lưu memory `feedback_data_storage_location`, đảo ngược policy cùng ngày sau khi hiểu rõ giới hạn hạ tầng). Copy 3 thư mục phụ trợ (snac_tokens 6.5GB/40,779 file, captions_dict 114MB/40,798 file, speech_segments 334MB/40,490 file — dữ liệu cũ, không bị ảnh hưởng bug pose, không cần regen) từ `/p` sang `/e`. Viết `slurm/submit_merge_adaptive_v5.sh` (account `reformo`/`booster`, input đúng base `training_ready_rank_*.jsonl` — không phải v3 — + agent token mới + snac/caption/speech đã copy) — submit job `1007805` (32 task), tất cả `RUNNING` ngay, 0 lỗi. Spot-check live trên phần đã ghi: 112 video/1,148 activity, agent 16.9% (khớp gần đúng con số lịch sử "full-chain 18.8%" của bản v3/v4 cũ), snac 90.7%, caption 90.8% — tín hiệu tốt.
+
+### 6. Bắt đầu tải Harmony4D (352GB)
+
+Viết `tools/extract/download_harmony4d.py` theo đúng convention các script tải khác trong repo (`snapshot_download`, resumable, retry loop, `HF_HUB_DISABLE_XET=1`). Tra trực tiếp cấu trúc thật trên HF (`Jyun-Ting/Harmony4D`): `train/` 15 zip (~287GB, 01_hugging → 15_mma4), `test/` 7 zip (~65GB) — README chỉ 24 byte, không có tài liệu, phải tự giải nén để xem format. License MIT xác nhận trực tiếp trên HF card. Target ban đầu định để `/p` rồi sửa lại `/e` theo quyết định ở mục 5. User tự chạy trong tmux (`logs/harmony4d_download.log`) — phát hiện cần env `activate_env_tools.sh` (khác 2 env chính trong CLAUDE.md, nhẹ hơn, đủ `huggingface_hub`) vì module-load thủ công bị lỗi thiếu `libpython3.12.so.1.0` khi activate `env_stable_vla` trực tiếp không qua đúng trình tự. **Đang tải, ~139GB/352GB (~39%) tại thời điểm ghi entry, 0 lỗi.**
+
+**Sự cố nhỏ:** user paste `HF_TOKEN` thật ra chat khi debug lỗi thiếu module — đã cảnh báo user revoke/tạo token mới sau khi xong việc.
+
+### 7. Phase 6 (merge v5) — COMPLETED, verify sạch
+
+Job `1007805` xong trong **22 phút** (nhanh hơn ước tính 45p-1.5h). 32/32 task COMPLETED, exit 0:0, 160/160 file output, 0 lỗi. Verify số liệu: 40,804 video, 398,775 activity (**khớp tuyệt đối** với số liệu lịch sử v2/v3), agent injected 2,326,095 (**cao hơn** bản cũ 2,148,474 — +8.3%, hợp lý vì fix fps-mismatch giúp match đúng timestamp hơn), snac injected 38,824,718 (**khớp tuyệt đối từng số** với v2 — đúng kỳ vọng vì audio không bị ảnh hưởng bug pose).
+
+### 8. Phase 7 (flatten v6) — 1 lần fail, tìm đúng nguyên nhân, fix, chạy lại
+
+Submit lần đầu (`job 1007976`) dùng `setup_motionbert.sh` (env_motion_final, theo convention Phase 5/6) — **fail ngay** với `ModuleNotFoundError: No module named 'wn'` (thư viện WordNet cho text augmentation, `import wn` cứng ở đầu file, không có try/except). Đáng chú ý: `sacct` vẫn báo `COMPLETED 0:0` dù thực chất crash — vì script bash không check exit code của lệnh python trước dòng echo cuối cùng → **bài học: không tin `sacct` một mình, phải đọc `.err` thật**.
+
+Điều tra: `wn` chỉ có sẵn trong venv `env_tools` (`/p/data1/mmlaion/nguyen38/env_tools`) — nhưng venv này **cũng dính đúng lỗi JUWELS/Jupiter y hệt cả buổi**: `python3` bên trong nó là symlink trỏ tới đường dẫn phần mềm JUWELS (`/p/software/juwels/...`), không tồn tại trên Jupiter, nên "activate" nó từ Jupiter thực chất không chạy gì — Python thật thực thi là bản module-load của Jupiter, dùng package từ `~/.local` (site-packages riêng user, mount toàn cluster). `wn` chưa từng được cài vào `~/.local`. Fix: `python3 -m pip install --user wn` + `python3 -m wn download oewn:2024` chạy từ login node (dùng đúng `python3 -m pip`, không dùng lệnh `pip`/`pip3` trực tiếp — bản thân file `pip` trong venv `/p` cũng có shebang trỏ tới interpreter JUWELS bị hỏng y hệt).
+
+Sửa `submit_phase7_flatten_v6.sh` bỏ `source activate_env_tools.sh` (gây lỗi `No such file or directory` vô hại trên compute node nhưng gây nhiễu debug), thay bằng `module load` trực tiếp. Resubmit (`job 1007994`) — **chạy đúng, ra output thật** (verify: file đầu có 2,031 dòng nội dung `### Context:`/`### Keywords:`/`### Speech:` đúng format). Giữa chừng `squeue`/`scontrol` bị lỗi kết nối SLURM controller tạm thời (cluster-wide, không liên quan job) khiến 1 lần tưởng nhầm job đã "hỏng" — verify lại bằng filesystem trực tiếp (nội dung file output, không phụ thuộc SLURM controller) xác nhận job vẫn chạy tốt, không cần kill/resubmit lại. **Tại thời điểm ghi entry: ~96/160 file, đang chạy tiếp, 0 lỗi.**
+
+### 9. Harmony4D — tiếp tục tải, có 1 lần đứt kết nối tự resume
+
+Tại thời điểm ghi entry: **~308GB/352GB (~87%)**. Có 1 lần mất kết nối giữa chừng khi tải `02_grappling.zip` (đứt ở 28.3/44.1GB) — script tự "Trying to resume download..." theo đúng thiết kế resumable, không cần can thiệp.
+
+### 10. Thảo luận chiến lược: "omni model — data đủ chưa, output là gì?" — làm rõ 3 framing mâu thuẫn
+
+User đặt câu hỏi cấp cao, thấy mơ hồ: liệu data đã đủ cho lần train omni tiếp theo, và output model thực sự là gì. Rà lại toàn bộ docs + thảo luận trước đó, phát hiện **3 framing khác nhau đang tồn tại song song, không khớp nhau**: (1) framing gốc CLAUDE.md — humanoid VLA, output = pose/action token; (2) framing Huu 20/07 — "omni means all modes... cross-modal bindings", không định nghĩa output cụ thể; (3) framing từ chat Discord phiên trước — 2 nhánh train: model nhỏ (omni-VLA + RL-in-sim, có target đo được) và model lớn (MV2, POC "performant in language too", chưa có eval nào đo). Đối chiếu với REPORT.md: đây **không phải vấn đề mới** — chính Van Khue đã tự flag y hệt concern này ngày 20/07 ("not yet a single fixed central research question..."), vẫn chưa giải quyết.
+
+User yêu cầu tự tin đề xuất 1 framing rõ thay vì liệt kê. Đề xuất (dựa trên bằng chứng thực tế đã đầu tư công sức, không phải lời nói): **mục tiêu thật nên là VLA model có năng lực cốt lõi sinh action/pose token hợp lệ, thước đo cuối là closed-loop task success trong simulation (RL rollout)** — không phải benchmark ngôn ngữ. Bằng chứng: toàn bộ pipeline 7-phase chỉ phục vụ việc này; 2 phép eval đã chạy (agent completion, modality transitions) đều đo action; quyết định Harmony4D hôm nay cũng để vá gap action-token. Hệ quả: "đủ data chưa" nên đo bằng **volume + đa dạng agent-token** (hiện chưa đủ — occlusion cắt 46%, chỉ lower-body, 1 người/cảnh — đúng lý do Harmony4D đáng làm), không phải tổng token toàn corpus. Cảnh báo riêng: nếu Huu thật sự muốn claim "performant in language too", **hiện chưa có eval nào đo việc đó** — cần 1 benchmark ngôn ngữ chuẩn riêng, đây là gap hoàn toàn khác, chưa ai làm.
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- **Phase 4, 5, 6 FineVideo** — **XONG** cả 3.
+- **Phase 7 (flatten v6)** — đang chạy (job `1007994`), ~96/160 file, 0 lỗi, ETA còn vài phút.
+- **Harmony4D download** — đang tải, ~308/352GB (~87%).
+- Đã cài thêm `wn` (WordNet) + lexicon `oewn:2024` vào `~/.local` — cần thiết cho mọi lần chạy Phase 7 sau này trên Jupiter.
+- Việc tồn đọng: verify + upload lại `FineVideo-Phase7-Flattened` sau khi Phase 7 xong; phân tích cấu trúc thật Harmony4D sau khi tải xong rồi thiết kế pipeline convert SMPL/COCO-17 → H36M-17; **quyết định chưa chốt với Huu**: framing/eval protocol thật cho omni model (đề xuất ở mục 10, chưa gửi Huu); tách `pipeline_pose/`+`pipeline_video/` vào `data_prep/finevideo/` (vẫn hoãn); chờ Huu quyết định `MixtureVitae-Backup` SNAC + ý nghĩa "moss" token; RoboVQA vẫn treo do câu hỏi kiến trúc chưa giải (16 frame rời rạc/episode vs video liên tục Step A cần).
 
 ---
 

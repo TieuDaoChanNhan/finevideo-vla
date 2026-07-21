@@ -24,7 +24,7 @@ size_categories:
   - 100K<n<1M
 ---
 
-# FineVideo-Phase7-Flattened — Megatron-LM Multimodal Pretraining Dataset (v5)
+# FineVideo-Phase7-Flattened — Megatron-LM Multimodal Pretraining Dataset (v6)
 
 ## Overview
 
@@ -43,13 +43,14 @@ Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/
 
 **Key property:** Every record contains at least one of `<agent>` or `<snac>` tokens. Records without either are discarded.
 
-## Dataset Statistics (v5, Jul 17, 2026)
+## Dataset Statistics (v6, Jul 21, 2026)
 
 | Metric | Value |
 |--------|-------|
-| Total records | **371,888** |
-| Full-chain records (agent + snac) | 69,811 (18.8%) |
-| Partial-chain records (snac only) | 302,044 (81.2%) |
+| Total records | **371,892** |
+| Full-chain records (agent + snac) | 73,037 (19.6%) |
+| Partial-chain records (snac only) | 298,818 (80.4%) |
+| Bad records (neither agent nor snac) | 0 (verified full scan) |
 | Total shards | 160 |
 | Train shards | 152 |
 | Test shards | 8 |
@@ -60,13 +61,22 @@ Source: ~40,000 YouTube videos from [FineVideo](https://huggingface.co/datasets/
 
 | Modality | Tokens | % |
 |----------|--------|---|
-| seed2 | 332,592,448 | 6.3% |
-| cosmos | 3,882,954,800 | 73.9% |
-| agent | 637,924,374 | 12.1% |
-| snac | 363,029,331 | 6.9% |
-| caption *(new)* | 12,076,047 | 0.2% |
-| speech_inline *(new)* | 27,012,397 | 0.5% |
-| **TOTAL** | **5,255,589,397** | **5.256B** |
+| seed2 | 353,379,612 | 6.5% |
+| cosmos | 3,921,239,352 | 72.0% |
+| agent | 689,088,435 | 12.7% |
+| snac | 440,678,767 | 8.1% |
+| caption | 12,076,095 | 0.2% |
+| speech_inline | 27,012,431 | 0.5% |
+| **TOTAL** | **5,443,474,692** | **5.443B** |
+
+## What Changed in v6 (Jul 21, 2026)
+
+Two independent fixes, both re-run from scratch on top of the raw Step A `training_ready_rank_*.jsonl` (not on top of v5's intermediate files):
+
+1. **Agent tokens rebuilt on fps-mismatch-fixed pose data.** Phase 3 (kinematics) and Phase 4 (YOLO person-presence cleaning) both had a bug where, for any video whose native fps deviated from 30 (**~35% of FineVideo's 40,804 videos**), occlusion masking and person-presence filtering were computed against the wrong point in time — up to ~20% of a video's duration of drift by the end. This was fixed in the pipeline scripts and Phase 3→4→5→6 were re-run on the corrected data before this flatten. Effect: Phase 6 injected **2,326,095 agent blocks**, +8.3% vs the pre-fix v5 figure (2,148,474) — more windows now correctly have all 17 joints finite simultaneously once timing is right.
+2. **Modality wrapper tokens restored.** `<seed2>...</seed2>`, `<cosmos>...</cosmos>`, `<agent>...</agent>`, and `<snac>...</snac>` are now kept around each block (previously stripped during flattening for every modality except `<caption>`/`<speech>`). These tokens were already registered in the tokenizer vocab but unused — the outer wrapper gives the model an explicit "block ended, modality changes now" signal, distinct from "here comes the next token in the same block", which the earlier (unwrapped) format conflated. This is a direct response to the "modality transitions: FAIL" result from the v1 tokenizer evaluation (model never self-initiates a seed2→cosmos→agent transition).
+
+Both changes touch the raw token counts (fix #1 adds more agent windows; fix #2 adds 2 tokens per block for every wrapped modality), which is why every modality's token count moved slightly, not just agent's. Record count is essentially unchanged (371,888 → 371,892) — this is a token-content and token-format fix, not a new data source.
 
 ## What Changed in v5 (Jul 17, 2026)
 
@@ -114,7 +124,7 @@ Each line is a JSON object with a single `text` field:
 
 ```json
 {
-  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n### Speech: turn left and walk forward\n<caption> The person is standing on top of a large log. </caption> <seed2_6750> <seed2_680> ... <cosmos_18232> <cosmos_41007> ... <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ... <snac_132247> <snac_132788> ... <speech> We're in West Bank, in the heart of the reserve. </speech>"
+  "text": "### Title: Launching\n### Context: A video showcasing diverse vocation paths...\n### Keywords: educational, informative\n### Speech: turn left and walk forward\n<caption> The person is standing on top of a large log. </caption> <seed2> <seed2_6750> <seed2_680> ... </seed2> <cosmos> <cosmos_18232> <cosmos_41007> ... </cosmos> <agent> <fps_30> <pelvis> <pelvis_t_0> <pelvis_x_128> ... </pelvis> <r_hip> ... </r_hip> ... </agent> <snac> <snac_132247> <snac_132788> ... </snac> <speech> We're in West Bank, in the heart of the reserve. </speech>"
 }
 ```
 
@@ -135,11 +145,13 @@ Each record has text headers followed by the flat token sequence. Headers are ra
 Tokens are emitted in document order, one 8-frame chunk at a time:
 
 ```
-chunk 0:  [<caption>?] [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...] [<speech>?]
-chunk 1:               [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...]
-chunk 2:  [<caption>?] [<seed2_N>...] [<cosmos_N>...] [<fps_30> <pelvis> ... </r_wrist>] [<snac_N>...] [<speech>?]
+chunk 0:  [<caption>?] [<seed2>...</seed2>?] [<cosmos>...</cosmos>] [<agent><fps_30>...</r_wrist></agent>?] [<snac>...</snac>?] [<speech>?]
+chunk 1:               [<cosmos>...</cosmos>] [<agent><fps_30>...</r_wrist></agent>?] [<snac>...</snac>?]
+chunk 2:  [<caption>?] [<seed2>...</seed2>?] [<cosmos>...</cosmos>] [<agent><fps_30>...</r_wrist></agent>?] [<snac>...</snac>?] [<speech>?]
 ...
 ```
+
+*(new in v6)* Each `<seed2>`, `<cosmos>`, `<agent>`, and `<snac>` block is now wrapped in its own open/close tag — e.g. `<agent> <fps_30> <pelvis>...</pelvis>...</r_wrist> </agent>` — giving the model an explicit end-of-block signal distinct from "next token in this block". Previously these wrappers were stripped during flattening; `<caption>`/`<speech>` were always wrapped.
 
 - seed2 appears at 1fps keyframe chunks (every ~3.75 chunks at 30fps)
 - cosmos present at 50% of chunks (random per chunk)
@@ -256,7 +268,11 @@ Caption/speech text content itself is regular English — tokenized with the bas
 | Phase 6 v2 | Merge agent + SNAC tokens into multimodal dataset | Done |
 | Phase 7 v4 | Per-chunk temporal flatten + modality dropout | Done |
 | Phase 6 v4 | Inject caption + inline speech language anchors | Done |
-| **Phase 7 v5** | **Flatten with caption/speech events, 0% dropout on both (this dataset)** | **Done** |
+| Phase 7 v5 | Flatten with caption/speech events, 0% dropout on both | Done |
+| Phase 3/4 fix | fps-mismatch fix in kinematics + YOLO cleaning (~35% of videos affected) | Done |
+| Phase 5 rerun | Agent tokens rebuilt on fps-fixed Phase 3/4 (19,076 videos) | Done |
+| Phase 6 v5 | Fresh merge on fixed agent tokens + snac/caption/speech | Done |
+| **Phase 7 v6** | **Flatten with wrapper tokens restored on all modality blocks (this dataset)** | **Done** |
 
 ## Usage
 
@@ -281,7 +297,8 @@ for sample in ds["train"]:
 | v2 | Jun 2026 | 69,844 | ~1.35B | 100% AVC-LM drop, 50% cosmos drop |
 | v3 | Jul 2, 2026 | 371,888 | ~5.52B | Added SNAC, expanded filter to agent OR snac |
 | v4 | Jul 2, 2026 | 371,888 | 5.217B | Fixed per-chunk temporal ordering, speech in headers |
-| **v5** | **Jul 17, 2026** | **371,888** | **5.256B** | **Added inline `<caption>`/`<speech>` language anchors at modality-transition points (+0.740%)** |
+| v5 | Jul 17, 2026 | 371,888 | 5.256B | Added inline `<caption>`/`<speech>` language anchors at modality-transition points (+0.740%) |
+| **v6** | **Jul 21, 2026** | **371,892** | **5.443B** | **Rebuilt agent tokens on fps-mismatch-fixed Phase 3/4 (+8.3% agent blocks); restored `<seed2>`/`<cosmos>`/`<agent>`/`<snac>` wrapper tokens (+3.6% total tokens)** |
 
 ## Citation
 

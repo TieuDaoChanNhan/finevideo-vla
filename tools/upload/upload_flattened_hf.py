@@ -6,10 +6,18 @@ Upload flattened Megatron-LM shards to EmpathicRobotics/FineVideo-Phase7-Flatten
   - gzip compressed in parallel
   - uploaded via huggingface_hub
 
-v5 (default): seed2 + cosmos(50%) + agent + snac + caption + speech, 371,888 records, 5.256B tokens
+v6 (default): seed2 + cosmos(50%) + agent + snac + caption + speech, 371,892 records, 5.443B tokens
+  Rebuilt on top of the fps-mismatch fix in Phase 3/4 (affected ~35% of videos with
+  native fps != 30 -- agent/pose windows are now correctly time-aligned) and adds
+  explicit modality wrapper tokens (<seed2>...</seed2>, <cosmos>...</cosmos>,
+  <agent>...</agent>, <snac>...</snac>) that were previously stripped during flattening.
   Per-chunk temporal ordering: [caption?][seed2?][cosmos?][agent?][snac?][speech?] per 8-frame chunk
   Caption/speech anchored to their exact chunk, 0% dropout, no augmentation
   Whole-activity ### Speech: header unchanged (intentionally redundant with inline <speech>)
+  source: megatron_dataset_v6/flat_final_vla_adaptive_rank_*.jsonl (all on /e -- /p (JUWELS)
+  is not mounted on JUPITER compute nodes)
+
+v5 (previous): seed2 + cosmos(50%) + agent + snac + caption + speech, 371,888 records, 5.256B tokens
   source: megatron_dataset_v5/flat_final_vla_adaptive_rank_*.jsonl
 
 Usage:
@@ -76,11 +84,11 @@ def main():
     )
     parser.add_argument(
         "--source-dir",
-        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v5",
+        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/megatron_dataset_v6",
     )
     parser.add_argument(
         "--upload-dir",
-        default="/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/hf_upload_flattened_v5",
+        default="/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/hf_upload_flattened_v6",
     )
     parser.add_argument(
         "--shard-prefix",
@@ -152,7 +160,7 @@ def main():
             path_in_repo="README.md",
             repo_id=REPO_ID,
             repo_type="dataset",
-            commit_message="Update dataset card for v5: caption+speech language anchors, 5.256B tokens",
+            commit_message="Update dataset card for v6: fps-mismatch fix + modality wrapper tokens, 5.443B tokens",
         )
         print("Uploaded dataset card.")
 
@@ -160,7 +168,7 @@ def main():
         folder_path=args.upload_dir,
         repo_id=REPO_ID,
         repo_type="dataset",
-        commit_message="Upload v5: added inline caption+speech language anchors, 371,888 records, 5.256B tokens",
+        commit_message="Upload v6: agent tokens rebuilt on fps-mismatch-fixed Phase 3/4, added seed2/cosmos/agent/snac wrapper tokens, 371,892 records, 5.443B tokens",
     )
 
     print(f"Done! https://huggingface.co/datasets/{REPO_ID}")
