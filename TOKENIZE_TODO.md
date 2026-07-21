@@ -1,12 +1,28 @@
-## STATUS (21/07/2026, evening): section 1 done — all 4 jobs verified against HF + submitted
+## STATUS (21/07/2026, evening): section 1 DONE — all 4 jobs verified against HF, submitted, COMPLETED, real token counts confirmed
 
 Verified each dataset in this table matches its HF upload exactly (content-hash, not just
 record count) before submitting — see `PROGRESS_VI.md`/`REPORT.md` §30 21/07/2026 entries for the
-full verification method. All 4 sbatch jobs submitted and reached RUNNING on JUWELS
-(account `laionize`, partition `batch`): `14127888` (finevideo_v6, 4 nodes), `14127889`
-(omnivideo_100k_video, 1 node), `14127890` (synth_llava, 1 node), `14127891` (roleplay, 1 node).
-**Not yet confirmed COMPLETED** — next session must verify real output (not just SLURM state)
-before trusting these are done; see the standing Jul 18 lesson referenced in `REPORT.md`.
+full verification method. All 4 sbatch jobs submitted on JUWELS (account `laionize`, partition
+`batch`) and **confirmed genuinely COMPLETED** (checked real output + grepped logs for
+`Traceback`, not just SLURM state — all clean, all passed the `.bin`-size-vs-summed-token-lengths
+consistency check):
+
+| Job ID | Dataset | Wall time | Real tokens (from `.idx` header) | Docs |
+|---|---|---|---|---|
+| `14127888` | finevideo_v6 (4 nodes) | 53m12s | **10,926,767,551 (10.93B)** | 371,892 |
+| `14127889` | omnivideo_100k_video | 19m47s | 536,149,780 (0.54B) | 5,214 |
+| `14127890` | synth_llava | 27m06s | 103,097,102 (0.10B) | 603,999 |
+| `14127891` | roleplay | 6m07s | 52,469,577 (0.05B) | 67,459 |
+| | **Total, these 4** | | **11,618,484,010 (11.62B)** | 1,048,564 |
+
+Note: finevideo_v6's real BPE count (10.93B) is ~2x the 5.443B flatten-stage word-count estimate
+in the table below — same gap pattern already documented for v5 (10.55B real vs 5.256B estimated),
+root cause still the free-text-span word-count-vs-real-BPE approximation, not new here.
+
+**Combined with MV-Omni (already tokenized 18/07, not part of this session, 20,389,561,883 /
+20.39B tokens, re-verified same method):** **~32.01B real tokens** now available across the 5
+"needs fresh or already valid" shards, before mixing in RoboVQA/OmniVideo-100K-QA (unverified,
+see section 2) or the two already-spoken-for `vla_25b`/`vla_adaptive` shards (section 3).
 
 # Megatron Tokenization TODO (JUWELS side)
 

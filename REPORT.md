@@ -2234,6 +2234,20 @@ Created/edited 4 sbatch files in `/p/data1/mmlaion/nguyen38/mv-scale/` (shared t
 
 All 4 use the same `tokenizer_vla_qwen3` (257,901 vocab) confirmed from the actual sbatch templates already running, keeping token IDs consistent across shards for training-time mixing.
 
-**Submitted to SLURM** (JUWELS, account `laionize`, partition `batch`): `14127888` (tok_finevideo_v6, 4 nodes), `14127889` (tok_omni_video, 1 node), `14127890` (tok_synth_llava, 1 node), `14127891` (tok_roleplay, 1 node). All reached RUNNING within 2 minutes of submission (`squeue` confirmed). **Not yet verified complete** — per the standing Jul 18 lesson (a job reported COMPLETED by SLURM while having silently failed at the Ray-connection step), next session must check real output (`tokenized_output/{finevideo_v6,omnivideo_100k_video,synth_llava,roleplay}/` sizes, grep logs for `Traceback`, run `mv-scale/count_tokens.py`) before treating any of these as done.
+**Submitted to SLURM** (JUWELS, account `laionize`, partition `batch`): `14127888` (tok_finevideo_v6, 4 nodes), `14127889` (tok_omni_video, 1 node), `14127890` (tok_synth_llava, 1 node), `14127891` (tok_roleplay, 1 node). All reached RUNNING within 2 minutes of submission (`squeue` confirmed).
+
+**Update, same evening — all 4 jobs confirmed genuinely COMPLETED with real token counts, not just SLURM state.** Tracked via a backgrounded `squeue`/`sacct` poll loop (per the standing Jul 18 lesson: a job can report COMPLETED on SLURM while having silently failed at the Ray-connection step) until all 4 finished; grepped every log for `Traceback` (none found); counted real tokens by reading each `.idx` header directly (same logic as `mv-scale/count_tokens.py`) and verified the bin-size-vs-summed-token-lengths consistency check on every shard (all PASS):
+
+| Job | Real tokens | Docs | Wall time |
+|---|---|---|---|
+| finevideo_v6 | **10,926,767,551 (10.93B)** | 371,892 | 53m12s |
+| omnivideo_100k_video | 536,149,780 (0.54B) | 5,214 | 19m47s |
+| synth_llava | 103,097,102 (0.10B) | 603,999 | 27m06s |
+| roleplay | 52,469,577 (0.05B) | 67,459 | 6m07s |
+| **Total, this session's 4 jobs** | **11,618,484,010 (11.62B)** | 1,048,564 | |
+
+finevideo_v6's real count (10.93B) is ~2x the flatten-stage word-count estimate (5.443B, per the `TOKENIZE_TODO.md` table) — the same gap already documented for v5 (10.55B real vs 5.256B estimated, Jul 18 §22), not a new discrepancy; root cause remains the free-text-span word-count approximation understating real BPE token count, not something specific to v6.
+
+Also re-counted MV-Omni (tokenized 18/07, not part of this session) with the same method for a complete picture: **20,389,561,883 (20.39B) tokens, 1,593,301 docs, PASS** — matches the figure already on record in project memory, confirming it as still valid. **Combined real-token total now available for training (excluding RoboVQA/OmniVideo-100K-QA, unverified, and the two shards already spoken for by trained models):** 11.62B + 20.39B = **~32.01B tokens**.
 
 **Still open, out of this session's scope (see `TOKENIZE_TODO.md` §2-4):** MV-Omni / OmniVideo-100K-QA / RoboVQA existing tokenized outputs are "probably still valid" but unverified against their current sources — spot-check before reuse, don't blindly retokenize. `vla_25b`/`vla_adaptive` tokenized outputs belong to already-trained models — leave untouched. Training mix ratio across shards remains deliberately deferred to train-config time (Van Khue's call). Eval protocol (MPJPE / modality-transition / instruction-following) is still undefined.

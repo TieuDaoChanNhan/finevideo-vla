@@ -30,6 +30,22 @@ Cả 4 dùng chung tokenizer `/p/data1/mmlaion/shared/vla/tokenizer_vla_qwen3` (
 
 Cả 4 job đã chuyển RUNNING (`squeue` xác nhận, không còn PD). **Việc còn lại cho phiên sau:** đừng tin trạng thái SLURM một mình — verify output thật (grep log tìm `Traceback`, check size `tokenized_output/{finevideo_v6,omnivideo_100k_video,synth_llava,roleplay}/`, chạy `mv-scale/count_tokens.py` đối chiếu số token thật) trước khi coi các job này là xong, đúng bài học đã rút ra ngày 18/07 (job từng báo COMPLETED trên SLURM nhưng thực chất fail ngầm vì Ray không khởi động được).
 
+**Cập nhật cùng ngày, tối muộn hơn — cả 4 job đã COMPLETED thật, đã đếm token thật:** theo dõi qua `squeue`/`sacct` cho tới khi cả 4 job kết thúc (job cuối `tok_finevideo_v6` mất 53m12s, tổng cộng 4 node × ~53 phút vì file nặng nhất — 74GB). Grep log cả 4 không thấy `Traceback`. Đếm token thật bằng cách đọc trực tiếp header `.idx` (cùng logic với `mv-scale/count_tokens.py`, không phải ước tính) — tất cả pass BIN SIZE CHECK (tổng độ dài sequence khớp chính xác byte size của file `.bin`):
+
+| Job | Token thật | Docs | Thời gian chạy |
+|---|---|---|---|
+| finevideo_v6 | **10,926,767,551 (10.93B)** | 371,892 | 53m12s |
+| omnivideo_100k_video | 536,149,780 (0.54B) | 5,214 | 19m47s |
+| synth_llava | 103,097,102 (0.10B) | 603,999 | 27m06s |
+| roleplay | 52,469,577 (0.05B) | 67,459 | 6m07s |
+| **Tổng 4 job hôm nay** | **11,618,484,010 (11.62B)** | 1,048,564 | |
+
+Đáng chú ý: token thật của finevideo_v6 (10.93B) gần gấp đôi con số ước tính lúc flatten (5.443B, ghi trong `TOKENIZE_TODO.md`) — đúng pattern lệch đã ghi nhận từ trước với v5 (10.55B thật vs 5.256B ước tính word-count), không phải bug mới, do cách đếm ước tính dùng word-count cho phần text tự do (title/context/caption/speech) thay vì BPE thật.
+
+Đếm lại luôn MV-Omni (đã tokenize từ 18/07, không thuộc 4 job hôm nay nhưng cần cho bức tranh tổng) bằng cùng phương pháp — xác nhận khớp với con số cũ trong memory: **20,389,561,883 (20.39B) token, 1,593,301 docs, PASS**.
+
+**Tổng token thật hiện có, sẵn sàng cho training (chưa tính RoboVQA/OmniVideo-100K-QA — chưa verify lại, và 2 shard `vla_25b`/`vla_adaptive` đã gắn với model cũ):** 11.62B (4 job hôm nay) + 20.39B (MV-Omni) = **~32.01B token**.
+
 ---
 
 ## Cập nhật phiên làm việc — 21/07/2026 (tiếp lần 3 — Phase 4 xác nhận DONE, phân tích chat Discord với Huu → pivot chiến lược sang nguồn data pose đã annotate sẵn, chốt Harmony4D, chạy lại Phase 5→6 cho FineVideo, phát hiện + xử lý JUWELS/Jupiter storage mismatch, bắt đầu tải Harmony4D)
