@@ -1,5 +1,9 @@
 # FineVideo-VLA Dataset Pipeline
 
+**⚠️ If you're picking this up on JUWELS: see `TOKENIZE_TODO.md` first** — it lists exactly which
+datasets on `/p` still need (re-)tokenizing into Megatron `.bin/.idx` before the next training run,
+and which existing tokenized outputs are stale.
+
 **⚠️ Scope note (2026-07-20):** this repo's pipeline (below) covers the **video + 3D-pose branch** of a broader **omni-modal** project — not the whole scope anymore. Per Huu (project lead), the target model binds *any* modality pair (image, video, sound, action, IMU, ...), as long as the source is permissively licensed and the mix is balanced across modalities. Non-video/pose sources (e.g. `synth_llava` image+caption pairs, `laion/emotional-roleplay-finetuning-dataset` speech+text) are being folded in under `data_prep/`, tokenized via whichever existing modality (`seed2` for standalone images, `snac` for standalone audio) fits, rather than requiring every source to produce video+pose+agent tokens. See `../CLAUDE.md`'s Project Overview and `datasets.md` for the full picture; everything below describes this repo's original, still-primary video+pose branch.
 
 This repository contains the **complete pipeline** for building the FineVideo-VLA pretraining dataset from HuggingFace's [FineVideo](https://huggingface.co/datasets/HuggingFaceFV/finevideo) dataset (~40K YouTube videos). The output is a Megatron-LM-ready flat JSONL dataset.
