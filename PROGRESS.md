@@ -18,6 +18,31 @@ discipline not keeping pace with the widening data-source scope.
 
 ---
 
+## Cập nhật phiên làm việc — 21/07/2026 (JUWELS — verify + submit 4 job tokenize Megatron)
+
+**Việc chính:** Phiên này chạy trên **JUWELS** (không phải JUPITER — compute node JUPITER không mount được `/p`, nơi hạ tầng tokenize `mv-scale/` sống), theo đúng file handoff `TOKENIZE_TODO.md` mà một phiên JUPITER trước để lại ở repo root. Pull code mới nhất, đọc `TOKENIZE_TODO.md` + `data_prep/` để xác định 4 dataset cần tokenize lại: **FineVideo-VLA v6, OmniVideo-100K (video), synth-llava, emotional-roleplay**. Theo yêu cầu của user, verify từng dataset khớp đúng bản đã upload HF **trước khi** submit job — tải nguyên bản HF của 3/4 dataset đã có trên Hub (OmniVideo-100K, synth-llava, roleplay), so sánh content-hash (sha256 trên cặp id+text đã sort theo id) với bản local trên `/p` — **khớp tuyệt đối byte-for-byte cả 3**. FineVideo v6 chưa có bản HF nào (HF hiện chỉ có bản v1 cũ, 19GB) nên không có gì để đối chiếu — chỉ verify số record local (371,892) khớp đúng con số `TOKENIZE_TODO.md` đã ghi.
+
+Tạo/sửa 4 file sbatch trong `/p/data1/mmlaion/nguyen38/mv-scale/` (hạ tầng tokenize dùng chung, **không** nằm trong git repo này):
+- `tokenize_finevideo_v6.sbatch` — mới, copy từ `tokenize_finevideo_v5.sbatch`, 4 node Ray cluster, port 20160 (đã check không đụng port các sbatch khác đang có).
+- `tokenize_omnivideo_100k_video.sbatch` — sửa `INPUT` từ thư mục cũ (`omnivideo_100k_video_flattened`, có trước fix wrapper-token 21/07) sang `omnivideo_100k_final/` — đúng bản plain JSONL (chưa gzip) mà `phase7_finalize_omnivideo.py` ghi ra; không dùng `hf_upload/` vì thư mục đó đã gzip + chia train/test riêng cho HF, `mv_preprocess_data.py` glob không đệ quy nên tự bỏ qua subfolder này.
+- `tokenize_synth_llava.sbatch` — mới, 1 node (chưa từng tokenize; size chỉ 547MB nên dùng pattern single-node như `tokenize_robovqa.sbatch`, không cần Ray cluster đa node).
+- `tokenize_roleplay.sbatch` — mới, 1 node (chưa từng tokenize; 339MB).
+
+Cả 4 dùng chung tokenizer `/p/data1/mmlaion/shared/vla/tokenizer_vla_qwen3` (Qwen3 base + full VLA token set, 257,901 vocab) — xác nhận bằng cách đọc thẳng các sbatch template thật đang chạy, không suy đoán từ doc cũ.
+
+**Đã submit 4 job lên SLURM** (JUWELS, account `laionize`, partition `batch`):
+
+| Job ID | Tên | Số node | Dataset |
+|---|---|---|---|
+| 14127888 | tok_finevideo_v6 | 4 | FineVideo-VLA v6 (371,892 record, 74GB) |
+| 14127889 | tok_omni_video | 1 | OmniVideo-100K video (5,214 record, 3.6GB) |
+| 14127890 | tok_synth_llava | 1 | synth-llava (603,999 record, 547MB) |
+| 14127891 | tok_roleplay | 1 | emotional-roleplay (67,459 record, 339MB) |
+
+Cả 4 job đã chuyển RUNNING (`squeue` xác nhận, không còn PD). **Việc còn lại cho phiên sau:** đừng tin trạng thái SLURM một mình — verify output thật (grep log tìm `Traceback`, check size `tokenized_output/{finevideo_v6,omnivideo_100k_video,synth_llava,roleplay}/`, chạy `mv-scale/count_tokens.py` đối chiếu số token thật) trước khi coi các job này là xong, đúng bài học đã rút ra ngày 18/07 (job từng báo COMPLETED trên SLURM nhưng thực chất fail ngầm vì Ray không khởi động được).
+
+---
+
 ## Cập nhật phiên làm việc — 21/07/2026 (tiếp lần 3 — Phase 4 xác nhận DONE, phân tích chat Discord với Huu → pivot chiến lược sang nguồn data pose đã annotate sẵn, chốt Harmony4D, chạy lại Phase 5→6 cho FineVideo, phát hiện + xử lý JUWELS/Jupiter storage mismatch, bắt đầu tải Harmony4D)
 
 **Việc chính:** Track lại Phase 4 (job `1004747`) và phát hiện đã **COMPLETED thật sự** (docs cũ ghi ~67%, thực tế đã xong lúc 08:19 sáng cùng ngày) — tính được số liệu Huu hỏi từ lâu ("how much data was filtered out"): **45.9% window bị occlusion filter drop** (43.0M → 23.2M), 8.3% video (3,359/40,300) mất trắng hoàn toàn. Sau đó đọc + phân tích 1 đoạn chat Discord dài giữa Huu và Van Khue về đúng chủ đề này, dẫn tới quyết định pivot chiến lược: **ngừng đầu tư cải thiện pose detector, chuyển sang tìm dataset pose-video đã annotate sẵn** để bù gap occlusion + multi-person. Điều tra 3 ứng viên (MotionVid, OCHuman-Pose, Harmony4D) + rà thêm `Awesome-Video-Datasets` — chốt **Harmony4D** (MIT, đúng cả 2 gap), loại JRDB-Pose3D dù fit kỹ thuật tốt hơn (CC BY-NC-SA, vi phạm chính sách permissive-only). Chạy lại Phase 5 (agent tokens) trên Phase 4 mới, rồi chuẩn bị Phase 6 — phát hiện `submit_merge_adaptive_v4.sh` cũ trỏ vào 1 checkout repo khác trên `/p` (JUWELS storage, lùi sau 3 commit, agent-tokens-dir trỏ vào file `.tar` chưa giải nén) — nếu chạy thẳng sẽ merge caption/speech mới vào agent token cũ/rỗng. Test xác nhận **compute node của Jupiter không mount được `/p`** (chỉ login node thấy) → quyết định cuối: xử lý toàn bộ trên `/e`. Bắt đầu tải Harmony4D (352GB) song song.

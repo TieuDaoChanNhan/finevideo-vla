@@ -1,3 +1,13 @@
+## STATUS (21/07/2026, evening): section 1 done — all 4 jobs verified against HF + submitted
+
+Verified each dataset in this table matches its HF upload exactly (content-hash, not just
+record count) before submitting — see `PROGRESS_VI.md`/`REPORT.md` §30 21/07/2026 entries for the
+full verification method. All 4 sbatch jobs submitted and reached RUNNING on JUWELS
+(account `laionize`, partition `batch`): `14127888` (finevideo_v6, 4 nodes), `14127889`
+(omnivideo_100k_video, 1 node), `14127890` (synth_llava, 1 node), `14127891` (roleplay, 1 node).
+**Not yet confirmed COMPLETED** — next session must verify real output (not just SLURM state)
+before trusting these are done; see the standing Jul 18 lesson referenced in `REPORT.md`.
+
 # Megatron Tokenization TODO (JUWELS side)
 
 **Read this first if you're a Claude session running on JUWELS after a fresh `git pull` of this
