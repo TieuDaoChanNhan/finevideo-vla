@@ -60,13 +60,20 @@ Each row is `{{"video_id": ..., "text": ...}}` with `text`, per 8-frame/30fps
 chunk in order:
 
 ```
-<seed2_N>... [<caption> ... </caption>] <cosmos_N>... [<agent> <fps_30> <pelvis> ... </agent>] [<speech> ... </speech>]
+<seed2> <seed2_N>... </seed2> [<caption> ... </caption>] <cosmos> <cosmos_N>... </cosmos> [<agent> <fps_30> <pelvis> ... </agent>] [<speech> ... </speech>]
 ...(repeated per chunk)...
 Q: <question>
 A: <answer>
 Reasoning: <cross-modal reasoning hint, from source `analysis.connections`>
 ...(repeated per QA pair for this video)...
 ```
+
+`<seed2>`/`</seed2>`, `<cosmos>`/`</cosmos>`, `<agent>`/`</agent>` are explicit
+span-boundary wrapper tokens (registered in `tokenizer_vla_qwen3`'s vocab,
+previously unused in this dataset -- fixed 2026-07-21, decided with Van Khue:
+gives the model an unambiguous "span over" signal decoupled from "what modal
+comes next", matching the `<snac>`/`</snac>` convention already used by
+`laion/emotional-roleplay-finetuning-dataset`).
 
 `<agent>` (pose, adaptive-PCHIP 17-joint xyz, same scheme as FineVideo-VLA)
 only appears on chunks where the pose pipeline produced a clean window for

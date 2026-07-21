@@ -102,11 +102,19 @@ def flatten_token_stream_with_agent(token_str, agent_windows):
             pending_caption = None
 
             if pending_seed2 is not None and random.random() > DROP_RATE_SEED:
-                out.extend(f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit())
+                seed2_toks = [f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit()]
+                if seed2_toks:
+                    out.append('<seed2>')
+                    out.extend(seed2_toks)
+                    out.append('</seed2>')
             pending_seed2 = None
 
             if pending_cosmos is not None and random.random() > DROP_RATE_COSMOS:
-                out.extend(f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit())
+                cosmos_toks = [f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit()]
+                if cosmos_toks:
+                    out.append('<cosmos>')
+                    out.extend(cosmos_toks)
+                    out.append('</cosmos>')
             pending_cosmos = None
             # avc_lm payload: always discarded, same as flatten_step_a_video.py
 

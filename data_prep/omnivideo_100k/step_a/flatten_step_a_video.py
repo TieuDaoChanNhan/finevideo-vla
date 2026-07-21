@@ -17,6 +17,13 @@ caption/speech always kept), adapted for OmniVideo-100K's flatter
 one-record-per-video schema (no scenes/activities nesting, no agent/snac
 blocks).
 
+seed2/cosmos keep their <seed2>/</seed2>, <cosmos>/</cosmos> wrapper tags in
+the output (an earlier version dropped them, bare-token-only). Decided with
+Van Khue 2026-07-21, mirrors the same fix in phase7_flatten.py -- see that
+file's process_activity_per_chunk() docstring for the full rationale
+(explicit span boundaries, already-registered vocab tokens, possible relevance
+to the model's modality-transition failure).
+
 Usage:
     python data_prep/omnivideo_100k/step_a/flatten_step_a_video.py [--skip-existing]
 """
@@ -71,11 +78,19 @@ def flatten_token_stream(token_str):
             pending_caption = None
 
             if pending_seed2 is not None and random.random() > DROP_RATE_SEED:
-                out.extend(f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit())
+                seed2_toks = [f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit()]
+                if seed2_toks:
+                    out.append('<seed2>')
+                    out.extend(seed2_toks)
+                    out.append('</seed2>')
             pending_seed2 = None
 
             if pending_cosmos is not None and random.random() > DROP_RATE_COSMOS:
-                out.extend(f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit())
+                cosmos_toks = [f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit()]
+                if cosmos_toks:
+                    out.append('<cosmos>')
+                    out.extend(cosmos_toks)
+                    out.append('</cosmos>')
             pending_cosmos = None
             # avc_lm payload: always discarded, same as FineVideo Phase 7
 

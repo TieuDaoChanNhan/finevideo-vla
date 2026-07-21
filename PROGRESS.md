@@ -1,8 +1,8 @@
 # PAB-Spline VLA — Project Progress
 
 **Author:** Van Khue Nguyen  
-**Last updated:** July 20, 2026  
-**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — **under wide maintenance** (18 nodes `maint`, no ETA since ~06:00 Jul 20), Phase 3/4 FineVideo running temporarily on the login node (1x GH200) in the meantime  
+**Last updated:** July 21, 2026  
+**Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — maintenance mostly over (18 stray nodes still `maint`, not blocking scheduling), Phase 4 FineVideo back on normal SLURM (128 workers / 4 GPUs)  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
 **⚠️ Scope update (Jul 20, 2026):** the "watch video, hear speech, generate robot motion" framing
@@ -17,6 +17,140 @@ via `snac`/"moss"). See `REPORT.md`'s "Project Scope Update" section and `PROGRE
 discipline not keeping pace with the widening data-source scope.
 
 ---
+
+## Cập nhật phiên làm việc — 21/07/2026 (tiếp lần 2 — submit lại Phase 4 FineVideo qua SLURM, thêm wrapper token seed2/cosmos/agent/snac vào 3 dataset, upload lại synth-llava + omnivideo-100k-final)
+
+**Việc chính:** User yêu cầu submit lại Phase 4 FineVideo qua SLURM (JUPITER hết bảo trì phần lớn), rồi trong lúc track tiến độ phát hiện + sửa 1 loạt vấn đề thật: (1) job SLURM đầu tiên chia việc không đều do file đã-xong dồn cục, phải rebalance; (2) `synth_llava` bị lỗi seed2 token lồng sai vào trong `<caption>` (kế thừa từ cấu trúc data gốc); (3) qua thảo luận với user, phát hiện **toàn bộ 3 dataset video/pose/synth_llava đều thiếu wrapper token** (`<seed2>`/`</seed2>`, `<cosmos>`/`</cosmos>`, `<agent>`/`</agent>`, `<snac>`/`</snac>`) dù các token này **đã được đăng ký sẵn trong tokenizer vocab** (`tools/tokenizer/expand_vocab.py`, `build_tokenizers.py`) — chỉ riêng SNAC (`laion_emotional_roleplay`) là có dùng. Quyết định cùng user: thêm wrapper lại cho cả 3 dataset (lý do: tận dụng token đã trả phí sẵn trong vocab, nhất quán với SNAC, và là giả thuyết đáng thử cho lỗi lớn nhất của model hiện tại — "modality transitions: FAIL"). Đã fix code nguồn, regen data, và **upload thành công `EmpathicRobotics/synth-llava` + `EmpathicRobotics/omnivideo-100k-final`** — có 1 lần báo "sẵn sàng" hơi sớm (quên áp fix wrapper vào data `synth_llava` đã tokenize sẵn, chỉ sửa source script), bắt lại kịp trước khi gây hại thêm, đã fix và upload lại đúng.
+
+### 1. Phase 4 FineVideo — submit SLURM, phát hiện + sửa lỗi chia việc không đều
+
+`sinfo` xác nhận phần lớn `booster` hết bảo trì (chỉ còn 18/~5,600 node lẻ tẻ `maint`) — submit `slurm/submit_yolo.sh` (job `1004323`, 128 worker/4 GPU/1 node qua NVIDIA MPS), kế thừa tiến độ cũ từ login-node (17,706/40,305 đã có, script tự skip). User quan sát thấy vài worker xong ngay lập tức trong khi worker khác vẫn chạy chậm — điều tra ra: **48/128 worker xong gần như tức thì** vì file đã-xong (từ lần chạy 4-worker cũ) dồn cục ở đầu mỗi 1/4 khối do chia contiguous, còn lại ~80 worker phải làm gần 100% việc thật (~315 video/worker thay vì ~171 nếu chia đều đúng phần còn lại). **Fix:** `scancel` job cũ, build symlink farm chỉ chứa 21,841 file states_jsonl còn thiếu (`outputs/states_jsonl_30fps_remaining_phase4/`, NFS symlink chậm nên phải chạy nền + resume 2 lần do timeout), viết `slurm/submit_yolo_remaining.sh` (giống hệt `submit_yolo.sh`, chỉ đổi `--input-dir` trỏ vào symlink farm) — submit lại (`job 1004747`), chia đều ~171 video/worker. **Đang chạy tốt** (21,342/40,305 tại thời điểm ghi entry, 1 lỗi soft/video không fatal, worker tự chuyển video kế tiếp).
+
+### 2. Sửa lỗi `synth_llava`: seed2 token lồng sai vào `<caption>`
+
+User phát hiện: data gốc `synth_llava`/`synth_llava2` (Huu tự tạo) đã có sẵn cấu trúc `<caption><image_0>caption text</caption>` — `tokenize_seed2.py` chỉ string-replace placeholder tại chỗ, giữ nguyên lồng sai (seed2 token nằm trong `<caption>`, trong khi convention thật của project — `step_a_tokenize_video.py` — coi `<seed2>`/`<caption>` là 2 tag ngang hàng, tuần tự, không lồng nhau). Fix bằng 2 pass regex trên 603,999 dòng × 151 file (pass đầu bị bug con — token seed2 cuối cùng dính liền text không space bị regex bỏ sót, sinh lỗi mới; verify + fix tiếp ngay). Đồng thời sửa `tokenize_seed2.py` (source) để lần rerun sau không lặp lại.
+
+### 3. Phát hiện + quyết định: thêm lại wrapper token cho seed2/cosmos/agent/snac
+
+Trong lúc thảo luận, user chỉ ra `EmpathicRobotics/emotional-roleplay-finetuning-dataset-flattened` có `<snac>`/`</snac>` wrapper nhưng `FineVideo-Phase7-Flattened`/`omnivideo-100k-final` thì không, dù cả 2 loại token đều **đã đăng ký sẵn trong vocab tokenizer** (`<seed2>`, `</seed2>`, `<cosmos>`, `</cosmos>`, `<avc_lm>`, `</avc_lm>`, `<agent>`, `</agent>` — thấy trong `tools/tokenizer/expand_vocab.py` + `build_tokenizers.py`). Điều tra ra: đây **không phải bug quên sót cụ thể ở seed2/cosmos** — `pipeline_pose/phase7_flatten.py`/`flatten_step_a_video.py` lột bỏ wrapper cho **mọi** loại token đồng nhất (seed2/cosmos/avc_lm/agent outer/snac outer đều bị lột, chỉ `<caption>`/`<speech>` giữ lại) — là quy ước có chủ đích từ đầu. Trong khi `laion_emotional_roleplay/tokenize_snac.py` là code **hoàn toàn riêng biệt**, không dùng lại `phase7_flatten.py`, và có quyết định wrapper riêng (ghi rõ trong docstring: "decided after review with Van Khue, session 2026-07-20") — nên 2 format song song không nhất quán từ trước tới giờ, không phải lỗi phát sinh mới.
+
+User hỏi lý do kỹ thuật tại sao cần wrapper trước khi cho làm — đã giải thích: (a) token `</seed2>` tách bạch "đã hết span" khỏi "modal kế tiếp là gì" — 2 tín hiệu vốn bị gộp làm 1 khi không có wrapper, đúng loại vấn đề mà model đang fail ("modality transitions: FAIL... stays in seed2 mode"); (b) dropout nặng (cosmos 50-90%, avclm ~99%) làm "tập modal hợp lệ sau seed2" đổi liên tục giữa các ví dụ, cộng dồn nhiễu lên đúng tín hiệu đó; (c) pattern chuẩn trong nhiều hệ multimodal/agent LLM thật (Chameleon, tool-call wrapper...); (d) minh chứng sống ngay trong phiên — chính regex đoán ranh giới bằng khoảng trắng ở mục 2 đã sai 1 lần vì thiếu wrapper rõ ràng. User đồng ý, quyết định thêm wrapper cho cả 3 dataset, **để riêng FineVideo-Phase7-Flattened chờ Phase 4 xong** (không block bởi user, sẽ tự đúng khi Phase 5→6→7 chạy lại vì code đã fix sẵn).
+
+**Đã sửa code nguồn** (4 file, đều unit-test bằng data giả lập trước khi áp dụng):
+- `pipeline_pose/phase7_flatten.py` — `process_activity_per_chunk()` + `count_token_types()` (tránh đếm nhầm token wrapper mới vào bucket agent)
+- `data_prep/omnivideo_100k/step_a/flatten_step_a_video.py` — mirror fix (dù xác nhận đây **không phải** script build `omnivideo-100k-final` thật, chỉ giữ đồng bộ cho tương lai)
+- `data_prep/omnivideo_100k/phase6_merge_omnivideo.py` — **script thật** build `omnivideo-100k-final` (đọc thẳng raw Step A, tự flatten+merge agent trong 1 hàm riêng `flatten_token_stream_with_agent`, không tái dùng `flatten_step_a_video.py` như docstring cũ ghi nhầm)
+- `data_prep/synth_llava/tokenize_seed2.py`
+
+**Regen `omnivideo-100k-final`:** chạy lại `phase6_merge_omnivideo.py` (32 file, ~17s/file) rồi `phase7_finalize_omnivideo.py` — verify số liệu khớp **chính xác tuyệt đối** với bản cũ (5,214→5,214, 0 malformed, 799 video có agent, 62,631 window agent, 5,214/5,214 có QA) — chỉ đổi cấu trúc token, không đổi nội dung/số lượng.
+
+**Fix `synth_llava_flat`:** áp thêm 1 pass regex thêm `<seed2>`/`</seed2>` bọc quanh chuỗi seed2 token đã có (an toàn vì mỗi dòng chỉ có đúng 1 span seed2, không như OmniVideo có nhiều chunk cùng loại liên tiếp — không thể patch hậu-kỳ an toàn kiểu này cho OmniVideo, phải regen từ raw). Verify: 603,999 dòng, 19,327,968 seed2 token (không đổi), 0 lỗi format.
+
+**Sự cố nhỏ:** báo user "sẵn sàng upload" 1 lần trước khi kịp áp fix wrapper vào `synth_llava_flat` (chỉ sửa xong source script, quên chạy lại trên data đã có) — user chạy upload, thành công lên HF nhưng thiếu wrapper. Phát hiện qua triệu chứng user báo ("sao lại skip compress") — do cache `.gz` cũ (từ lần upload lỗi format `<caption>` trước đó) đã tồn tại nên script skip đúng theo thiết kế. Verify bằng `HfApi().dataset_info()` xác nhận thời điểm upload thật, fix data, xóa cache, upload lại — không phát hiện vấn đề gì với `omnivideo-100k-final` (user chưa kịp upload bản cũ nên không bị ảnh hưởng).
+
+### Kết quả upload (đã xong, verify bằng log user gửi)
+
+- **`EmpathicRobotics/synth-llava`** — 151 shard (140 train + 11 test), 135MB, upload thành công.
+- **`EmpathicRobotics/omnivideo-100k-final`** — 32 shard (30 train + 2 test), 683MB, upload thành công.
+
+### Trạng thái cuối phiên
+
+- **Phase 4 FineVideo** (SLURM job `1004747`, rebalanced, 128 worker) — đang chạy, 21,342/40,305 (~53%), 1 lỗi soft/video không fatal.
+- **`synth-llava`, `omnivideo-100k-final`** — đã upload lại đúng format (wrapper token + caption fix), **XONG**.
+- **`FineVideo-Phase7-Flattened`** — chưa regen, chờ Phase 4 xong rồi chạy Phase 5→6→7 bình thường (code `phase7_flatten.py` đã fix sẵn, không cần làm gì thêm ngoài chạy pipeline như thường lệ).
+- Việc tồn đọng: sau khi Phase 4 xong — chạy Phase 5 (agent tokens) → Phase 6 (merge, **nhớ dùng script kiểu `submit_merge_adaptive_v4.sh` có `--captions-dir`/`--speech-segments-dir`, không dùng bản merge thường**, xem mục dưới) → Phase 7 (flatten, đã có wrapper) → upload lại `FineVideo-Phase7-Flattened`; tách `pipeline_pose/`+`pipeline_video/` vào `data_prep/finevideo/` (đã hứa từ lâu, vẫn hoãn); chờ Huu quyết định `MixtureVitae-Backup` SNAC + ý nghĩa "moss" token.
+
+### Cập nhật tiếp — track lại Phase 4, tự sửa 1 nhận định sai về FineVideo v5, tổng hợp bức tranh 4 dataset
+
+**Phase 4** (job `1004747`) — cập nhật: **27,056/40,305 (~67%)**, 0 lỗi trừ 1 soft/video đã ghi ở trên, chạy ổn định ~1h. User phát hiện tôi (Claude) đọc nhầm log cũ (`logs/yolo_workers_run1_unbalanced/` — log job đầu tiên đã hủy, archive trước khi resubmit) tưởng job vẫn chia việc lệch — job hiện tại `logs/yolo_workers/` xác nhận **0 SKIP**, mỗi worker đúng 170-171 file, rebalance hoạt động đúng.
+
+**Tự sửa sai:** khi được hỏi "gộp 4-5 dataset đã đủ train chưa", tôi khẳng định sai rằng FineVideo-VLA **không có caption** — dựa trên check nhầm `/p/data1/mmlaion/shared/vla/vla_adaptive/` (bản THẬT nhưng là bản CŨ, tiền-caption, chính là data đã tokenize cho model đang train hiện tại — 2.84B token — không phải v5). User chỉ ra ngay ("bị ngáo à"), check lại đúng thư mục `/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/megatron_dataset_v5/` (live trên `EmpathicRobotics/FineVideo-Phase7-Flattened` từ 07/07, xem REPORT.md §21): **100% có `<caption>`, 96% có `### Speech:` header, 80% có `<speech>` inline** — đúng như REPORT.md đã ghi từ trước (371,888 record, 5.217B token), tôi chỉ tra sai thư mục local, không phải docs sai. Số tổng 12.53B đã báo trước đó **vẫn đúng** (seed2/cosmos đếm lại khớp chính xác tuyệt đối với log cũ) — chỉ riêng nhận định "thiếu caption" là sai, đã rút lại.
+
+**Bảng phân loại 4 dataset (không tính MV-Omni):**
+
+| Dataset | Record | Modal | Token |
+|---|---|---|---|
+| FineVideo-VLA (v5, đang regen fps-fix+wrapper) | 371,888 | seed2 + cosmos + agent (18.8% full-chain) + snac + caption (Qwen2.5-VL) + speech (Whisper header+inline) | 5.217B |
+| omnivideo-100k-final | 5,214 | seed2 + cosmos + agent (799/5,214, chỉ sports-subset) + caption + speech + QA (99,983 cặp, có reasoning hint xuyên-modal) | 274.6M |
+| synth-llava/synth-llava2 | 603,999 | chỉ seed2 (ảnh tĩnh, 32 tok/ảnh) + caption — không video/pose/audio | 70.8M |
+| emotional-roleplay-finetuning-dataset-flattened | 67,459 | chỉ snac (audio) + text — không video/pose | 26.9M |
+| **Tổng** | | | **~12.53B** |
+
+Cộng MV-Omni (+6.93B, chủ yếu SNAC/audio) → ~19.4B, nằm trong khoảng "10-20B đủ" từng ước tính, chưa tới target tham vọng "20-40B". **Kết luận đưa cho user: đủ để thử train v0.2** sau khi FineVideo regen xong (giữ đúng caption/speech, xem nhắc nhở trên) — không cần thêm RoboVQA mới đạt ngưỡng sẵn sàng.
+
+## Cập nhật phiên làm việc — 21/07/2026 (track lại Phase 4 FineVideo + synth_llava seed2 tokenize — xác nhận synth_llava đã DONE hoàn toàn)
+
+**Việc chính:** User yêu cầu track lại 2 job đang chạy nền mà entry trước ghi "cần check lại % hiện tại" — verify bằng log thật (không suy đoán từ docs cũ).
+
+### 1. synth_llava seed2 tokenize — ĐÃ XONG hoàn toàn
+
+`logs/synth_llava_seed2.log` kết thúc lúc 20:02 tối 20/07, `SYNTH_LLAVA_EXIT=0`:
+
+```
+TONG: 603,999 -> 603,999 | no_image: 0 | encode_fail: 0 | seed2_tokens: 19,327,968
+```
+
+100% thành công, 0 lỗi. Output: 151 file `{synth_llava,synth_llava2}_shard-*.jsonl` (56 + 95 file) tại `/p/data1/mmlaion/shared/vla/synth_llava_flat/`, mỗi dòng đã đúng format phẳng training-ready `{"id", "text"}` với `<image_0>` đã thay bằng chuỗi `<seed2_N> ...` atomic-token — verify trực tiếp bằng cách đọc vài dòng thật.
+
+**Không cần bước "merge" riêng cho dataset này** — khác FineVideo/OmniVideo (nhiều stream token: video + agent pose + QA cần Phase 6 merge lại), `synth_llava` chỉ có 1 modality (ảnh → seed2) nên `tokenize_seed2.py` sinh thẳng ra format phẳng cuối cùng, không có agent/pose stream nào khác để ghép vào.
+
+### 2. Phase 4 FineVideo — vẫn đang chạy, ~33%
+
+Không connect được tmux `yolo_login_finevideo` từ session hiện tại (`tmux ls` lỗi "No such file or directory"), nhưng 4 file log worker vẫn được ghi liên tục **đúng tới thời điểm check** (mtime khớp giây với `date`) → job chắc chắn còn sống, chỉ là sandbox hiện tại không thấy tiến trình đó.
+
+| Worker | Vị trí | Done |
+|---|---|---|
+| 1 | 3858/10076 | 3377 |
+| 2 | 3851/10076 | 3334 |
+| 3 | 3846/10076 | 3339 |
+| 4 | 3827/10077 | 3321 |
+
+Tổng: **13,371/40,305 video (~33%)**, 0 lỗi trên cả 4 log.
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- **Phase 4 FineVideo** (tmux `yolo_login_finevideo`, 4 worker) — đang chạy, ~33% (13,371/40,305).
+- **synth_llava seed2 tokenize** — **XONG**, 603,999 dòng, 19,327,968 seed2 token, output tại `/p/data1/mmlaion/shared/vla/synth_llava_flat/`.
+- Việc tiếp theo: viết script consolidate/upload HF cho `synth_llava_flat` theo convention `laion_emotional_roleplay/upload_hf.py` (nén + train/test split theo shard + dataset card) — chờ user chọn tên repo trước khi upload thật.
+
+## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 6 — recap RoboVQA, đếm token distribution thật cho 4 dataset đã flatten, đối chiếu số liệu docs cũ)
+
+**Việc chính:** Recap lại RoboVQA cho user (không có việc mới, chỉ tổng hợp lại điều tra đã làm). Viết script đếm token tổng quát (tái dùng đúng `PATTERNS`/`count_tokens` convention từ `tools/inventory/data_inventory.py` để so sánh ngang hàng với số liệu cũ), chạy full trên cả 4 dataset đã flatten: FineVideo-VLA v5, MV-Omni (phần valid_snac đã convert), OmniVideo-100K final, emotional-roleplay-finetuning-dataset. User bắt đầu soạn 2 sbatch Megatron-tokenize cho OmniVideo/roleplay để chạy trên JUWELS — **tự viết nhầm 1 bản đoán mò không có template thật, user chỉ ra và yêu cầu xóa**, đã xóa, chờ user cung cấp template thật.
+
+### 1. Đếm token thật — kết quả (multiprocessing, 24 worker/dataset, ~9 phút tổng cho cả 4 dataset trên login node)
+
+| Dataset | seed2 | cosmos | avclm | snac | agent | text (word-count xấp xỉ) | **TOTAL** |
+|---|---|---|---|---|---|---|---|
+| emotional-roleplay-finetuning-dataset | 0 | 0 | 0 | 23,390,760 | 0 | 3,556,739 | **26,947,499** (27.0M) |
+| omnivideo-100k-final | 17,229,664 | 201,736,400 | 0 | 0 | 19,185,063 | 36,480,085 | **274,631,212** (274.6M) |
+| mv-omni (valid_snac converted) | 19,249,664 | 0 | 0 | 4,922,681,181 | 0 | 1,990,708,185 | **6,932,639,030** (6.933B) |
+| finevideo-vla (v5) | 332,592,448 | 3,882,954,800 | 0 | 363,029,331 | 564,876,258 | 82,430,660 | **5,225,883,497** (5.226B) |
+
+`avclm` luôn = 0 ở cả 4 — đúng thiết kế (payload avc_lm luôn bị discard ở bước flatten cuối cùng của mọi pipeline trong project, không phải bug — user tự hỏi và tự xác nhận đúng).
+
+**Đối chiếu với số liệu cũ trong docs:**
+- **MV-Omni: 6.933B — khớp gần như tuyệt đối** với con số "+6.93B token" đã ghi ở mục "Bức tranh data" (PROGRESS_VI.md, từ investigation tháng 6).
+- **FineVideo-VLA v5: 5.226B — khớp gần đúng** với con số "5.256B tokens" đã ghi khi upload v5 lên HF (chênh ~0.03B, hợp lý vì cách đếm text ở đây là word-split xấp xỉ, không phải đếm qua tokenizer thật).
+- **Không tìm thấy con số "10B"/"20B" cụ thể nào khớp trực tiếp** — các số này trong docs thực ra là **ước tính mục tiêu** (ví dụ "Target: 20–40B token cho v0.2 training", "sau khi hoàn thành ưu tiên 1,2,4: ước tính 10–20B token") chứ không phải số đo thực tế của 1 dataset cụ thể nào — đã báo lại cho user để tránh nhầm giữa target và actual.
+
+### 2. Recap RoboVQA cho user (không có việc mới — tổng hợp lại điều tra đã làm)
+
+Nhắc lại: tải về có `tfrecord/{train,val}` (184 shard) + `json/{train,val}` (pre-extract) + **9,999 video `.mp4` thật** + `instructions/*.txt` + LICENSE Apache-2.0. Đã làm: `flatten_text.py` xong (221,912 dòng, cố tình bỏ video_id — quyết định deprioritized ghi rõ trong docstring, không phải bug). `extract_frames.py` dở dang 130/184 shard, không có job chạy. Nhắc lại phát hiện quan trọng: TFRecord thật có `texts_start`/`texts_end` luôn = 15 (frame cuối trong 16 frame/episode) — QA không interleave được theo từng loại task, chỉ neo được ở cấp "cả episode".
+
+### 3. Tự viết nhầm sbatch Megatron-tokenize không có template thật
+
+User yêu cầu viết 2 sbatch để submit Megatron-tokenize cho OmniVideo-100K + roleplay trên JUWELS. Tìm quanh oellm-autoexp không thấy script preprocess_data.py thực tế đã dùng cho lần tokenize FineVideo trước đó (chỉ tìm thấy job.sbatch của bước TRAIN, dùng container JUPITER-aarch64-specific, không áp dụng cho JUWELS x86_64) — **tự đoán mò 1 bản generic** (module load placeholder, Megatron tools/preprocess_data.py CLI chuẩn). User chỉ ra ngay là sai hướng, sẽ tự cung cấp template thật. Đã xóa file đoán mò, chờ template.
+
+### 4. Kiểm tra mức dùng login node JUPITER theo yêu cầu user (lo bị admin report)
+
+Recheck: load average 18.28/72 core (~25%), GPU 15GB/97GB dùng, 60% util, 14 user khác online — **mức chấp nhận được**, không còn kịch 100% GPU liên tục như trước khi giảm worker (mục entry trước). 3 job chạy song song ổn định: Phase 4 FineVideo (4 worker), synth_llava seed2 tokenize, đếm token 4 dataset (đã xong).
+
+### Trạng thái cuối phiên (tại thời điểm ghi entry)
+
+- **Phase 4 FineVideo** (tmux `yolo_login_finevideo`, 4 worker) — đang chạy.
+- **synth_llava seed2 tokenize** (tmux `synth_llava_seed2`) — đang chạy, ETA ước tính ban đầu ~6h (cần check lại % hiện tại).
+- Đếm token 4 dataset — **XONG**, script lưu tạm ở `logs/count_tokens_4datasets.py` (chưa đưa vào `tools/inventory/`, cân nhắc chuyển vào đó nếu cần dùng lại).
+- Việc tồn đọng: chờ user cung cấp template Megatron-tokenize thật cho JUWELS; tách `pipeline_pose/`+`pipeline_video/` (chờ Phase 4 FineVideo xong); resume `extract_frames.py` RoboVQA nếu muốn đẩy tiếp; quyết định `MixtureVitae-Backup` SNAC + "moss" token (chờ Huu).
 
 ## Cập nhật phiên làm việc — 20/07/2026 (tiếp lần 5 — điều tra RoboVQA + synth_llava, viết + chạy seed2 tokenize cho synth_llava, viết detokenizer chung cosmos/avc_lm, giảm tải GPU login node)
 

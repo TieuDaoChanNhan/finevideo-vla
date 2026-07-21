@@ -147,7 +147,17 @@ def process_shard(source, jsonl_path, wds_path, output_dir, seed2, limit=None):
 
             seed2_str = " ".join(f"<seed2_{i}>" for i in ids)
             total_seed2_tokens += len(ids)
-            final_text = rec["text"].replace(placeholder, seed2_str, 1)
+            # Source text is "<caption><image_0>...caption text...</caption>" --
+            # a bare in-place substitute would nest seed2 tokens inside <caption>,
+            # which is wrong: project convention (step_a_tokenize_video.py) treats
+            # <caption> as a sibling of the modality block, wrapping only the
+            # caption text, not the tokens. Strip the source's outer <caption>
+            # wrapper and placeholder, then rebuild in the correct order.
+            caption_text = rec["text"]
+            if caption_text.startswith("<caption>") and caption_text.endswith("</caption>"):
+                caption_text = caption_text[len("<caption>"):-len("</caption>")]
+            caption_text = caption_text.replace(placeholder, "", 1).strip()
+            final_text = f"{seed2_str} <caption> {caption_text} </caption>"
 
             fout.write(json.dumps({"id": rec_id, "text": final_text}, ensure_ascii=False) + "\n")
             n_out += 1

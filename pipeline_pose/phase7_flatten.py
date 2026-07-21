@@ -213,8 +213,19 @@ def process_activity_per_chunk(token_str,
         [<speech>text</speech>?]
 
     This function emits per chunk:
-        [<caption> word... </caption>?]  [<seed2_N>...?]  [<cosmos_N>...?]
-        [agent inner tokens?]  [<snac_N>...?]  [<speech> word... </speech>?]
+        [<caption> word... </caption>?]  [<seed2> <seed2_N>... </seed2>?]
+        [<cosmos> <cosmos_N>... </cosmos>?]  [<agent> agent inner tokens </agent>?]
+        [<snac> <snac_N>... </snac>?]  [<speech> word... </speech>?]
+
+    seed2/cosmos/agent/snac keep their open/close wrapper tags in the output
+    (unlike an earlier version of this function, which dropped them) --
+    matching tokenizer_vla_qwen3's registered <seed2>/</seed2> etc. special
+    tokens and the laion_emotional_roleplay <snac>/</snac> convention. Decided
+    with Van Khue 2026-07-21: explicit boundaries give the model an
+    unambiguous "this span is over" signal decoupled from "what modality
+    comes next" -- plausibly relevant to the known modality-transition
+    failure (model never autonomously switches out of seed2 mode), and the
+    tokens were already paid for in vocab (registered, never trained on).
 
     State machine (processes events in document order):
         caption →  buffer pending_caption
@@ -293,25 +304,37 @@ def process_activity_per_chunk(token_str,
             pending_caption = None
 
             if pending_seed2 is not None and random.random() > drop_rate_seed:
-                all_output.extend(
-                    f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit()
-                )
+                seed2_toks = [f'<seed2_{n}>' for n in pending_seed2.split() if n.isdigit()]
+                if seed2_toks:
+                    all_output.append('<seed2>')
+                    all_output.extend(seed2_toks)
+                    all_output.append('</seed2>')
             pending_seed2 = None
 
             if pending_cosmos is not None and random.random() > drop_rate_cosmos:
-                all_output.extend(
-                    f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit()
-                )
+                cosmos_toks = [f'<cosmos_{n}>' for n in pending_cosmos.split() if n.isdigit()]
+                if cosmos_toks:
+                    all_output.append('<cosmos>')
+                    all_output.extend(cosmos_toks)
+                    all_output.append('</cosmos>')
             pending_cosmos = None
             # avc_lm payload: discarded (100% drop)
 
         elif etype == 'agent':
-            # Pass through inner named-joint tokens as-is
-            all_output.extend(_RE_TAG.findall(payload))
+            # Pass through inner named-joint tokens as-is, wrapped
+            inner = _RE_TAG.findall(payload)
+            if inner:
+                all_output.append('<agent>')
+                all_output.extend(inner)
+                all_output.append('</agent>')
 
         elif etype == 'snac':
             if random.random() > drop_rate_snac:
-                all_output.extend(_RE_TAG.findall(payload))
+                inner = _RE_TAG.findall(payload)
+                if inner:
+                    all_output.append('<snac>')
+                    all_output.extend(inner)
+                    all_output.append('</snac>')
 
         elif etype == 'speech':
             text = payload.strip()
@@ -355,14 +378,14 @@ def count_token_types(tokens):
             cap += 1
         elif mode == 'speech':
             sp += 1
-        elif tok.startswith('<seed2_'):
+        elif tok in ('<seed2>', '</seed2>') or tok.startswith('<seed2_'):
             s2 += 1
-        elif tok.startswith('<cosmos_'):
+        elif tok in ('<cosmos>', '</cosmos>') or tok.startswith('<cosmos_'):
             co += 1
-        elif tok.startswith('<snac_'):
+        elif tok in ('<snac>', '</snac>') or tok.startswith('<snac_'):
             sn += 1
         else:
-            ag += 1   # fps_N, joint open/close, joint_t_N, joint_x/y/z_N
+            ag += 1   # <agent>/</agent>, fps_N, joint open/close, joint_t_N, joint_x/y/z_N
     return s2, co, ag, sn, cap, sp
 
 
