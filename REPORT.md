@@ -2383,3 +2383,111 @@ Removed 3 flat files that were either superseded (`decode_seed2.log`, the origin
 - Two data-integrity questions from Huu (cosmos token misalignment; 4096-context truncation) remain open, uninvestigated.
 - Large roadmap now on record (§7) but not prioritized/sequenced with the user yet.
 - Unexplained mid-session file-deletion incident (§8) — committed files restored, uncommitted ones not regenerated; root cause unknown.
+
+## 33. Discord Chat Cross-Check (Huu ↔ Van Khue, ~4:20AM–6:21PM, Jul 22, 2026) — Consolidated Action-Item / Discussion List
+
+**Context:** User pasted a real, extended Discord thread between Huu (PI) and Van Khue discussing the `qwen3_1.7b_vla_v2` eval results from §31-32 directly (model now public at `EmpathicRobotics/vla-1.7b-qwen3-v2`), and asked for a consolidated list of open action items / discussion points, merging what was already documented in `REPORT.md`/`PROGRESS_VI.md` with new content surfaced in the chat. Recorded in full below (mirrors the Vietnamese entry in `PROGRESS_VI.md`, same date).
+
+### A. Strategic tension to resolve first
+
+**1. "Scale data" vs. "improve the pipeline" — Huu said both, seemingly in tension.** At 4:28AM: *"instead of trying to spend time improving the pipeline, we just scale the data 😄 easier"*. Yet later in the same thread Huu requests several things that **are** pipeline improvements: cosmos resolution/quality, longer context, variable-length video chunks instead of fixed 8-frame, splitting SNAC listen/speak. Unclear whether "scale data" is meant to replace these fixes or run in parallel — needs a direct answer from Huu before splitting effort across both fronts without enough resource for either.
+
+### B. New technical issues surfaced in the chat (not previously logged)
+
+**2. SNAC decode produces a voice that is "similar but not clear" — a quality concern, not just atomicity.** Van Khue: *"the output voice is somehow similar to the input voice but it's not clear."* Distinct from the earlier verification ("decoder runs, produces non-silent/non-clipping WAV") — perceptual quality is still poor. Needs investigation: is this from keeping only L0+L1 (dropping L2) reducing fidelity, or a decode-logic bug.
+
+**3. SNAC "listen" vs. "speak" — concretized into real-time turn-taking.** Huu: L0+L1 = `<listen>`, full L0+L1+L2 = `<speak>` (higher quality) → aiming for **real-time interrupted speaking → listening → speaking**. Needs a token-format design for the two modes, plus substantially more speech data (Huu: *"we probably need a lot more speech data"*).
+
+**4. Cosmos resolution/quality — the old tradeoff decision may no longer fit.** Huu asked whether cosmos resolution is bad; Van Khue confirmed the low quality + zoom-in preprocessing before cosmos tokenization was an old decision made *"because robot camera is bad"* (optimized for robot cameras, not YouTube-quality video). Van Khue's own take: *"we need to see real thing before do token saving."* Needs re-evaluation of trading token budget for cosmos quality.
+
+**5. Suspected cosmos token cross-contamination between videos (data integrity, uninvestigated).** Concrete case: a prompt about one scene decoded to a cosmos video showing only a finger — resembling part of an unrelated cutting/cooking video. Huu: *"a finger is in fact part of a cutting video."* Suspected mismatch/misalignment during pretrain tokenization — needs direct data inspection, not just inference from model output.
+
+**6. Is cosmos being truncated by the 4096 context?** Huu asked directly; unconfirmed either way. Needs direct measurement.
+
+**7. "No movement" — two new hypotheses beyond "8 frames is too short."** Huu suggested: possibly undertrained, or cosmos generation cut off mid-way before movement would show — needs disentangling from the two already-known hypotheses (8-frame window too short; greedy macro-repetition). Huu's concrete proposed fix: **speed up source video** before chunking into 8 frames so each chunk spans more real elapsed time; also consider **variable-length video windows** (0.1s–5s) instead of a fixed 8-frame chunk for every video.
+
+**8. Try reordering modality sequence (seed2-before-cosmos vs. the reverse).** Current convention is always seed2→cosmos (inherited from FineVideo-VLA). Huu: *"you could try mixing it up."*
+
+### C. Concrete action items, directly requested
+
+**9. Test "any-mode-to-any-mode" against real pretrain records, not just synthetic prompts.** Huu's specific asks: a real "chemical bond" image, real cosmos/seed2 tokens of a woman walking from the actual data, a real speech segment to see if the model "echoes" it back coherently.
+
+**10. Research how many tokens NVIDIA Cosmos (or a comparable video model) was trained on before producing usable video** — as a benchmark for where the current token budget stands.
+
+**11. Share results in the #omni-vla channel on the open-sci Discord.** Van Khue committed to this ("I will wrap up and send some results there") — needs follow-up.
+
+**12. Set up a hosted inference endpoint on a LAION machine.** Proposed concretely, not yet done.
+
+### D. New data sources named for the first time in this chat
+
+**13. Euro-pat data on Leo (Leonardo cluster).** Huu: patent text → generated image (via an early Black Forest Labs model, multilingual-capable) → English caption. MV1 kept only captions; omni could add the seed2 tokens of the image too — potential multilingual angle (multilingual patent text, multilingual-capable image generator, English caption). Overlaps with the pre-existing action item ("investigate leo seed2 + euro_pat token counts") but now has enough context to start — Van Khue committed: *"I will start looking at those data from now."*
+
+**14. Clappa dataset — audio→image→text.** Previously peeked at (§ MixtureVitae-Backup Multimodal investigation, Jul 9, noted as "video caption, DISCUSS-1 candidate") but Huu describes it more specifically as audio-image-text — worth re-checking against this description.
+
+**15. "Also synthetic [data] on Leo"** — Huu's reference is vague; unclear which dataset. Needs clarification from Huu before spending effort searching.
+
+### E. Larger, longer-term ideas (undesigned, need discussion before building)
+
+**16. A 100B-token run: 70B text (from MV1) + 30B of the current VLA-flavored mix.** A major ratio shift from the current run (100% VLA-flavored, ~32B). Needs a mixing/weighting discussion.
+
+**17. Instruction-tied cross-modal reasoning — Huu's concrete spec.** The biggest idea in the thread: the model receives an instruction like *"draw me a picture for a solution to this formula"* or *"show me a dance in the shape of this math formula"* → generates action tokens matching that shape. Proposed data-generation approach: work **backwards** from real video — given video X, find an intermediate thing Y that relates to/represents X, construct the instruction "do X based on Y," in the format:
+```
+<think> ok, first I need to compute a type of Y... <seed tokens>... Ok, so now let's do X </think> <action tokens>
+```
+No design or implementation yet — needs a feasibility discussion before investing (Huu himself: *"I am pretty sure it won't be able to do that"* but wants to try anyway).
+
+### Proposed sequencing (not yet agreed with the user)
+
+Run the any-mode-to-any-mode test against real data (item 9) first — cheap, immediate, and answers several open questions at once (data-integrity suspicion in item 5, context-truncation in item 6, undertrained-vs-repetition in item 7). Only after that, decide between the "scale to 100B" branch (item 16) and the "fix cosmos quality/8-frame" branch (items 4, 7), since the two compete for the same resources and depend on resolving section A first.
+
+## 34. Phase-0 Diagnostics Run: Any-Mode-to-Any-Mode Against Real Pretrain Records (Item 9), Context-Truncation Confirmed at Both Generation and Training Time (Item 6), Structural Root Cause Found for Suspected Cosmos Cross-Contamination (Item 5) (Jul 22, 2026, continued)
+
+**Context:** User asked to start on the "Phase 0" cheap/parallel diagnostics from the prioritized roadmap (§33's sequencing), noting item 11 (sharing results in #omni-vla) was already done by the user directly. This entry covers items 9, 6, and 5 — all three answered with real data/code this session, on the same GH200 interactive node used throughout (`jpbl-s02-02`), env `env_stable_vla` per `CLAUDE.md`'s prototype-pipeline setup.
+
+### 1. Item 9 — any-mode-to-any-mode against 3 REAL pretrain records
+
+Wrote `tools/eval/eval_any_mode_real.py`, reusing `decode_media`/`_patched_tokenizer_path` from the existing `eval_vla_v2_media.py` framework so every modality present in prompt+output still gets decoded to real media. Unlike the existing prompt suites (`eval_vla_v2_sanity.py`, `eval_vla_v2_media.py`), which hand-type prompt strings, this script pulls its 3 test records **live from their real tokenized source files** at run time (record id printed in each `input_output.txt`'s `SOURCE:` line, no manual transcription risk):
+
+1. **`chemical_bond_real`** — `synth_llava2_001131949` (`/p/data1/mmlaion/shared/vla/synth_llava_flat/synth_llava2_shard-0000025.jsonl`), seed2 block only, ground truth is a real `<caption>` about a chemical-bond diagram.
+2. **`woman_walking_real`** — a FineVideo-VLA v6 record (header "Pickings Charge", `.../megatron_dataset_v6/flat_final_vla_adaptive_rank_1.jsonl`) captioned "The woman is walking outside." — header + caption + seed2 + the record's real first 200-token cosmos chunk (open tag only), ground truth is the real `</cosmos><snac>...</snac><speech>...oh!</speech>`.
+3. **`roleplay_speech_real`** — a real `laion/emotional-roleplay` record (`cv_Fairy-2__b1_13_Astonishment_Surprise_1`), USER voice-acted instruction only, **no snac hint at all**, ground truth is the real 342-token `<snac>` response.
+
+Ran all 3 × greedy + sampling (T=0.8/top_p=0.9/rep_penalty=1.3) against `qwen3_1.7b_vla_v2` (`hf/iter_0007632`). Results, saved to `samples/qwen3_1.7b_vla_v2_eval/2026-07-22_any_mode_real/`:
+
+- **`chemical_bond_real` — FAILED, both modes.** Instead of `<caption>`, greedy went straight to `<snac>` (3 identical triplets) then a heavily macro-repeating `<cosmos>` block (the same ~15-token sub-pattern repeating dozens of times, then the whole block repeating near-verbatim); sampling skipped straight to `<cosmos>` with no repetition but still the wrong modality. `synth_llava2` records never have cosmos in training (image+caption only, no video) — the model appears to default toward the FineVideo-style seed2→cosmos chain even when the real distribution for this specific record type never includes it, i.e. it isn't reliably conditioning on which *kind* of seed2 record it's looking at.
+- **`woman_walking_real` — SUCCEEDED, both modes, the strongest result of the session.** Both greedy and sampling correctly closed `</cosmos>` right where the real record does, then produced a `<snac>` triplet + a plausible short `<speech>` utterance (greedy: "I'm not a man."; sampling: "What are you doing? Just tell me what to do now!..." — tonally off from the real "...oh!" but structurally and grammatically coherent), then continued into further seed2/cosmos content. Greedy's re-emitted `<seed2>` block was **byte-identical** to the one already in the prompt — the same macro-repetition pattern documented in §32, now confirmed to trigger from a real (not synthetic) prompt too. The model's own new cosmos chunk in both modes opened with an id numerically very close to the original real chunk's first id (50144/50072 vs. the real 50073) — plausibly a structural/scene-marker token rather than evidence of copying, but not conclusively ruled out either way; neither new chunk reached the 200-token threshold needed for a full video decode (115/171 new ids respectively), so this couldn't be checked visually this pass.
+- **`roleplay_speech_real` — FAILED, both modes, no snac at all.** Greedy produced pure English prose about a "fantasy world" (no connection to the actual "gold sky / shooting star" prompt) that degenerated into the same single word ("wonder") repeated ~150 times — the first time this session's macro-repetition finding (§32) is confirmed in **natural-language** output, not just structured VLA tokens. Sampling avoided the repetition loop but produced an unrelated invented Q&A transcript ("Q: What did you hear at time 3? A: ...") instead of any audio — resembling OmniVideo-100K's QA-pair format bleeding into a roleplay-shaped prompt. Zero `<snac_>` tokens in either mode.
+
+**Net finding for item 9:** the model's any-mode-to-any-mode ability is real but uneven — strong on the modality pair it saw the most of at full length (video→speech→video, FineVideo-style), and unreliable on the other two real distributions tested (image-only→caption from `synth_llava2`; text-only→speech from the roleplay set), where it defaults toward FineVideo-shaped continuations instead. This is a more specific, evidence-backed version of the "cosmos dominates" concern in §31/§32 — cosmos isn't just token-expensive, the model seems to treat it as a default continuation even for record types that never have it.
+
+### 2. Item 6 — context truncation confirmed at both generation time and training time
+
+**Generation-time (already-known symptom, now precisely characterized):** re-checked the tails of the two existing long `full_chain_from_scratch` runs (`2026-07-22_full_chain_long/01_full_chain_from_scratch_greedy` at 4000 tokens, `2026-07-22_full_eval/07_full_chain_from_scratch_greedy` at 2000 tokens) — **both end mid-`<cosmos_N>`, with no closing `</cosmos>`**, confirming generation is hard-stopped by `max_new_tokens`/`max_position_embeddings` mid-chunk, not by any natural stopping point.
+
+**Training-time (new, much larger finding):** tokenized 300 real documents from `FineVideo-VLA/megatron_dataset_v6/flat_final_vla_adaptive_rank_1.jsonl` with the real `tokenizer_vla_qwen3` to get real (not word-count-estimated) per-document token lengths:
+
+| Stat | Tokens |
+|---|---|
+| min | 207 |
+| p25 | 5,170 |
+| median | 13,832 |
+| p75 | 28,020 |
+| p90 | 59,330 |
+| max | 294,050 |
+| mean | 25,896 |
+
+**80.0% of documents exceed the v2 training `seq_length` of 4096; 64.3% still exceed the v3-draft `seq_length` of 8192.** Cross-checked `qwen3_1.7b_vla_v2.yaml`: no `reset_position_ids`/`reset_attention_mask` set, and `mv-scale`'s tokenize sbatch confirms `--append-eod` (a real EOS separator is inserted between documents in the `.bin` file) but with standard Megatron packing (concatenate every document into one flat token stream, then slice fixed `seq_length`-sized windows with no document-boundary awareness) and no attention/position reset, **the vast majority of training windows this model actually saw start or end in the middle of a document** — very often mid-`<cosmos>` block given how cosmos-heavy these documents are. This directly explains why the model rarely learned a clean "this is where a long activity naturally ends" signal (contributing to §32's macro-repetition finding) independent of the already-known 8-frame-window hypothesis. Not yet checked: roleplay/synth_llava2 documents are far shorter (hundreds to a few thousand tokens) and are not subject to this problem — the truncation issue is concentrated in FineVideo-VLA specifically, the longest and most cosmos-dense source in the mix.
+
+### 3. Item 5 — structural root cause found for suspected cosmos cross-contamination (not a direct reproduction)
+
+The specific Discord example Huu raised (seed2→cosmos generation for one scene producing what looked like a "finger from a cutting video") was shown as Discord image attachments during a live demo, not saved as a file anywhere in the repo (`grep -rl` across `samples/qwen3_1.7b_vla_v2_eval/` found no matching artifact) — so it could not be directly re-inspected or reproduced this session.
+
+Instead, §2's finding above supplies a plausible **structural** mechanism: since (a) `--append-eod` only inserts a bare EOS token between documents with no `reset_position_ids`/`reset_attention_mask`, and (b) 80% of FineVideo-VLA documents are far longer than the 4096-token training window, **a meaningful fraction of the training windows this model actually trained on very plausibly contained the tail end of one video's tokens immediately followed by the head of a different, unrelated video's tokens, with nothing but a single EOS token as a boundary signal and full bidirectional-in-context (causal but unmasked-across-EOD) attention available**. This would let the model learn spurious cross-video associations exactly as Huu suspected, without requiring any bug in the tokenization/merge pipeline itself (Phase 6/7 were not found to have any misalignment bug on inspection — the mechanism is at the Megatron-packing level, downstream of a correctly-built flat corpus). Confirming this with a smoking-gun example would require sampling actual training windows directly from the `.bin`/`.idx` shards at fixed offsets and checking for document boundaries mid-window — not done this pass; flagged as the natural next step if this needs to move from "plausible mechanism" to "confirmed."
+
+### Status at end of entry
+
+- Item 9 (any-mode-to-any-mode, real records): **done**, mixed results (1/3 record types succeeded, 2/3 failed) — script `tools/eval/eval_any_mode_real.py` is reusable for future checkpoints.
+- Item 6 (context truncation): **done** — confirmed at generation time (existing samples) and, more significantly, at training time (80% of FineVideo-VLA docs exceed seq_length=4096, 64.3% exceed 8192).
+- Item 5 (cosmos cross-contamination): **plausible structural mechanism identified** (no document-boundary reset + massive document/seq_length mismatch), original reported case not directly reproducible (ephemeral, Discord-only) — not fully closed, would need direct `.bin`-level sampling to confirm.
+- Item 11 (share to #omni-vla): already done by the user before this entry, per their own note.
+- These findings materially inform the already-planned Phase 1 (cosmos pipeline redesign) and Phase 3 (v3 training config) from §33's roadmap: `reset_position_ids`/`reset_attention_mask` and/or explicit document-boundary handling in Megatron packing is now a concrete candidate fix to bundle into the next training run, alongside the already-planned `seq_length` increase, cosmos dropout rebalance, and cosmos quality redesign.
