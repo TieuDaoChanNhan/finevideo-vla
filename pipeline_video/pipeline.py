@@ -96,18 +96,32 @@ class CosmosVideoTokenizer:
     def encode_video_chunk(self, frame_list, target_size=256):
         # 256 is Cosmos-Tokenizer-DV8x16x16's documented minimum supported
         # resolution (shorter side) -- the old target_size=160 default was
-        # below spec. Resize-shorter-side + center-crop (aspect-preserving)
-        # replaces the old direct (target_size, target_size) squash, which
-        # distorted non-square source frames. 2026-07-22: this roughly 2.56x's
-        # cosmos tokens/chunk (100->256 spatial positions per temporal step),
-        # so seq_length/dropout must be re-tuned together with this change,
-        # not independently -- see REPORT.md #35.
+        # below spec. 2026-07-22 update: no crop at all now -- full-frame
+        # aspect-preserving resize (shorter side = target_size, longer side
+        # rounded to the nearest multiple of 16, the encoder's spatial
+        # compression factor -- confirmed via direct test that the encoder
+        # accepts non-square H/W as long as both are multiples of 16). The
+        # previous version center-cropped to a square, which was carried over
+        # from an earlier robot-camera pipeline (square-ish, heavily jittered
+        # camera) and cropped real content off the sides of ordinary 16:9
+        # YouTube video -- not appropriate now that this is omni-modal, not
+        # robot-only. Token count is no longer size^2-based; it's
+        # (H/16)*(W/16)*2, e.g. 256 shorter side on a 16:9 frame -> 256x448 ->
+        # 16*28*2=896 tokens, vs 512 for a same-shorter-side square crop --
+        # see REPORT.md #35 follow-up for the full before/after comparison.
         if self.encoder is None: return []
         try:
+            w0, h0 = frame_list[0].size
+            if w0 >= h0:
+                new_h = target_size
+                new_w = max(16, round(target_size * w0 / h0 / 16) * 16)
+            else:
+                new_w = target_size
+                new_h = max(16, round(target_size * h0 / w0 / 16) * 16)
+
             processed_frames = []
             transform = T.Compose([
-                T.Resize(target_size),
-                T.CenterCrop(target_size),
+                T.Resize((new_h, new_w)),
                 T.ToTensor(),
                 T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
             ])

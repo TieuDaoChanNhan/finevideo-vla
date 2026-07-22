@@ -2334,4 +2334,72 @@ Verify trên node GH200 tương tác (`env_stable_vla`): load encoder `Cosmos-To
 - **Chưa chạy:** re-tokenize toàn bộ corpus (40 node × 4 GPU trên ~40K video FineVideo, cộng OmniVideo-100K qua cùng class đã fix) để áp dụng fix này vào data thật — cố tình chưa làm. Đây là cam kết compute cluster lớn, khó đảo ngược, và theo đúng roadmap ở §33 việc này cần gộp với 2 quyết định còn mở: (a) retune seq_length/dropout mà phát hiện tăng 2.56x token ở trên khiến càng cấp thiết hơn, và (b) ý tưởng variable-length chunking/tăng tốc video ở mục 7 §33, vì đụng cùng đoạn code "đưa video vào Cosmos" nên nên làm chung 1 lần re-tokenize thay vì phải làm 2 lần.
 - Chưa đụng tới: `pipeline_video/pipeline_benchmark.py` và `pipeline_video/pipeline_1gpu.py` (biến thể dev/benchmark, cũng hardcode `target_size=160`, xác nhận **không** được submit script nào tham chiếu) — để nguyên vì không phải đường production; `pipeline_video/video_pipeline.py` đã có sẵn `target_size=256` cho `encode_video_chunk` chính (có vẻ ai đó đã fix một phần trước đây) nhưng vẫn còn `target_size=160` không liên quan ở 1 helper `encode_decode_chunk` riêng để visualize — cũng để nguyên, ngoài phạm vi lần này.
 - Quyết định cần từ user trước khi re-tokenize toàn bộ: xác nhận target 256px (hay đi cao hơn, vd 384/512, đổi lại token cost tăng tương ứng) và chốt luôn việc retune seq_length/dropout cùng lúc, theo đúng mâu thuẫn "scale vs fix pipeline" còn mở ở mục A §33.
+
+---
+
+## Phase 1 tiếp — A/B resolution + SNAC L2 trên video/audio thật, bỏ square-crop cosmos, thử nghiệm frame-stride (22/07/2026, tiếp)
+
+### Bối cảnh
+
+User hỏi 3 việc: (1) test nhiều resolution trên 1 video ngắn thật, decode lại thành video để tự xem chọn; (2) test SNAC thêm L2 trên vài record thật, decode cả 2 bản để nghe so sánh; (3) cho ý kiến về seq_length + phân tích sâu vấn đề 8-frame. Sau đó thêm 1 tin nhắn: user tự nhận ra cosmos đang bị resize thành hình vuông, hỏi có nên sửa không (vì hồi xưa làm vậy do camera robot rung + gần vuông, giờ omni rồi có vẻ không hợp).
+
+### 1. A/B resolution trên video thật — xác nhận đúng công thức bậc 2, làm rõ trí nhớ "512"
+
+Chạy `encode_video_chunk` (encoder Cosmos-Tokenizer-DV8x16x16 thật, trên GH200) với target_size ∈ {160,224,256,320,384,448,512,640,720}, đầu tiên trên frame nhiễu tổng hợp, sau đó trên 8 frame thật từ `videos/good.mp4` (2 phụ nữ đi bộ, native 2560×1440, clip 5.1s — chọn vì user yêu cầu "vài giây thôi"). Token đúng công thức `(target_size/16)² × 2`: 160→200, 224→392, 256→512, 320→800, 384→1152, 448→1568, 512→2048, 640→3200, 720→4050.
+
+**Trả lời câu "cosmos vốn đã 512?":** không phải cosmos — `EXTRACT_SIZE=512` trong `step_a_tokenize_video.py` (khớp target_size 512 của Seed2Tokenizer) là độ phân giải **extract frame**, ở TRƯỚC cosmos. `encode_video_chunk()` âm thầm hạ 512 đó xuống 160 (giờ 256) — 512 chưa bao giờ thực sự tới tay Cosmos.
+
+Viết `tools/cosmos_resolution_experiment.py`: lấy 8 frame thật từ video/start-frame chỉ định, encode+decode ở nhiều resolution, lưu từng bản mp4 riêng cùng bản gốc để so sánh — đã gửi 8 file cho user (1 gốc + 7 resolution) để tự xem chọn, thay vì chỉ dựa vào test nhiễu tổng hợp.
+
+**Bug bắt được lúc viết script:** `os.chdir(PROTOTYPE_DIR)` chạy trước khi output path được resolve thành absolute, khiến lần chạy đầu âm thầm ghi nhầm vào `prototype/samples/...` thay vì `3d-human-pose/samples/...` — đúng loại lỗi đã fix 1 lần ở `decode_seed2.py` (§32). Sửa bằng cách resolve `--output-dir`/`--video` thành absolute ngay đầu `main()`, trước mọi `chdir`.
+
+### 2. A/B SNAC L2 trên 3 record thật — token cost đúng lý thuyết, user nghe thấy rõ ràng tốt hơn
+
+Viết `tools/snac_l2_experiment.py`: lấy row thật trực tiếp từ parquet gốc `laion/emotional-roleplay-finetuning-dataset`, decode mp3 thật, encode với đủ 3 level SNAC (không chỉ L0+L1 production), lưu 3 file/record: audio gốc, bản `decoded_listen_L0L1` (production hiện tại), bản `decoded_speak_L0L1L2` (L2 thật). Chạy trên 3 record thật:
+
+| record | token listen | token speak | tăng |
+|---|---|---|---|
+| b1_13_Astonishment_Surprise_1 | 342 | 798 | +133.3% |
+| b1_18_Teasing_1 | 339 | 791 | +133.3% |
+| b1_07_Infatuation_1 | 327 | 763 | +133.3% |
+
+Khớp đúng lý thuyết (L2 thêm 4 token/frame trên nền 3 token cũ = +133.3%). Gửi 6 file (2/3 record) cho user nghe trực tiếp. **User quyết định sau khi nghe: L2 rõ ràng tốt hơn ("L2 ngon lắm"), quyết định sẽ thêm L2 vào pipeline.**
+
+**Phát hiện ràng buộc MV-Omni khi bàn tới:** user hỏi MV-Omni có cần re-encode L2 không. Check trực tiếp: file listing thật của `mixture-vitae/MixtureVitae-Omni` trên HF (qua `HfApi.list_repo_files`) chỉ có `data/data/valid_snac_*.jsonl.gz`/`snac_emo_seed_0.jsonl.gz` — **không có audio gốc ở đâu trong repo**. Stream thử 1 phần `valid_snac_5.jsonl.gz` (HTTP Range + zlib decompress streaming, không tải hết file nén ~5.8GB) xác nhận token thật cũng cycle đúng 3 band offset y hệt `tokenize_snac.py` của mình (L0/L1a/L1b) — **MV-Omni cũng chỉ có L0+L1, không có audio gốc để re-encode L2**. User tự quyết: sẽ xin Huu source audio gốc để tự tokenize lại, không coi đây là bị chặn.
+
+### 3. Bỏ square-crop cosmos — root cause là default thời robot camera, không còn hợp với omni
+
+User tự nhận ra trước khi tôi nêu: cosmos decode ra mặt người/biển hiệu trông không tự nhiên vì pipeline đang center-crop thành hình vuông — kế thừa từ thời camera robot (rung, gần vuông), không hợp với video YouTube 16:9 thường trong scope omni hiện tại.
+
+Verify trực tiếp trên encoder thật (không giả định): `Cosmos-Tokenizer-DV8x16x16` chấp nhận input **không vuông** bình thường, miễn cả H và W chia hết cho 16 — test (256,256)/(256,448)/(256,464)/(288,512)/(270,480) đều encode thành công, đúng công thức `(H/16)×(W/16)×2`.
+
+Đổi `encode_video_chunk()` (cả `prototype/pipeline.py` lẫn bản mirror git `pipeline_video/pipeline.py`) từ resize-cạnh-ngắn + `CenterCrop` (vuông, vẫn crop mất content 2 bên) sang resize giữ tỉ lệ thuần: cạnh ngắn = target_size, cạnh dài làm tròn về bội số 16 gần nhất, **không crop gì cả**. Token không còn tính theo `size²` nữa — vd 256 cạnh ngắn trên frame 16:9 giờ là 256×448 = 896 token (tăng so với 512 của bản square-crop cùng target_size, vì giữ nguyên chiều rộng đầy đủ thay vì crop bớt).
+
+Chạy lại `cosmos_resolution_experiment.py` (sửa luôn phần tính grid vốn giả định vuông) trên cùng chunk `good.mp4` ở 4 resolution (160/256/384/512) với code mới — 160→360, 256→896, 384→2064, 512→3648 token — gửi bộ so sánh v2 cho user.
+
+### 4. Thử nghiệm frame-stride ("tăng tốc video") — xác nhận miễn phí token, đưa ra đề xuất cụ thể
+
+Tiếp nối phân tích "8-frame quá ngắn" và ý Huu ("speed up video"): viết `tools/cosmos_stride_experiment.py`, lấy mỗi frame thứ N (stride 1/2/3/4) thay vì frame liên tiếp, vẫn giữ đúng 8 frame vào Cosmos. Chạy trên `videos/boxing.mp4` (đấm bao cát, chuyển động liên tục rõ hơn `good.mp4`), target_size=256 cố định:
+
+| stride | thời gian thật/chunk | token |
+|---|---|---|
+| 1x (hiện tại) | 0.233s | 896 |
+| 2x | 0.467s | 896 |
+| 3x | 0.700s | 896 |
+| 4x | 0.933s | 896 |
+
+**Xác nhận đúng dự đoán: token giữ nguyên 896 ở MỌI stride** — Cosmos chỉ đếm số frame đưa vào, không quan tâm khoảng cách thật giữa chúng trong video gốc. Đây là cách DUY NHẤT trong các fix bàn hôm nay tăng thời gian thật/chunk mà KHÔNG tốn thêm token (khác hẳn resolution, vốn tăng theo bậc 2). Gửi 8 file cho user tự xem đánh giá.
+
+**Đề xuất:** stride ~3 (~0.7s/chunk) làm điểm khởi đầu — đủ dài để thấy trọn 1 đơn vị chuyển động (như 1 cú đấm), không quá dài tới mức bỏ lỡ hẳn chuyển động nhanh giữa 2 frame lấy mẫu. Đóng khung tổng quát theo đúng ý user (đừng hardcode 30fps): chọn target theo **giây thật** (~0.7s) trước, rồi tính `stride = round(fps_camera × 0.7 / 8)` cho bất kỳ camera nào.
+
+**Chưa giải quyết / cần lưu ý rõ:** áp stride chỉ cho cosmos mà không đổi tương ứng cách Phase 3 tạo pose/agent window sẽ làm `cosmos_N` và `agent_N` không còn đại diện cùng khoảng thời gian thật — phá đúng cơ chế đồng bộ `chunk_timing` đã fix 20/07. 2 hướng đã nêu cho user chọn: (a) sửa luôn windowing ở Phase 3 (khá rẻ — chỉ nhóm lại pose đã tính sẵn, không phải chạy lại HRNet/MotionBERT tốn compute, nên có thể không thực sự vi phạm ưu tiên "pose pipeline tốn compute, làm video trước"), hoặc (b) mở rộng window riêng cho cosmos, giữ nhịp chunk_timing/interleave bên ngoài vẫn 8-frame (cosmos chunk sẽ chồng lấn sang frame lân cận — chấp nhận được nhưng không còn "chỉ đụng video pipeline" thuần nếu cần đồng bộ chặt 1:1 với agent). Chưa chốt.
+
+### Trạng thái cuối phiên
+
+- Resolution cosmos: vẫn mở, chờ user xem xong cả 2 bộ so sánh (v1 vuông, v2 giữ tỉ lệ) vừa gửi.
+- Square-crop → giữ tỉ lệ: **xong, đã verify trên input không vuông thật**, áp dụng cả 2 bản pipeline.
+- SNAC L2: **user đã quyết định sẽ thêm** sau khi nghe A/B thật — chưa áp dụng vào `tokenize_snac.py` production (script vẫn chỉ encode L0+L1); MV-Omni không thể thêm L2 nếu không có audio gốc mới từ Huu (user sẽ tự xin).
+- Frame-stride/window-duration: đã đề xuất (~0.7s, stride tính theo fps thật), **chưa implement** — chờ quyết định đồng bộ với pose window ở trên.
+- seq_length: giữ nguyên khuyến nghị (tăng hơn 8192 đã draft) nhưng vẫn cố tình chưa chốt số, chờ chốt resolution + stride/window trước vì cả 2 đổi trực tiếp con số "bao nhiêu token/giây thật hoạt động" mà seq_length cần dựa vào.
+- Tool mới phiên này, tái dùng được cho thử nghiệm sau: `tools/cosmos_resolution_experiment.py`, `tools/cosmos_stride_experiment.py`, `tools/snac_l2_experiment.py`.
 - Sự cố mất file giữa phiên chưa rõ nguyên nhân gốc.
