@@ -1,0 +1,41 @@
+/e/project1/reformo/nguyen38/env_stable_vla/lib/python3.12/site-packages/timm/models/layers/__init__.py:48: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+/e/project1/reformo/nguyen38/env_stable_vla/lib/python3.12/site-packages/timm/models/registry.py:4: FutureWarning: Importing from timm.models.registry is deprecated, please import via timm.models
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.models", FutureWarning)
+/e/project1/reformo/nguyen38/env_stable_vla/lib/python3.12/site-packages/timm/models/helpers.py:7: FutureWarning: Importing from timm.models.helpers is deprecated, please import via timm.models
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.models", FutureWarning)
+Found 3 separate <seed2>...</seed2> blocks -- decoding each as its own image.
+
+Block 0: 32 tokens -> /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_0.png
+Loading sd2-community/stable-diffusion-2-1-unclip (first run downloads ~5GB)...
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]Loading pipeline components...:  22%|██▏       | 2/9 [00:00<00:01,  4.81it/s]`torch_dtype` is deprecated! Use `dtype` instead!
+Loading pipeline components...:  56%|█████▌    | 5/9 [00:00<00:00, 10.72it/s]Loading pipeline components...:  89%|████████▉ | 8/9 [00:00<00:00, 10.61it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:00<00:00,  9.94it/s]
+BertLMHeadModel has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Loading Seed2Tokenizer...
+  0%|          | 0/21 [00:00<?, ?it/s]  5%|▍         | 1/21 [00:00<00:03,  5.27it/s] 19%|█▉        | 4/21 [00:00<00:01, 15.57it/s] 33%|███▎      | 7/21 [00:00<00:00, 20.89it/s] 48%|████▊     | 10/21 [00:00<00:00, 22.73it/s] 62%|██████▏   | 13/21 [00:00<00:00, 24.98it/s] 76%|███████▌  | 16/21 [00:00<00:00, 25.09it/s] 90%|█████████ | 19/21 [00:00<00:00, 26.15it/s]100%|██████████| 21/21 [00:00<00:00, 23.09it/s]
+Saved: /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_0.png
+
+Block 1: 32 tokens -> /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_1.png
+Loading sd2-community/stable-diffusion-2-1-unclip (first run downloads ~5GB)...
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]Loading pipeline components...:  22%|██▏       | 2/9 [00:00<00:01,  4.40it/s]Loading pipeline components...:  56%|█████▌    | 5/9 [00:00<00:00,  9.97it/s]Loading pipeline components...:  89%|████████▉ | 8/9 [00:00<00:00, 10.26it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:00<00:00, 10.09it/s]
+BertLMHeadModel has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Loading Seed2Tokenizer...
+  0%|          | 0/21 [00:00<?, ?it/s] 14%|█▍        | 3/21 [00:00<00:00, 28.94it/s] 33%|███▎      | 7/21 [00:00<00:00, 29.83it/s] 48%|████▊     | 10/21 [00:00<00:00, 29.55it/s] 67%|██████▋   | 14/21 [00:00<00:00, 29.82it/s] 86%|████████▌ | 18/21 [00:00<00:00, 29.92it/s]100%|██████████| 21/21 [00:00<00:00, 29.92it/s]
+Saved: /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_1.png
+
+Block 2: 32 tokens -> /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_2.png
+Loading sd2-community/stable-diffusion-2-1-unclip (first run downloads ~5GB)...
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]Loading pipeline components...:  22%|██▏       | 2/9 [00:00<00:01,  5.96it/s]Loading pipeline components...:  56%|█████▌    | 5/9 [00:00<00:00, 11.21it/s]Loading pipeline components...:  89%|████████▉ | 8/9 [00:00<00:00, 11.24it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:00<00:00, 11.40it/s]
+BertLMHeadModel has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Loading Seed2Tokenizer...
+  0%|          | 0/21 [00:00<?, ?it/s] 14%|█▍        | 3/21 [00:00<00:00, 27.38it/s] 29%|██▊       | 6/21 [00:00<00:00, 28.33it/s] 43%|████▎     | 9/21 [00:00<00:00, 28.58it/s] 57%|█████▋    | 12/21 [00:00<00:00, 28.70it/s] 71%|███████▏  | 15/21 [00:00<00:00, 28.96it/s] 86%|████████▌ | 18/21 [00:00<00:00, 28.85it/s]100%|██████████| 21/21 [00:00<00:00, 29.07it/s]100%|██████████| 21/21 [00:00<00:00, 28.80it/s]
+Saved: /e/project1/reformo/nguyen38/3d-human-pose/samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/07_full_chain_from_scratch_greedy/decoded_seed2_2.png

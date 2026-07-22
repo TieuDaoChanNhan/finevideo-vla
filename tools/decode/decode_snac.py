@@ -81,11 +81,34 @@ def decode_snac_tokens(token_ids: list, output_path: str) -> None:
     c1 = torch.zeros(1, 2 * n0, dtype=torch.long)
     c2 = torch.zeros(1, 4 * n0, dtype=torch.long)  # level 2 was never encoded -- zero-fill
 
+    # This function assumes strict positional cycling (index%3==0 -> L0,
+    # ==1 -> L1a, ==2 -> L1b) matches the actual band each id belongs to --
+    # true for well-formed <snac>...</snac> blocks, but NOT guaranteed for a
+    # free-floating/unwrapped token span assembled by extract_snac_tokens()'s
+    # whole-text fallback (e.g. a generation that never closes </snac>,
+    # spliced with earlier/later snac fragments elsewhere in the text). A
+    # mismatched id produces an out-of-[0,4095) codebook index, which SNAC's
+    # embedding lookup on GPU turns into an opaque
+    # "CUDA error: device-side assert triggered" instead of a real error
+    # message (hit for real 2026-07-22, roleplay_speech/sample eval run --
+    # see samples/qwen3_1.7b_vla_v2_eval/2026-07-22_full_eval/SUMMARY.md).
+    # Validate up front so the failure is legible.
     for i in range(n0):
         raw_l0, raw_l1a, raw_l1b = token_ids[3 * i], token_ids[3 * i + 1], token_ids[3 * i + 2]
-        c0[0, i] = raw_l0 - OFFSET_L0
-        c1[0, 2 * i] = raw_l1a - OFFSET_L1A
-        c1[0, 2 * i + 1] = raw_l1b - OFFSET_L1B
+        r0, r1a, r1b = raw_l0 - OFFSET_L0, raw_l1a - OFFSET_L1A, raw_l1b - OFFSET_L1B
+        for pos, (name, tok, raw) in enumerate([("L0", raw_l0, r0), ("L1a", raw_l1a, r1a), ("L1b", raw_l1b, r1b)]):
+            if not (0 <= raw < 4096):
+                raise ValueError(
+                    f"Triplet {i} position {pos} ({name}): token <snac_{tok}> decodes to raw "
+                    f"codebook index {raw}, outside valid [0, 4096). This id likely belongs to a "
+                    f"different band than its position implies (offsets: L0={OFFSET_L0}, "
+                    f"L1a={OFFSET_L1A}, L1b={OFFSET_L1B}) -- often means the input tokens aren't "
+                    f"one clean <snac>...</snac> block (e.g. spliced fragments from an unwrapped "
+                    f"or unclosed generation)."
+                )
+        c0[0, i] = r0
+        c1[0, 2 * i] = r1a
+        c1[0, 2 * i + 1] = r1b
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = SNAC.from_pretrained(SNAC_MODEL).eval().to(device)

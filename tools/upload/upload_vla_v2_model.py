@@ -89,6 +89,11 @@ training data — `cosmos` video tokens that decode to a real, playable video vi
 audio tokens that decode to a real, non-silent waveform via
 [SNAC](https://github.com/hubertsiuzdak/snac) (`hubertsiuzdak/snac_24khz`).
 
+All 3 non-text modalities the model actually produces in volume (`cosmos`, `snac`, `seed2`)
+now have a working decoder in the project repo (`tools/decode/`) and have each been
+round-tripped on real ground-truth tokens. `seed2` is generative rather than a
+deterministic codec round-trip — see Known limitations.
+
 ## Known limitations
 
 - **Greedy decoding can degenerate into repeated-token loops** inside long `cosmos`
@@ -104,9 +109,14 @@ audio tokens that decode to a real, non-silent waveform via
   most of a generation's token budget before reaching `<fps_N>`/`agent`.
 - **`avc_lm` tokens are essentially unused** — discarded at the data-flatten stage before
   training (to control token count), so the model rarely if ever produces them.
-- **`seed2`→image reconstruction has not been demonstrated** — no decoder for that
-  direction exists yet in the project repo. (`cosmos`→video and `snac`→audio decoders
-  both exist and have been verified against this model's own generated output.)
+- **`seed2`→image reconstruction is generative, not a deterministic round-trip.**
+  Seed2Tokenizer has no pixel decoder of its own; reconstruction conditions a diffusion
+  img2img pipeline (`StableUnCLIPImg2ImgPipeline`) on the token embeddings to *generate*
+  a plausible image, unlike `cosmos`/`snac`'s lossy-but-deterministic codec decoders — two
+  runs of the same tokens can come out visually different. Verified end-to-end on 32 real
+  ground-truth `<seed2_N>` tokens (`tools/decode/decode_seed2.py`) — the diffusion weights
+  now come from a community mirror (`sd2-community/stable-diffusion-2-1-unclip`), since
+  the original `stabilityai/stable-diffusion-2-1-unclip` was removed from HuggingFace.
 - **Evaluation so far is qualitative** (manual inspection of generated tokens/decoded
   media) — no MPJPE, BLEU/CIDEr, or closed-loop task-success metric has been run yet.
 

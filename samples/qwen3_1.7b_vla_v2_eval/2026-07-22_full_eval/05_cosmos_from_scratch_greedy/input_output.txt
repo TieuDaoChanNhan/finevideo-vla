@@ -1,0 +1,10 @@
+CATEGORY: from_scratch
+DESCRIPTION: Text context + bare cosmos open tag, no real tokens -- model invents 1 video chunk.
+MODE: greedy
+
+INPUT PROMPT (fed to the model):
+### Context: A person walks across a room.
+<cosmos>
+
+MODEL OUTPUT (everything generated after the prompt):
+ <cosmos_55943> <cosmos_52935> <cosmos_55495> <cosmos_52935> <cosmos_55495> <cosmos_52935> <cosmos_55495> <cosmos_52935> <cosmos_55495> <cosmos_55367> <cosmos_37683> <cosmos_22185> <cosmos_37179> <cosmos_22185> <cosmos_37179> <cosmos_22185> <cosmos_37179> <cosmos_22185> <cosmos_37691> <cosmos_34993> <cosmos_16041> <cosmos_31474> <cosmos_28841> <cosmos_31474> <cosmos_28841> <cosmos_31474> <cosmos_28841> <cosmos_31474> <cosmos_28841> <cosmos_31538> <cosmos_31417> <cosmos_31345> <cosmos_31409> <cosmos_31409> <cosmos_31409> <cosmos_31409> <cosmos_31409> <cosmos_31409> <cosmos_31409> <cosmos_31473> <cosmos_18480> <cosmos_31410> <cosmos_19113> <cosmos_31410> <cosmos_19113> <cosmos_31410> <cosmos_19113> <cosmos_31410> <cosmos_31857> <cosmos_31473> <cosmos_18617> <cosmos_31849> <cosmos_31922> <cosmos_31913> <cosmos_31922> <cosmos_31913> <cosmos_31922> <cosmos_31913> <cosmos_31922> <cosmos_18609> <cosmos_18544> <cosmos_44730> <cosmos_31921> <cosmos_44730> <cosmos_31921> <cosmos_44730> <cosmos_31921> <cosmos_44730> <cosmos_31857> <cosmos_34033> <cosmos_18097> <cosmos_21097> <cosmos_33970> <cosmos_18537> <cosmos_33970> <cosmos_18537> <cosmos_33970> <cosmos_18537> <cosmos_18546> <cosmos_21233> <cosmos_39892> <cosmos_41965> <cosmos_27092> <cosmos_41957> <cosmos_27092> <cosmos_41957> <cosmos_27092> <cosmos_41957> <cosmos_27092> <cosmos_54748> <cosmos_58503> <cosmos_43143> <cosmos_45255> <cosmos_45703> <cosmos_45255> <cosmos_45703> <cosmos_45255> <cosmos_45703> <cosmos_45255> <cosmos_43079> <cosmos_55943> <cosmos_53447> <cosmos_56007> <cosmos_53447> <cosmos_56007> <cosmos_53447> <cosmos_56007> <cosmos_53447> <cosmos_56007> <cosmos_53319> <cosmos_37682> <cosmos_24745> <cosmos_37179> <cosmos_22185> <cosmos_37171> <cosmos_22185> <cosmos_37171> <cosmos_22185> <cosmos_37683> <cosmos_37553> <cosmos_16041> <cosmos_31474> <cosmos_28841> <cosmos_31474> <cosmos_28841>

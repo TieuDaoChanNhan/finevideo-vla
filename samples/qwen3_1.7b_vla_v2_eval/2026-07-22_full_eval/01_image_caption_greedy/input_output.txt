@@ -1,0 +1,12 @@
+CATEGORY: continuation
+DESCRIPTION: REAL synth_llava2 record (id=synth_llava2_003266024), seed2 block only, expect model to emit <caption>...</caption> matching train-time format
+MODE: greedy
+
+INPUT PROMPT (fed to the model):
+<seed2> <seed2_6750> <seed2_2157> <seed2_8000> <seed2_6026> <seed2_680> <seed2_4247> <seed2_3771> <seed2_5189> <seed2_3771> <seed2_2157> <seed2_2157> <seed2_2745> <seed2_1131> <seed2_6115> <seed2_1227> <seed2_5619> <seed2_2157> <seed2_4247> <seed2_2157> <seed2_884> <seed2_3771> <seed2_3771> <seed2_3771> <seed2_2157> <seed2_6115> <seed2_884> <seed2_716> <seed2_1088> <seed2_4174> <seed2_3395> <seed2_1227> <seed2_1088> </seed2>
+
+GROUND TRUTH (what real training data has next):
+<caption> The image is a portrait of a young boy wearing a green graduation cap and gown. He is smiling and looking directly at the camera. The cap is green with a yellow tassel hanging from the top. The gown is a dark green color with a white collar and a green tie. The background is a solid green color. The image is framed in a green ornate frame. </caption>
+
+MODEL OUTPUT (everything generated after the prompt):
+ <caption> The image is a portrait of a young boy wearing a green graduation cap and gown. He is standing in front of a plain white background and is looking directly at the camera with a serious expression on his face. The cap is made of a green fabric with a gold trim around the edges. The boy is wearing a white collared shirt underneath the cap and a green tie. He has short dark hair and is wearing glasses. The overall mood of the image is professional and confident. </caption><|im_end|>

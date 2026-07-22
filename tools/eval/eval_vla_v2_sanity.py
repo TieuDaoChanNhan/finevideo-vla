@@ -37,7 +37,14 @@ ATOMICITY_TESTS = [
     "<avc_lm>", "<start_avclm>", "<start_cosmo>",
     "<fps_30>",
     "<agent>", "<agent_0>", "<agent_255>",
-    "<snac>", "<snac_128266>", "<snac_140553>",
+    # 3 real bands only (L0 128266-132361, L1-even 132362-136457, L1-odd
+    # 144650-148745) -- 136458-144649 was never allocated (no L2 band; dataset
+    # encoding only ever emits L0+L1, see tokenize_snac.py). First+last id of
+    # each real band, not a guessed midpoint (an earlier version of this list
+    # had <snac_140553>, which silently fell in that unallocated gap and was
+    # never a real token to begin with -- caught 2026-07-22).
+    "<snac>", "<snac_128266>", "<snac_132361>", "<snac_132362>",
+    "<snac_136457>", "<snac_144650>", "<snac_148745>",
     "<speech>", "<caption>", "<think>",
     "<pelvis>", "</pelvis>",
     "<pelvis_t_0>", "<pelvis_t_7>",

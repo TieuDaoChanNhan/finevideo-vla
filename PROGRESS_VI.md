@@ -2117,3 +2117,59 @@ Lấy 2 chunk 200-token `<cosmos_N>` sạch từ generation `agent_from_scratch`
 **Tăng seq_length cho lần train sau.** Viết `oellm-autoexp/config/experiments/nguyen38/qwen3_1.7b_vla_v3.yaml` — giống hệt `qwen3_1.7b_vla_v2.yaml` (cùng kiến trúc, tokenizer, data mix/trọng số) chỉ đổi `seq_length: 4096 → 8192`, tính lại `train_iters`/`lr_warmup_iters`/`lr_decay_iters`/`lr_wsd_decay_iters`/`eval_interval` để vẫn giữ đúng ~1 epoch (7,632 → 3,816 iter, giữ nguyên tỷ lệ warmup/decay). Lý do, bằng chứng trực tiếp từ mục trên: 1 chu kỳ đầy đủ seed2→cosmos→agent→snac/speech đã tốn vài trăm tới ~1,500 token, riêng cosmos có thể 200+ token/chunk — ở seq_length=4096 chỉ đủ chỗ cho 1-3 chu kỳ như vậy, còn xa mới bằng 1 hoạt động thật kéo dài vài giây. **Chưa submit** — mới là thay đổi config, còn chờ quyết định có áp dụng luôn điều chỉnh modality dropout ở trên hay không trước khi chạy train thật.
 
 Artifact thêm vào `samples/qwen3_1.7b_vla_v2_eval/`: `snac_decoded_sample_generated.wav`, `snac_raw_ids_generated.txt`.
+
+---
+
+## Cập nhật phiên làm việc — 22/07/2026 (tiếp — fix seed2 decoder, xây eval framework media đầy đủ, phát hiện lặp macro ở seed2+cosmos, đối chiếu chat Discord với Huu, sự cố mất file giữa phiên)
+
+**Việc chính:** Phiên dài, nối tiếp §31 REPORT.md (train xong, decode cosmos lần đầu). Bao gồm: sửa 3 bug thật trong decoder seed2 (chưa từng chạy được), hardening 2 decoder khỏi crash, thử thêm rồi xoá vocab SNAC L2 theo yêu cầu user, xây `eval_vla_v2_media.py` (framework eval media đầy đủ), đào sâu phát hiện model **lặp lại y hệt cả khối seed2 lẫn cosmos** dưới greedy (không chỉ lặp token đơn lẻ như đã biết), đối chiếu toàn bộ với 1 đoạn chat Discord thật giữa user và Huu — phát hiện 1 giả thuyết của chính tôi bị sai (dropout), thêm insight mới (8-frame quá ngắn), và 1 sự cố mất file giữa phiên chưa rõ nguyên nhân.
+
+### 1. Vocab SNAC L2 — thêm rồi xoá lại theo đúng yêu cầu
+
+Viết `add_snac_l2_tokens.py` thêm 16,384 token L2 (băng tần 50Hz chưa từng mã hoá) vào bản copy của cả 2 tokenizer, do 1 test atomicity tưởng nhầm là bug (`<snac_140553>`). Sau đó xác nhận: ID đó rơi vào khoảng trống thật giữa các băng, không phải bug — và user chỉ ra đúng: **dataset hiện tại không hề có dữ liệu L2**. Đã xoá cả 2 tokenizer mở rộng lẫn script — tokenizer gốc chưa từng bị đụng vào (script luôn ghi ra thư mục mới) nên không ảnh hưởng gì tới checkpoint đã train. Sửa lại danh sách spot-check atomicity dùng đúng ID biên thật của 3 băng SNAC → **41/41 PASS** trên tokenizer gốc.
+
+### 2. `decode_seed2.py` — tìm và sửa 3 bug thật, chạy được lần đầu
+
+- Model diffusion gốc `stabilityai/stable-diffusion-2-1-unclip` **đã bị Stability AI gỡ khỏi HuggingFace thật sự** (xác nhận qua tiêu đề trang literally "404", không phải trang gated) — chuyển sang mirror cộng đồng `sd2-community/stable-diffusion-2-1-unclip`.
+- Import nhầm class `Seed2Tokenizer` (bản wrapper trong `pipeline.py`, không có `.decode()`) thay vì bản thật trong `seed2_tokenizer.py`.
+- Thiếu batch dimension khi truyền token vào — Q-former hiểu nhầm 32 token thành 32 ảnh riêng lẻ 1-token, vỡ shape sâu trong UNet.
+- (nhỏ) Đường dẫn `--output` bị resolve sai thư mục do hàm load tokenizer tự `os.chdir()`.
+
+Sau khi sửa cả 4, decode thành công 32 token seed2 thật (record `synth_llava2_003266024`) ra ảnh PNG — lần đầu xác nhận round-trip seed2→ảnh trong repo. Nâng cấp thêm: hỗ trợ decode nhiều block `<seed2>` riêng biệt (mỗi ảnh 1 file), vì Q-former chỉ xử lý đúng 32 token/lần.
+
+### 3. Hardening `decode_snac.py` + `decode_seed2.py` khỏi crash
+
+Lúc chạy eval framework, phát hiện 1 crash CUDA thật (`device-side assert`) — trace ra nguyên nhân: text sampling không đóng `<snac>` đúng cách, decoder phải quét toàn văn bản và ghép token rời rạc từ nhiều vị trí khác nhau, làm lệch thứ tự 3-token-tuần-hoàn, sinh chỉ số codebook âm/vượt phạm vi. Đã thêm validate range trước khi đưa vào GPU cho cả 2 decoder — verify lại đúng 2 case từng crash, giờ báo lỗi Python rõ ràng thay vì crash cứng.
+
+### 4. Xây `tools/eval/eval_vla_v2_media.py` — framework eval media đầy đủ
+
+1 script duy nhất: generate theo bộ prompt cố định (continuation/from-scratch/full-chain) × greedy/sampling, tự nhận diện + decode mọi modal xuất hiện, ghi input/output đầy đủ + media vào từng folder test riêng, có `SUMMARY.md` tổng hợp. Hỗ trợ `--only`/`--modes` để chạy lại có chọn lọc. Lần chạy đầu (14 test) ra 27 file media thành công.
+
+### 5. Đào sâu `full_chain_from_scratch` — phát hiện lặp macro ở CẢ seed2 lẫn cosmos
+
+Ở 2000 token, model không bao giờ mở `<agent>` — giả thuyết ban đầu "hết ngân sách vì cosmos ăn hết". Tăng lên 4000 token (gần trần cứng `max_position_embeddings=4096`) **vẫn 0 agent** — bác bỏ giả thuyết ngân sách. Phát hiện thật: **cả 5 block seed2 sinh ra trong 1 lần generate giống hệt nhau 100%**, và **cosmos cũng vậy** (8 chunk nhưng chỉ 2 chunk unique — chunk đầu khác, 7 chunk sau lặp y hệt 1 chunk). Nghĩa là "8 chunk" trong output thực chất chỉ đại diện ~0.27-0.53 giây nội dung thật, không phải 8×0.27s như số lượng gợi ý — tăng `max_new_tokens` dưới greedy chỉ mua thêm *lần lặp*, không mua thêm *giây nội dung mới*.
+
+### 6. Prompt mới (skateboard) bác bỏ giả thuyết học thuộc; agent xuất hiện tuỳ prompt, không nhất quán
+
+Test prompt hoàn toàn khác chủ đề (trượt ván) để kiểm tra prompt "cooking" cũ có phải học thuộc từ dataset không: **caption đổi đúng theo chủ đề mới** ("skateboarding on a sidewalk") → bác bỏ học thuộc theo từ ngữ. **Agent xuất hiện 7 lần** lần này (khác cooking) nhưng pose **hoàn toàn tĩnh** (pelvis di chuyển đúng 0.0 cả 3 trục). Test thêm "man walking" (theo yêu cầu Huu) lại quay về pattern không có agent. Kiểm tra cosmos có thực sự theo nội dung prompt không: cooking vs skateboard = 0/200 token trùng (khác hẳn), skateboard vs man_walking = 28/200 trùng (cùng là cảnh ngoài đường) — xác nhận cosmos **có** điều kiện hoá theo chủ đề ở tầng 1-chunk, vấn đề chỉ nằm ở lặp lại bên trong 1 lần generate.
+
+### 7. Đối chiếu chat Discord thật với Huu — tự sửa 1 giả thuyết sai, thêm insight mới
+
+User dán 1 đoạn chat dài giữa user và Huu bàn đúng các kết quả trên. Điểm quan trọng:
+- **Tự sửa sai:** tôi từng giải thích cosmos áp đảo 1 phần do "modality dropout 90%/99%" (số liệu của model đời đầu, ghi trong `CLAUDE.md`) — nhưng chính user nói trong chat: *"I just randomly trained, didn't do token dropout"* cho v2. Model v2 **không dropout gì cả** — cosmos áp đảo thuần tuý do chi phí 200 token/chunk cố định, không liên quan gì tới việc loại bỏ chunk trong data.
+- **Insight mới chưa từng nghĩ tới:** Huu chỉ ra 8-frame/30fps ≈ 0.27 giây **có thể vốn đã quá ngắn để thấy chuyển động** ngay trong chính data train thật (mọi video đều bị chia cứng thành chunk 8-frame, không có video độ dài biến thiên) — nghĩa là hiện tượng "không di chuyển" có thể một phần phản ánh đúng đặc điểm data, không chỉ do lỗi decoding lặp. Hướng sửa Huu đề xuất: tăng tốc video nguồn trước khi chia chunk.
+- **2 nghi vấn chưa điều tra:** cosmos token có bị lẫn giữa các video khác nhau lúc tokenize không (Huu nghi ngờ từ 1 case "chỉ ra ngón tay" nhưng lại giống video khác); context 4096 có cắt cụt cosmos giữa chừng không.
+- **Roadmap còn mở, chưa làm:** cân bằng lại dropout cosmos; scale lên ~100B token (70B text từ MV1 + 30B data hiện tại — đổi hẳn tỷ lệ so với hiện tại toàn VLA); test "any-mode-to-any-mode" có hệ thống; test với record thật từ pretrain (ảnh "chemical bond", speech thật); ý tưởng data `<think>` reasoning dài hạn (tạo ngược từ video thật); phân biệt SNAC "listen" vs "speak" (liên quan trực tiếp việc L2 vừa xoá — có lý do roadmap thật nhưng chưa làm lại); setup endpoint hosted; và chỉ đạo rõ *"we need to work on evals now"* — khớp đúng hướng `eval_vla_v2_media.py` đang xây.
+
+### 8. Dọn `samples/qwen3_1.7b_vla_v2_eval/` + sự cố mất file giữa phiên (chưa rõ nguyên nhân)
+
+Xoá 3 file rác/không rõ nguồn gốc (log fail cũ, wav không có log nguồn). **Sự cố riêng, nghiêm trọng hơn:** giữa phiên phát hiện toàn bộ file rời (không nằm trong subfolder) trong `samples/qwen3_1.7b_vla_v2_eval/` biến mất khỏi ổ đĩa — gồm cả 8 file đã commit từ trước lẫn ~8 file mới tạo phiên này. Rà lại toàn bộ script mới viết, không tìm thấy code nào có lệnh xoá; bash history cũng không có manh mối. **8 file đã commit đã khôi phục được** qua `git checkout HEAD --`. **~8 file chưa commit (ảnh seed2 gốc đầu tiên, audio verified, v.v.) mất thật, không khôi phục lại** — nhưng đều đã gửi cho user qua chat trước đó nên nội dung không mất hẳn, chỉ mất khỏi repo. Chưa regenerate lại (ưu tiên gói gọn phiên theo yêu cầu user) — ghi nhận công khai, không giấu.
+
+### Trạng thái cuối phiên
+
+- Tất cả 4 decoder (seed2/cosmos/snac/agent) đã verify hoạt động thật.
+- Framework eval media đã xây và chạy ~20 lần generate qua 3 run khác nhau.
+- Lặp macro (cả khối, không chỉ token đơn) xác nhận xảy ra ở cả seed2 và cosmos — 2 giả thuyết nguyên nhân (lặp do greedy; 8-frame quá ngắn) chưa tách bạch được cái nào chiếm ưu thế.
+- 2 nghi vấn data-integrity từ Huu vẫn mở, chưa điều tra.
+- Roadmap lớn đã ghi nhận (mục 7) nhưng chưa chốt thứ tự ưu tiên với user.
+- Sự cố mất file giữa phiên chưa rõ nguyên nhân gốc.

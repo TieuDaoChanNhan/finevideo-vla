@@ -1,0 +1,12 @@
+CATEGORY: continuation
+DESCRIPTION: REAL synth_llava2 record (id=synth_llava2_003266024), seed2 block only, expect model to emit <caption>...</caption> matching train-time format
+MODE: sample
+
+INPUT PROMPT (fed to the model):
+<seed2> <seed2_6750> <seed2_2157> <seed2_8000> <seed2_6026> <seed2_680> <seed2_4247> <seed2_3771> <seed2_5189> <seed2_3771> <seed2_2157> <seed2_2157> <seed2_2745> <seed2_1131> <seed2_6115> <seed2_1227> <seed2_5619> <seed2_2157> <seed2_4247> <seed2_2157> <seed2_884> <seed2_3771> <seed2_3771> <seed2_3771> <seed2_2157> <seed2_6115> <seed2_884> <seed2_716> <seed2_1088> <seed2_4174> <seed2_3395> <seed2_1227> <seed2_1088> </seed2>
+
+GROUND TRUTH (what real training data has next):
+<caption> The image is a portrait of a young boy wearing a green graduation cap and gown. He is smiling and looking directly at the camera. The cap is green with a yellow tassel hanging from the top. The gown is a dark green color with a white collar and a green tie. The background is a solid green color. The image is framed in a green ornate frame. </caption>
+
+MODEL OUTPUT (everything generated after the prompt):
+ <caption> The image is a portrait of a young woman wearing a green graduation cap and gown. She has long dark hair styled in loose waves and is smiling at the camera. Her arms are crossed over her chest, with gold buttons on each side. She appears to be happy and confident. The background is plain white. </caption><|im_end|>
