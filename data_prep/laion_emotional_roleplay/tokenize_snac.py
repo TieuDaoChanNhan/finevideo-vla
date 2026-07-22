@@ -58,6 +58,18 @@ OFFSET_L0 = 128266
 OFFSET_L1A = 128266 + 4096
 OFFSET_L1B = 128266 + 4 * 4096
 
+# L2 ("speak" format, 2026-07-22): the finest 50Hz level, 4 sub-positions per
+# base frame, never allocated in the tokenizer vocab before -- same offset
+# scheme originally computed for the now-deleted add_snac_l2_tokens.py
+# (REPORT.md #32 point 1), placed right after L1B's band ends (148745) so it
+# doesn't collide with anything already in use. Real ids per band: L2_0
+# 148746-152841, L2_1 152842-156937, L2_2 156938-161033, L2_3 161034-165129.
+# These are NOT yet in any tokenizer's vocab -- must be added (mirroring
+# add_snac_l2_tokens.py's approach) before speak-format data is atomic in
+# training. Decided 2026-07-22 after a real A/B (tools/snac_l2_experiment.py)
+# showed audibly better reconstruction, at a real +133% token cost.
+OFFSET_L2 = [148746 + k * 4096 for k in range(4)]
+
 VALID_ADHERENCE = {1, 2, 3, 4, 5}  # drops ~32/67,491 rows with out-of-range values (8/9/10/80/0)
 
 _FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -93,6 +105,32 @@ def encode_listen(audio: np.ndarray, model, device: str) -> list[str]:
     return tokens
 
 
+def encode_speak(audio: np.ndarray, model, device: str) -> list[str]:
+    """SNAC speak-format encode: full 3-level codebook, 7 tokens per base frame
+    (L0, L1a, L1b, L2_0..L2_3 -- 12.5Hz base -> 87.5 tok/s). +133% tokens vs
+    encode_listen() (7/3 ratio), confirmed both in theory and on real audio
+    via tools/snac_l2_experiment.py. Real L2 tokens are NOT yet in any
+    tokenizer vocab -- see OFFSET_L2's docstring above before using this in
+    a real training run."""
+    tensor = torch.from_numpy(audio).unsqueeze(0).unsqueeze(0).to(device)
+    with torch.inference_mode():
+        codes = model.encode(tensor)
+    c0, c1, c2 = codes[0], codes[1], codes[2]
+    n0 = c0.shape[1]
+    tokens = []
+    for i in range(n0):
+        i1a, i1b = 2 * i, 2 * i + 1
+        i2 = [4 * i + k for k in range(4)]
+        if i1b >= c1.shape[1] or i2[-1] >= c2.shape[1]:
+            break
+        tokens.append(f"<snac_{c0[0, i].item() + OFFSET_L0}>")
+        tokens.append(f"<snac_{c1[0, i1a].item() + OFFSET_L1A}>")
+        tokens.append(f"<snac_{c1[0, i1b].item() + OFFSET_L1B}>")
+        for k, idx in enumerate(i2):
+            tokens.append(f"<snac_{c2[0, idx].item() + OFFSET_L2[k]}>")
+    return tokens
+
+
 def flatten_record(text: str, voice_description: str, tokens: list[str]) -> str:
     return (
         f"USER: {text.strip()} [Voice: {voice_description.strip()}] ASSISTANT:\n"
@@ -106,7 +144,16 @@ def main():
     ap.add_argument("--rows-per-shard", type=int, default=5000)
     ap.add_argument("--input-dir", default=INPUT_DIR)
     ap.add_argument("--output-dir", default=OUTPUT_DIR)
+    ap.add_argument("--format", choices=["listen", "speak"], default="listen",
+                     help="listen = L0+L1 only (current production, 3 tok/frame); "
+                          "speak = full L0+L1+L2 (2026-07-22, 7 tok/frame, +133%% tokens). "
+                          "speak requires L2 tokens to be added to the tokenizer vocab first.")
     args = ap.parse_args()
+
+    encode_fn = encode_speak if args.format == "speak" else encode_listen
+    # Separate filename prefix so speak-format shards never collide with
+    # already-produced listen-format ones in the same output dir.
+    shard_prefix = "roleplay_snac_speak_flat_" if args.format == "speak" else "roleplay_snac_flat_"
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -135,7 +182,7 @@ def main():
     total_tokens = 0
 
     for shard_idx in range(n_shards):
-        out_path = os.path.join(args.output_dir, f"roleplay_snac_flat_{shard_idx:05d}.jsonl")
+        out_path = os.path.join(args.output_dir, f"{shard_prefix}{shard_idx:05d}.jsonl")
         if os.path.exists(out_path):
             print(f"[shard {shard_idx}/{n_shards}] SKIP (already exists): {out_path}")
             n_skip_shard += 1
@@ -152,7 +199,7 @@ def main():
                 n_decode_fail += 1
                 continue
             try:
-                tokens = encode_listen(audio, model, device)
+                tokens = encode_fn(audio, model, device)
             except Exception as e:
                 print(f"  SNAC failed for {row['id']}: {e}")
                 n_snac_fail += 1

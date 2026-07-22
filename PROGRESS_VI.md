@@ -2402,4 +2402,68 @@ Tiếp nối phân tích "8-frame quá ngắn" và ý Huu ("speed up video"): vi
 - Frame-stride/window-duration: đã đề xuất (~0.7s, stride tính theo fps thật), **chưa implement** — chờ quyết định đồng bộ với pose window ở trên.
 - seq_length: giữ nguyên khuyến nghị (tăng hơn 8192 đã draft) nhưng vẫn cố tình chưa chốt số, chờ chốt resolution + stride/window trước vì cả 2 đổi trực tiếp con số "bao nhiêu token/giây thật hoạt động" mà seq_length cần dựa vào.
 - Tool mới phiên này, tái dùng được cho thử nghiệm sau: `tools/cosmos_resolution_experiment.py`, `tools/cosmos_stride_experiment.py`, `tools/snac_l2_experiment.py`.
+
+---
+
+## So sánh variant Cosmos bằng PSNR khách quan; chốt đề xuất seq_length=16,384 dựa trên số liệu thật; cập nhật `tokenize_snac.py` production hỗ trợ L2 (22/07/2026, tiếp)
+
+### Bối cảnh
+
+User hỏi: Cosmos có "gà" quá không, có variant nào khác ngon hơn (chấp nhận tốn thêm token)? "Stride" là gì (chưa hiểu)? seq_length nên chọn bao nhiêu? Đồng thời: đã nghe thấy L2 ngon, muốn có script tokenize thật. Giữa chừng, user phản hồi cả 3 variant "trông giống nhau, đều tệ", hỏi có chắc test đúng không.
+
+### 1. Giải thích "stride" bằng ví dụ đơn giản (không cần công cụ mới) — ví dụ khoảng cách frame, không dùng thuật ngữ.
+
+### 2. So sánh variant Cosmos — tải và test 2 variant NVIDIA khác trên nội dung thật
+
+Tải `nvidia/Cosmos-Tokenizer-DV8x8x8` và `nvidia/Cosmos-Tokenizer-DV4x8x8` (chỉ encoder+decoder, ~220MB/variant) vào `prototype/pretrained_ckpts/` — cùng họ NVIDIA đang dùng, chỉ nén ít hơn (theo chính bảng benchmark trong README đi kèm: DV4x8x8 > DV8x8x8 > DV8x16x16 về PSNR/SSIM/rFVD). Chạy cả 3 trên đúng 1 chunk 8-frame thật (`good.mp4`, frame 40, resize giữ tỉ lệ 256 cạnh ngắn → 448×256):
+
+| variant | token/chunk | tỷ lệ so với hiện tại |
+|---|---|---|
+| DV8x16x16 (đang dùng) | 896 | 1x |
+| DV8x8x8 | 3,584 | 4x |
+| DV4x8x8 | 5,376 | 6x |
+
+Cả 3 vẫn nằm trong vocab 64K hiện có. Gửi user 4 file để xem trực tiếp.
+
+**Phản hồi của user: cả 3 trông giống nhau, đều tệ — nghi ngờ test có đúng không.** Verify bằng PSNR khách quan (không chỉ nhìn mắt) so với frame gốc đã resize:
+
+| variant | PSNR trung bình |
+|---|---|
+| DV8x16x16 (đang dùng) | 22.14 dB |
+| DV8x8x8 | 25.43 dB (+3.3dB) |
+| DV4x8x8 | 25.71 dB (+3.6dB) |
+
+**Xác nhận pipeline chạy đúng, có khác biệt thật** — không phải test hỏng. Nhưng 2 điều cần lưu ý: (a) mức tăng có thật nhưng khiêm tốn, DV8x8x8 và DV4x8x8 gần như bằng nhau (+0.28dB) dù DV4x8x8 tốn thêm 1.5x — khớp với phát hiện về window/stride, vì phần tốn thêm của DV4x8x8 chủ yếu là temporal fidelity, mà trong 1 chunk 8-frame/stride=1 không có nhiều chuyển động thật để mã hoá thêm; (b) chính README của Cosmos ghi nhận đây là giới hạn vốn có của cả họ tokenizer: *"Technical Limitations: Due to tokenizer compression limitations, some visual information (such as small text and other structured fine details) may not be reconstructed accurately."*
+
+**Đề xuất: giữ nguyên DV8x16x16.** Mức tăng token (4-6x) không đáng để đổi lấy ~3dB PSNR, nhất là kết hợp với việc document sẽ phình to (mục 3). Hai thay đổi đáng làm hơn là 2 cái đã làm/đề xuất trong phiên: bỏ crop vuông (gần như miễn phí) và mở rộng stride/window (miễn phí hoàn toàn về token) — cả 2 đều nhắm đúng vào phàn nàn gốc (khung hình không tự nhiên, không chuyển động) trực tiếp hơn đổi variant.
+
+### 3. Tính lại độ dài document thật — nối resolution/variant/L2 với quyết định seq_length
+
+Kết hợp số liệu tỷ trọng cosmos/snac thật từ Phase 0 (cosmos 35.9%, snac 3.3%, trên cùng 300 document FineVideo-v6) với hệ số nhân từng lựa chọn resolution/variant/L2 (công thức: `new_total ≈ old_total × ((1-share) + share×ratio)`, áp lần lượt cho cosmos rồi snac):
+
+| cấu hình cosmos | median (+L2 snac) | mean (+L2) |
+|---|---|---|
+| 256 giữ tỉ lệ, DV8x16x16 (đề xuất) | ~32,481 | ~60,811 |
+| DV8x8x8 @256 | ~102,156 | ~191,254 |
+| DV4x8x8 @256 | ~148,606 | ~278,216 |
+
+Đây là lý do đề xuất ở mục 2 quan trọng hơn chỉ nhìn token/chunk: đổi sang DV8x8x8/DV4x8x8 sẽ làm document trung vị tăng gấp 3-4 lần nữa so với mức tăng 2.35x đã có từ resolution/L2, đổi lấy mức PSNR tăng không đủ thuyết phục.
+
+**Đề xuất seq_length: 16,384** (tăng từ 8192 đã draft). Lý do: không seq_length thực tế nào fit trọn 1 document nữa (median giờ ~32K ngay cả với cấu hình bảo thủ nhất, đuôi phân phối lên tới hàng trăm nghìn token) — nên đổi mục tiêu từ "fit trọn document" sang "fit đủ vài chu kỳ chuyển-đổi-modality trọn vẹn". 1 chu kỳ với chi phí mới (cosmos 896 + snac có L2 + agent + seed2 + text) ước tính ~2,000-3,000 token; 16,384 đủ chỗ cho 5-8 chu kỳ/cửa sổ training. **Củng cố thêm phát hiện ở Phase 0**: vì document vẫn dài hơn seq_length rất nhiều, `reset_position_ids`/`reset_attention_mask` (hoặc cách xử lý ranh giới document khác) càng cấp thiết hơn, không phải bớt cấp thiết.
+
+### 4. Cập nhật `data_prep/laion_emotional_roleplay/tokenize_snac.py` — thêm mode `--format speak` thật
+
+Thêm `encode_speak()` (encode đủ 3 level SNAC, 7 token/base-frame: L0, L1a, L1b, L2_0..L2_3) bên cạnh `encode_listen()` cũ (3 token/frame, không đổi, vẫn là default). Flag CLI mới `--format {listen,speak}` (default `listen`, giữ nguyên hành vi cũ trừ khi chỉ định) chọn encoder tương ứng, và route shard speak-format sang tiền tố file riêng `roleplay_snac_speak_flat_*.jsonl` để không đụng shard listen-format đã có sẵn trong cùng thư mục output.
+
+Offset L2 tái dùng đúng scheme đã tính cho `add_snac_l2_tokens.py` đã xoá trước đó (§32 mục 1) — 4 band 4096 ID, bắt đầu ngay sau khi band L1B kết thúc: `OFFSET_L2 = [148746, 152842, 156938, 161034]`. Ghi rõ trong code: **các ID này chưa có trong vocab tokenizer nào** — output `--format speak` sẽ chưa atomic trong training tới khi thêm lại token L2 vào tokenizer (làm lại tương tự script đã xoá, nhưng lần này có data thật để biện minh).
+
+Verify chức năng: `--format speak --limit 2` trên row thật chạy sạch (0 lỗi decode/snac), 1,589 token cho 2 row (~795/row), khớp tỷ lệ +133% đã xác nhận ở `tools/snac_l2_experiment.py`.
+
+### Trạng thái cuối phiên
+
+- Cosmos variant: **đề xuất giữ nguyên DV8x16x16** — PSNR tăng có thật nhưng khiêm tốn, không đáng đổi lấy chi phí token 4-6x, nhất là kết hợp với việc document phình to ở mục 3.
+- seq_length: **đề xuất chắc chắn, 16,384** (tăng từ 8192 đã draft), dựa trên số liệu thật, không phải đoán.
+- SNAC L2: đã có đường encode production (`--format speak`), verify chức năng trên data thật. **Chưa dùng được trong training** — cần thêm token L2 vào vocab tokenizer trước (offset đã tính/ghi sẵn), và `decode_snac.py` vẫn chỉ zero-fill L2 lúc decode (cần update tương ứng để verify round-trip output speak-format thật, chưa làm trong mục này).
+- Window/stride: củng cố lại là đòn bẩy MIỄN PHÍ duy nhất (§36) — đề xuất giữ nguyên ~0.7-1.2s/chunk (stride 3-5 ở 30fps), vẫn chờ quyết định đồng bộ pose-window.
+- Chưa chốt: có thật sự thêm token vocab L2 và chạy `--format speak` cho toàn bộ 67,491 row roleplay không; có/làm sao gộp fix `reset_position_ids`/`reset_attention_mask` vào config train tiếp theo cùng với đề xuất seq_length=16,384 đã chắc chắn.
 - Sự cố mất file giữa phiên chưa rõ nguyên nhân gốc.

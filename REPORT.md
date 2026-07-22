@@ -2596,3 +2596,63 @@ Following up on the "8 frames too short" analysis from earlier this session (§3
 - Frame-stride/window-duration: recommendation given (~0.7s, stride derived from real fps), **not implemented** -- blocked on the sync-with-pose-windows decision above.
 - seq_length: recommendation reaffirmed (increase beyond the drafted 8192) but still deliberately deferred until resolution + stride/window decisions are locked in, since both change the real "tokens per real second of activity" figure seq_length needs to be sized against.
 - New tools this entry, all reusable for future resolution/stride experiments on any video: `tools/cosmos_resolution_experiment.py`, `tools/cosmos_stride_experiment.py`, `tools/snac_l2_experiment.py`.
+
+## 37. Cosmos Variant Comparison (Objective PSNR, Not Just Eyeballing) -- Real Gain Confirmed But Modest, Recommend Staying on DV8x16x16; Firm seq_length Recommendation (16,384) Backed by Real Document-Size Projection; Production `tokenize_snac.py` Updated With a Real `--format speak` Mode (Jul 22, 2026, continued)
+
+**Context:** Direct follow-up to §36. User asked: is Cosmos itself just weak (any better NVIDIA variant worth the extra tokens)? What does "stride" even mean (wanted a plain explanation)? What seq_length is reasonable? And: L2 confirmed good, please provide a real tokenize script. Mid-analysis, user pushed back that all 3 variants "looked equally bad" and asked if the test was actually working.
+
+### 1. Explained "stride" in plain terms (no new artifacts) -- frame spacing analogy, no jargon.
+
+### 2. Cosmos variant comparison -- downloaded and tested NVIDIA's other 2 discrete-video variants on real content
+
+Downloaded `nvidia/Cosmos-Tokenizer-DV8x8x8` and `nvidia/Cosmos-Tokenizer-DV4x8x8` (encoder+decoder only, ~220MB each) to `prototype/pretrained_ckpts/` -- both are the same NVIDIA suite we already use, just less-aggressive compression (per the bundled README's own benchmark table, ranked by PSNR/SSIM/rFVD: DV4x8x8 > DV8x8x8 > DV8x16x16, our current one). Ran all 3 on the exact same real 8-frame chunk (`good.mp4`, frame 40, resized to 256-shorter-side/448x256 aspect-preserving):
+
+| variant | tokens/chunk | ratio vs current |
+|---|---|---|
+| DV8x16x16 (current) | 896 | 1x |
+| DV8x8x8 | 3,584 | 4x |
+| DV4x8x8 | 5,376 | 6x |
+
+All 3 stayed within the existing 64K vocab range (max id ~63,842-63,987). Sent the user 4 files (reference + 3 reconstructions) for a direct look.
+
+**User's response: all 3 looked equally poor, questioned whether the test was actually working.** Verified with objective PSNR (not just subjective viewing) against the real resized ground-truth frames:
+
+| variant | avg PSNR |
+|---|---|
+| DV8x16x16 (current) | 22.14 dB |
+| DV8x8x8 | 25.43 dB (+3.3dB) |
+| DV4x8x8 | 25.71 dB (+3.6dB) |
+
+**Confirms the pipeline is working correctly and there IS a real, measurable quality difference** -- not a broken test. But two things temper it: (a) the gain is real but modest, not transformative, and DV8x8x8/DV4x8x8 are nearly identical to each other (+0.28dB) despite DV4x8x8 costing 1.5x more -- consistent with this session's own window/stride finding, since DV4x8x8's extra cost is mostly *temporal* fidelity, and there isn't much real motion within an 8-frame/stride-1 chunk for it to capture; (b) Cosmos's own README documents this as an inherent, known limitation of the whole tokenizer family, not a bug: *"Technical Limitations: Due to tokenizer compression limitations, some visual information (such as small text and other structured fine details) may not be reconstructed accurately."*
+
+**Recommendation given: stay on DV8x16x16.** The token-cost multiplier (4-6x) is not justified by a ~3dB PSNR gain, especially once combined with the document-size projection in §3 below. The two changes that are actually worth their cost are the ones already made/recommended this session -- removing the square crop (essentially free) and widening the stride/window (completely free in tokens) -- both of which target the actual complaint (unnatural framing, no visible motion) more directly than switching tokenizer variant would.
+
+### 3. Real document-size projection -- ties resolution/variant/L2 choices directly to seq_length
+
+Combined the real per-document cosmos/snac token-share measurement from Phase 0 (§34: cosmos 35.9% of tokens, snac 3.3%, on the same 300-document FineVideo-v6 sample) with each resolution/variant/L2 multiplier to project real new document sizes (formula: `new_total ≈ old_total * ((1-share) + share*ratio)`, applied sequentially for cosmos then snac):
+
+| cosmos config | median (+L2 snac) | mean (+L2) |
+|---|---|---|
+| 256 aspect-preserving, DV8x16x16 (recommended) | ~32,481 | ~60,811 |
+| DV8x8x8 @256 | ~102,156 | ~191,254 |
+| DV4x8x8 @256 | ~148,606 | ~278,216 |
+
+This is why §2's variant recommendation matters beyond just per-chunk token cost: switching to DV8x8x8/DV4x8x8 would roughly triple-to-quadruple median document size on top of the already-large 2.35x increase from the resolution/L2 fixes alone, for a PSNR gain that doesn't clearly justify it.
+
+**seq_length recommendation: 16,384** (up from the 8192 already drafted in `qwen3_1.7b_vla_v3.yaml`). Reasoning: no realistic seq_length fits a whole document any more (median is now ~32K even with the conservative recommended config, and documents run into the hundreds of thousands of tokens at the tail) -- so the target was reframed from "fit one document" to "fit several complete modality-transition cycles" (seed2->cosmos->snac->agent->...). A full cycle at the new costs (cosmos 896 + snac-with-L2 + agent + seed2 + text) runs roughly 2,000-3,000 tokens; 16,384 comfortably fits 5-8 such cycles per training window. **Explicitly reinforces §34's finding**: since documents remain far longer than any chosen seq_length, `reset_position_ids`/`reset_attention_mask` (or another document-boundary-aware packing scheme) becomes more urgent, not less, now that the token-cost fixes make documents even larger relative to any realistic context window.
+
+### 4. `data_prep/laion_emotional_roleplay/tokenize_snac.py` updated with a real `--format speak` mode
+
+Added `encode_speak()` (full 3-level SNAC encode, 7 tokens/base-frame: L0, L1a, L1b, L2_0..L2_3) alongside the existing `encode_listen()` (3 tokens/base-frame, unchanged, still the default). New `--format {listen,speak}` CLI flag (default `listen`, preserving current behavior unless explicitly requested) selects the encoder and routes speak-format shards to a separate `roleplay_snac_speak_flat_*.jsonl` filename prefix so they never collide with already-produced listen-format shards in the same output directory.
+
+L2 offsets reuse the exact scheme already computed for the now-deleted `add_snac_l2_tokens.py` (REPORT.md #32 point 1) -- 4 bands of 4096 ids each, starting right after L1B's band ends: `OFFSET_L2 = [148746, 152842, 156938, 161034]`. Documented clearly in-code that **these ids are not yet in any tokenizer's vocab** -- `--format speak` output will not be atomic in training until L2 tokens are added back to the tokenizer (mirroring, not literally reusing, the deleted script, since this time there's real data to justify it).
+
+Functionally verified: `--format speak --limit 2` on real rows ran clean (0 decode/snac failures), 1,589 total tokens for 2 rows (~795/row), matching the +133% ratio already established in `tools/snac_l2_experiment.py`.
+
+### Status at end of entry
+
+- Cosmos variant: **recommend staying on DV8x16x16** -- real but modest PSNR gain from DV8x8x8/DV4x8x8 doesn't justify the 4-6x token cost, especially combined with §3's document-size blowup.
+- seq_length: **firm recommendation, 16,384** (up from the drafted 8192), reasoned from real document-size projections, not a guess.
+- SNAC L2: production encode path now exists (`--format speak`), functionally verified on real data. **Not yet usable in training** -- needs the L2 tokenizer-vocab addition (offsets already fixed/documented) before running for real, and `decode_snac.py` still only zero-fills L2 on decode (would need a matching update to actually verify round-tripped speak-format output, not done this entry).
+- Window/stride: reaffirmed as the one genuinely free lever (§36) -- recommendation stands at ~0.7-1.2s/chunk (stride 3-5 at 30fps), still blocked on the pose-window-sync decision from §36.
+- Not yet decided: whether to actually add L2 vocab tokens and run `--format speak` for real on the full 67,491-row roleplay dataset; whether/how to bundle the reset_position_ids/reset_attention_mask fix into the next training config alongside the now-firm seq_length=16,384 recommendation.
