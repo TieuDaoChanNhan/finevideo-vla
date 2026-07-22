@@ -96,8 +96,12 @@ def load_captions(path):
 
 
 # Extracted at 512x512 (matches Seed2Tokenizer's own target_size, so no quality
-# loss there; CosmosVideoTokenizer downsamples further to 160 regardless of
-# input size, so no loss there either). One ffmpeg call per 8-frame chunk
+# loss there). CosmosVideoTokenizer used to downsample further to a 160x160
+# squash regardless of input size -- below Cosmos-Tokenizer-DV8x16x16's own
+# documented 256px (shorter side) minimum, and non-aspect-preserving. Fixed
+# 2026-07-22 to resize-shorter-side+center-crop at 256 (see REPORT.md #35);
+# this file needed no change since it calls encode_video_chunk() with no
+# target_size override. One ffmpeg call per 8-frame chunk
 # (bounded to ~8 small PNGs on disk at a time) rather than dumping an entire
 # video's frames upfront — full-video upfront extraction at native resolution
 # (up to 5400 frames/video, unscaled) blew the per-user disk quota once 32

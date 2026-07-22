@@ -93,12 +93,21 @@ class CosmosVideoTokenizer:
         except Exception as e:
             print(f"⚠️ [Rank {RANK}] [Cosmos] Error: {e}")
 
-    def encode_video_chunk(self, frame_list, target_size=160):
+    def encode_video_chunk(self, frame_list, target_size=256):
+        # 256 is Cosmos-Tokenizer-DV8x16x16's documented minimum supported
+        # resolution (shorter side) -- the old target_size=160 default was
+        # below spec. Resize-shorter-side + center-crop (aspect-preserving)
+        # replaces the old direct (target_size, target_size) squash, which
+        # distorted non-square source frames. 2026-07-22: this roughly 2.56x's
+        # cosmos tokens/chunk (100->256 spatial positions per temporal step),
+        # so seq_length/dropout must be re-tuned together with this change,
+        # not independently -- see REPORT.md #35.
         if self.encoder is None: return []
         try:
             processed_frames = []
             transform = T.Compose([
-                T.Resize((target_size, target_size)),
+                T.Resize(target_size),
+                T.CenterCrop(target_size),
                 T.ToTensor(),
                 T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
             ])

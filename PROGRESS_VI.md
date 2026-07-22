@@ -2289,4 +2289,49 @@ Thay vào đó, phát hiện ở mục 2 cho 1 cơ chế **cấu trúc** khả d
 - Mục 5: **tìm ra cơ chế khả dĩ** (không reset ranh giới document + document dài hơn seq_length rất nhiều), case gốc Huu nêu chưa reproduce trực tiếp được (chỉ tồn tại trên Discord).
 - Mục 11: user đã tự làm trước phiên này.
 - Các phát hiện này ảnh hưởng trực tiếp tới Phase 1 (redesign cosmos) và Phase 3 (config train v3) đã đề xuất ở mục trên: `reset_position_ids`/`reset_attention_mask` hoặc xử lý ranh giới document rõ ràng hơn trong Megatron packing giờ là 1 candidate fix cụ thể cần gộp vào lần train tiếp theo, cùng với tăng seq_length, rebalance dropout cosmos, và redesign chất lượng cosmos đã định.
+
+---
+
+## Bắt đầu Phase 1 — xác nhận đúng nghi ngờ của user: cosmos preprocessing dưới chuẩn tối thiểu của chính tokenizer; phát hiện file production thật nằm ngoài git và đã bị lệch (22/07/2026, tiếp)
+
+### Bối cảnh
+
+User yêu cầu commit việc Phase 0 (đã xong, commit `d60aefc`) rồi bắt đầu Phase 1 trong lúc đi ra ngoài, và nói khá chắc là "hồi xưa pipeline có zoom in và giảm quality" trước khi vào Cosmos — khớp với đoạn chat Discord ở §33 (Huu: "resolution cosmos tệ hả?" / Van Khue: "true, hồi đó làm vậy vì robot camera xấu").
+
+### 1. Tìm ra và xác nhận root cause: `CosmosVideoTokenizer.encode_video_chunk` resize về 160x160 — dưới cả mức tối thiểu chính tokenizer yêu cầu
+
+Trace pipeline Step A (`prototype/pipeline.py`, 40 node × 4 GPU) tới `CosmosVideoTokenizer.encode_video_chunk()`. Bước extract frame (`extract_30fps_frames`) **không** hề downscale/crop — lấy PNG nguyên độ phân giải thẳng từ ffmpeg. Bước duy nhất ảnh hưởng chất lượng nằm trong `encode_video_chunk`:
+
+```python
+def encode_video_chunk(self, frame_list, target_size=160):
+    ...
+    transform = T.Compose([
+        T.Resize((target_size, target_size)),   # squash không giữ tỉ lệ về 160x160
+        ...
+```
+
+Đối chiếu với chính model card của `Cosmos-Tokenizer-DV8x16x16` (`pipeline_video/pretrained_ckpts/Cosmos-Tokenizer-DV8x16x16/README.md`): **"Resolution: Minimum: 256px (shorter side)."** Pipeline đang đưa frame **dưới cả độ phân giải tối thiểu tokenizer công bố**, và làm bằng resize không giữ tỉ lệ `(target_size, target_size)` khiến frame không vuông bị bóp méo — không hẳn là "zoom" theo nghĩa đen (không tìm thấy `CenterCrop`/`RandomResizedCrop` nào trong pipeline), nhưng nghi ngờ cốt lõi ("có làm gì đó hại chất lượng trước cosmos") hoàn toàn đúng và giờ đã xác định chính xác vị trí.
+
+Comment sai trong `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py` (path OmniVideo-100K mới hơn, tái dùng class này) từng khẳng định *"CosmosVideoTokenizer downsamples further to 160 regardless of input size, so no loss there either"* — sai hoàn toàn so với mức tối thiểu 256px; đã sửa cùng lúc.
+
+### 2. Phát hiện: file production thật nằm ngoài git, đã bị lệch so với bản trong repo
+
+`pipeline_video/submit_official.sbatch` (sbatch thật dùng cho chạy Step A 40 node × 4 GPU) gọi `srun python -u /e/project1/reformo/nguyen38/prototype/pipeline.py` — **không phải** `3d-human-pose/pipeline_video/pipeline.py` đã git-track. `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py` xác nhận độc lập: hằng số `PROTOTYPE_DIR = "/e/project1/reformo/nguyen38/prototype"` là nơi nó `sys.path.insert`/`os.chdir()` vào trước khi import `CosmosVideoTokenizer`. Vậy **cả** đường FineVideo lẫn OmniVideo-100K đều chạy bản ngoài git, không phải bản trong repo.
+
+`diff` 2 bản cho thấy đã lệch sẵn (2 dòng print, tiếng Việt vs tiếng Anh) — bản trong repo là snapshot cũ, không phải bản thật chạy. Đây cùng loại lỗi hạ tầng đã ghi nhận trước đây trong dự án (lệch path/account JUWELS `/p` vs JUPITER `/e`, checkout lệch 3 commit ở §29) — thêm 1 bản copy song song âm thầm lệch nhau. Đã sửa cả 2 bản giống hệt nhau (bản thật ngoài git trước, rồi tới bản mirror trong git) cho phần liên quan cosmos; phần lệch print-statement có sẵn không đụng tới. **Ghi chú đứng cho phiên sau: `/e/project1/reformo/nguyen38/prototype/` không phải symlink vào repo và không được git-track — mọi thay đổi pipeline_video/ định đưa vào production phải tự tay mirror sang đó cho tới khi việc này được giải quyết (vd thay `prototype/` bằng symlink).**
+
+### 3. Fix đã áp dụng và verify chức năng trên frame non-square tổng hợp
+
+Đổi default `target_size` của `encode_video_chunk` từ 160 → 256 (mức tối thiểu tokenizer công bố), thay squash bằng `T.Resize(target_size)` (resize theo cạnh ngắn, giữ tỉ lệ) + `T.CenterCrop(target_size)` (cách làm chuẩn, cũng gần giống nhất với thứ user có thể nhớ là "zoom"). Áp dụng giống hệt cho cả `/e/project1/reformo/nguyen38/prototype/pipeline.py` (bản production thật) và `3d-human-pose/pipeline_video/pipeline.py` (bản mirror trong git).
+
+Verify trên node GH200 tương tác (`env_stable_vla`): load encoder `Cosmos-Tokenizer-DV8x16x16` thật, chạy `encode_video_chunk` trên 8 frame non-square tổng hợp (720×1280) — **chạy không lỗi**, xác nhận đường giữ tỉ lệ hoạt động đúng, frame không vuông được xử lý đúng (code cũ sẽ âm thầm bóp méo frame kiểu này thành vuông).
+
+**Tác động token (quan trọng, chưa reconcile với config train):** fix cho ra **512 token cho 1 chunk**, tăng từ 200 cũ — **tăng 2.56 lần** (256/16=16 vị trí spatial/cạnh so với 160/16=10 cũ, nên 16×16=256 vs 10×10=100 mỗi temporal step, ×2 temporal step = 512 vs 200). ID token cao nhất quan sát được (59,068) vẫn nằm trong vocab đã đăng ký `<cosmos_0>`-`<cosmos_63999>`, không cần mở rộng vocab. Điều này khuếch đại trực tiếp phát hiện đã biết "cosmos áp đảo token cost" (§31/§32/§33) — cosmos đã chiếm ~61-77% token VLA ở mức 200 token/chunk; ở 512 token/chunk sẽ tệ hơn đáng kể nếu không đi kèm tăng `seq_length` (4096→8192, đã có `qwen3_1.7b_vla_v3.yaml`) và rebalance dropout cosmos thật sự (đã định nhưng chưa áp dụng cho v2, theo §31).
+
+### Trạng thái / cố tình CHƯA làm
+
+- Fix code: **xong và đã verify chức năng**, cả bản production thật lẫn bản mirror git.
+- **Chưa chạy:** re-tokenize toàn bộ corpus (40 node × 4 GPU trên ~40K video FineVideo, cộng OmniVideo-100K qua cùng class đã fix) để áp dụng fix này vào data thật — cố tình chưa làm. Đây là cam kết compute cluster lớn, khó đảo ngược, và theo đúng roadmap ở §33 việc này cần gộp với 2 quyết định còn mở: (a) retune seq_length/dropout mà phát hiện tăng 2.56x token ở trên khiến càng cấp thiết hơn, và (b) ý tưởng variable-length chunking/tăng tốc video ở mục 7 §33, vì đụng cùng đoạn code "đưa video vào Cosmos" nên nên làm chung 1 lần re-tokenize thay vì phải làm 2 lần.
+- Chưa đụng tới: `pipeline_video/pipeline_benchmark.py` và `pipeline_video/pipeline_1gpu.py` (biến thể dev/benchmark, cũng hardcode `target_size=160`, xác nhận **không** được submit script nào tham chiếu) — để nguyên vì không phải đường production; `pipeline_video/video_pipeline.py` đã có sẵn `target_size=256` cho `encode_video_chunk` chính (có vẻ ai đó đã fix một phần trước đây) nhưng vẫn còn `target_size=160` không liên quan ở 1 helper `encode_decode_chunk` riêng để visualize — cũng để nguyên, ngoài phạm vi lần này.
+- Quyết định cần từ user trước khi re-tokenize toàn bộ: xác nhận target 256px (hay đi cao hơn, vd 384/512, đổi lại token cost tăng tương ứng) và chốt luôn việc retune seq_length/dropout cùng lúc, theo đúng mâu thuẫn "scale vs fix pipeline" còn mở ở mục A §33.
 - Sự cố mất file giữa phiên chưa rõ nguyên nhân gốc.

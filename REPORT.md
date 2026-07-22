@@ -2491,3 +2491,44 @@ Instead, §2's finding above supplies a plausible **structural** mechanism: sinc
 - Item 5 (cosmos cross-contamination): **plausible structural mechanism identified** (no document-boundary reset + massive document/seq_length mismatch), original reported case not directly reproducible (ephemeral, Discord-only) — not fully closed, would need direct `.bin`-level sampling to confirm.
 - Item 11 (share to #omni-vla): already done by the user before this entry, per their own note.
 - These findings materially inform the already-planned Phase 1 (cosmos pipeline redesign) and Phase 3 (v3 training config) from §33's roadmap: `reset_position_ids`/`reset_attention_mask` and/or explicit document-boundary handling in Megatron packing is now a concrete candidate fix to bundle into the next training run, alongside the already-planned `seq_length` increase, cosmos dropout rebalance, and cosmos quality redesign.
+
+## 35. Phase 1 Started: Root-Caused and Fixed Cosmos's Low-Quality Preprocessing (Below the Tokenizer's Own Documented Minimum Resolution); Found the Real Production Pipeline Script Lives Untracked Outside Git and Had Drifted (Jul 22, 2026, continued)
+
+**Context:** User asked to commit the Phase-0 diagnostics work (done, commit `d60aefc`) and start Phase 1 (cosmos pipeline redesign) while away, specifically flagging a strong prior belief that the old pipeline "zoomed in and reduced quality" before Cosmos tokenization, matching the Discord exchange in §33 (Huu: "you think our resolution sucks for cosmos?" / Van Khue: "true, last time we did it because robot camera is bad").
+
+### 1. Root cause found and confirmed: `CosmosVideoTokenizer.encode_video_chunk` resized to 160x160 -- below the tokenizer's own documented minimum
+
+Traced the FineVideo Step A pipeline (`CLAUDE.md`'s "Step A: prototype/pipeline.py, 40 nodes x 4 GPU") to `CosmosVideoTokenizer.encode_video_chunk()`. Frame extraction itself (`extract_30fps_frames`) does **not** downscale or crop -- it pulls native-resolution PNGs straight from ffmpeg. The only quality-affecting step is inside `encode_video_chunk`:
+
+```python
+def encode_video_chunk(self, frame_list, target_size=160):
+    ...
+    transform = T.Compose([
+        T.Resize((target_size, target_size)),   # non-aspect-preserving squash to 160x160
+        ...
+```
+
+Cross-checked this against `Cosmos-Tokenizer-DV8x16x16`'s own bundled model card (`pipeline_video/pretrained_ckpts/Cosmos-Tokenizer-DV8x16x16/README.md`): **"Resolution: Minimum: 256px (shorter side)."** The pipeline was feeding the tokenizer frames **below its own documented minimum input resolution**, and doing so via a non-aspect-preserving `(target_size, target_size)` resize that squashes any non-square source frame rather than a "zoom"/crop -- the user's "zoom in" recollection doesn't match literally (no `CenterCrop`/`RandomResizedCrop` was found anywhere in the pipeline), but the core claim ("did something to hurt quality before cosmos") is fully correct and now precisely located.
+
+A misleading comment in `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py` (the newer OmniVideo-100K path, which reuses this same class) had asserted *"CosmosVideoTokenizer downsamples further to 160 regardless of input size, so no loss there either"* -- factually wrong given the 256px minimum; corrected in the same pass.
+
+### 2. Found: the real production script lives untracked outside git, and had drifted from the repo copy
+
+`pipeline_video/submit_official.sbatch` (the actual sbatch used for the 40-node x 4-GPU Step A run) invokes `srun python -u /e/project1/reformo/nguyen38/prototype/pipeline.py` -- **not** the git-tracked `3d-human-pose/pipeline_video/pipeline.py`. `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py` independently confirms this: its `PROTOTYPE_DIR = "/e/project1/reformo/nguyen38/prototype"` constant is what it `sys.path.insert`s and `os.chdir()`s into before importing `CosmosVideoTokenizer`. So **both** the FineVideo and OmniVideo-100K cosmos-tokenization paths actually execute the untracked copy, not anything version-controlled in this repo.
+
+`diff`ing the two copies showed they'd already drifted (2 print-statement lines, Vietnamese vs. English) -- the git-tracked copy is a stale historical snapshot, not what runs. This is the same class of infra mismatch already documented earlier this project (JUWELS `/p` vs. JUPITER `/e` path/account drift, §29's stale 3-commits-behind checkout) -- another untracked/parallel copy silently diverging from the repo. Fixed both copies identically (the untracked real one first, then the git mirror) so they match again on everything cosmos-related; the pre-existing 2-line print-statement drift is unrelated and left alone. **Worth a standing note for future sessions: `/e/project1/reformo/nguyen38/prototype/` is not a symlink into this repo and is not git-tracked -- any pipeline_video/ change intended for production must be mirrored there by hand until this is resolved (e.g. by replacing prototype/ with a symlink).**
+
+### 3. Fix applied and verified functionally on synthetic non-square frames
+
+Changed `encode_video_chunk`'s default `target_size` 160 -> 256 (the tokenizer's documented minimum) and replaced the squash with aspect-preserving `T.Resize(target_size)` (resizes shorter side) + `T.CenterCrop(target_size)` (standard practice, also incidentally the closest match to what the user may have remembered as "zoom"). Applied identically to both `/e/project1/reformo/nguyen38/prototype/pipeline.py` (real production copy) and `3d-human-pose/pipeline_video/pipeline.py` (git mirror).
+
+Verified on the GH200 interactive node (`env_stable_vla`): loaded the real `Cosmos-Tokenizer-DV8x16x16` encoder and ran `encode_video_chunk` on 8 synthetic non-square (720x1280) frames -- **ran without error**, confirming the aspect-preserving path works and non-square input is handled correctly (the old code would have silently squashed a frame like this into a square).
+
+**Quantified token-cost impact (important, not yet reconciled with training config):** the fix produced **512 tokens for 1 chunk**, up from the old 200 -- a **2.56x increase** (256/16=16 spatial positions/side vs. the old 160/16=10, so 16x16=256 vs. 10x10=100 per temporal step, x2 temporal steps = 512 vs. 200). Max token id observed (59,068) stays within the already-registered `<cosmos_0>`-`<cosmos_63999>` vocab range, so no vocab-expansion is needed. This directly compounds the already-documented "cosmos token cost dominates generation" finding (§31/§32/§33) -- cosmos was already ~61-77% of VLA-token output at 200 tokens/chunk; at 512 tokens/chunk this will be substantially worse unless paired with the already-planned `seq_length` increase (4096->8192, `qwen3_1.7b_vla_v3.yaml`) and a real cosmos dropout rebalance (planned but never applied to v2, per §31).
+
+### Status / explicitly not done yet
+
+- Code fix: **done and functionally verified**, in both the real production script and the git mirror.
+- **Not yet run:** the full-corpus re-tokenization (40 nodes x 4 GPU over ~40K FineVideo videos, plus OmniVideo-100K's videos through the same fixed class) that would actually apply this fix to real data -- deliberately held back. This is a large, hard-to-reverse cluster-compute commitment, and per §33's own roadmap it was meant to be bundled with two still-open decisions: (a) the seq_length/dropout retuning this entry's 2.56x token-cost finding makes more urgent, and (b) the variable-length-chunking/video-speed-up idea from §33 item 7, which touches the same "how do we feed video into Cosmos" code path and should land in the same re-tokenize pass rather than triggering a second one later.
+- Not yet touched: `pipeline_video/pipeline_benchmark.py` and `pipeline_video/pipeline_1gpu.py` (dev/benchmark variants, also hardcoded to `target_size=160`, confirmed **not** referenced by any submit script) -- left as-is since they're not production paths; `pipeline_video/video_pipeline.py` already had `target_size=256` for its main `encode_video_chunk` (someone had partially fixed this already) but still has an unrelated `target_size=160` in a separate `encode_decode_chunk` visualization helper -- also left untouched, out of scope for this pass.
+- Next decision needed from the user before the full re-tokenize: confirm the 256px target (vs. going higher, e.g. 384/512, at proportionally higher token cost) and settle the seq_length/dropout retuning alongside it, per §33 section A's still-open "scale vs. fix pipeline" tension.
