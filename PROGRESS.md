@@ -5,6 +5,59 @@
 **Cluster:** JUPITER (JSC), `booster` partition, GH200 nodes — maintenance mostly over. Phase 4 FineVideo **DONE** (40,300/40,305). Phase 5 **DONE**. Phase 6 running.  
 **Goal:** Build a multimodal Vision-Language-Action model that can watch video, hear speech, and generate robot motion tokens.
 
+## Session update — Jul 21, 2026 (continued, session 4 — Harmony4D convert+resample+samples, pulled JUWELS tokenize results, chose 5 datasets + rebalanced mix, wrote Qwen3 v2 config, submitted real training job)
+
+**Main work:** Finished the Harmony4D conversion pipeline through windowing/root-centering (paused there per user request to redirect), pulled the previous JUWELS session's tokenize results, chose 5 datasets for the next training run, wrote a new Qwen3 1.7B config, copied 120GB of data + tokenizer from `/p` to `/e`, and **submitted a real 64-node training job** (`1009758`, RUNNING as of this entry).
+
+### 1. Harmony4D — COCO→H36M convert, 30fps resample, visual samples
+
+Wrote `data_prep/harmony4d/convert_coco_to_h36m.py` (COCO-17→H36M-17 mapping, reusing the formula from `phase1_hrnet_gpu.py::coco_to_h36m()`, extended to 3D; confidence-threshold→NaN instead of zero-fill). Submitted SLURM job `1009045` (22 workers, 1 zip/worker) — **done in 18 seconds**, 208/208 sequences (matches the paper's stated count exactly), 416 person-tracks (208×2 people), 0 errors. Verified by recomputing bone lengths on the converted output against the project's own `skeleton_tree` — near-perfect left/right symmetry, anatomically plausible lengths.
+
+Wrote `data_prep/harmony4d/resample_30fps.py` (linear interpolation on real timestamps `frame_idx/20fps`, mirroring `phase2_5_resample_30fps.py`'s method). Ran directly (no SLURM needed, done in seconds): 416/416 tracks, 0 errors. 301 frames@20fps → 451 frames@30fps, ratio 1.498 ≈ the expected 1.5.
+
+**Decided with the user:** agent tokens keep the existing single-person schema (no new multi-person design) — but **both people are kept** as 2 independent tracks (neither dropped), each processed exactly like a normal single-person video, matching FineVideo's own precedent. 208 sequences → 416 usable tracks.
+
+Wrote `data_prep/harmony4d/make_pose_samples.py`, rendered 6 skeleton videos (`samples/harmony4d/`) for 3 tracks (mma×2 people, hugging×1 person) at 2 checkpoints: after 30fps resample (world-frame), and after root-centering+windowing (stride=8, reusing `create_windows()` from `phase3_kinematics_processor.py`). **Important design call made unilaterally:** did NOT run the full `KinematicPreprocessor.process()` (hallucination filter/ID-switch/stiff-leg) — those heuristics are tuned specifically for monocular MotionBERT failure modes, and applying them to Harmony4D's high-quality multi-view ground truth risks "fixing" genuine poses (e.g. a fast real takedown misread as an ID-switch, a real ground-grappling knee bend "corrected" to standing). Sent samples to the user, who **paused this task here** to redirect to other work.
+
+### 2. Pulled code — confirmed JUWELS finished tokenizing all 4 datasets
+
+`git pull` brought in 2 commits from the prior JUWELS session (`adf87f7`, `59b0042`) — `TOKENIZE_TODO.md` was updated confirming **all 4 tokenize jobs genuinely COMPLETED** (verified via `.idx` header, not just SLURM state):
+
+| Dataset | Real tokens | Records |
+|---|---|---|
+| finevideo_v6 | 10,926,767,551 | 371,892 |
+| omnivideo_100k_video | 536,149,780 | 5,214 |
+| synth_llava | 103,097,102 | 603,999 |
+| roleplay | 52,469,577 | 67,459 |
+| mv_omni (tokenized since Jul 18) | 20,389,561,883 | — |
+| **Total, 5 sources** | **32,008,045,893 (~32.01B)** | |
+
+### 3. Chose 5 training datasets, copied 120GB to `/e`
+
+User picked exactly these 5 (matching the "Total, these 4" + MV-Omni figure `TOKENIZE_TODO.md` already recorded). Copied all `.bin/.idx` files (120GB: finevideo_v6 41G, mv_omni 76G, omnivideo 2.0G, synth_llava 405M, roleplay 202M) plus the `tokenizer_vla_qwen3` tokenizer (257,901 real vocab, max token id 257900) from `/p` to `/e/data1/datasets/playground/mmlaion/shared/nguyen38/vla_v2_tokenized/` + `.../tokenizer_vla_qwen3/` — required because the Apptainer container only binds `/e`. Verified shard counts and sizes match the `/p` originals exactly.
+
+### 4. Wrote `qwen3_1.7b_vla_v2.yaml` — this project's first real Qwen3 migration
+
+Found `oellm-autoexp/config/experiments/harsh/qwen3_1.7b_mixvitae_jupiter.yaml` as a template, wrote `config/experiments/nguyen38/qwen3_1.7b_vla_v2.yaml` with the same structure (Qwen3 1.7B architecture, `ckpt_convert_qwen3` postprocess) but pointed at our own tokenizer and data mix. This is the project's first real run on Qwen3 (CLAUDE.md had listed this as "planned" for a while) — replacing the OpenSci-Ref architecture the two prior models used.
+
+**Two decisions made with the user:**
+- **Epochs:** user chose exactly 1 epoch ("just depends on data size") instead of keeping the old ~3-epoch convention (reasonable for the 2.84B v1 corpus, but this corpus is 11x bigger so 3 epochs would be far too long) → `train_iters=7632` (32.008B / 4,194,304 tokens-per-iter).
+- **Mix ratio:** user asked to reduce MV-Omni's share. Rebalanced 60/40 — the two sources with real `<agent>` action tokens (finevideo_v6 + omnivideo_100k_video) get 60% of total weight (up from their natural 35.82% size-proportional share), the three sources with no action tokens (mv_omni + synth_llava + roleplay) split the remaining 40% (MV-Omni down from 63.71% raw share to 39.71%). Explained to the user: size-proportional weighting gives every source the same N epochs; "reducing" MV-Omni means it gets fewer than N epochs while finevideo_v6 gets more, prioritizing the exact modality-transition signal both prior models failed at.
+
+### 5. Submitted the real training job — job `1009758`, 64 nodes, RUNNING
+
+Submitted using the user's own shell template exactly (saved to memory as `feedback_training_submit_template`). **Minor hiccup:** `run_autoexp.py` runs a foreground polling loop that never exits on its own → the tool call timed out after 2 minutes (exit 143) — but `squeue`/`sacct` confirmed **job `1009758` had already been submitted successfully before the timeout and was still RUNNING normally**, unaffected by killing the polling script.
+
+Killing the orchestrator also killed its automatic postprocess trigger loop (dist_to_torch → convert_hf → eval) that was meant to fire once training finishes. Found the right resume tool: `scripts/monitor_autoexp.py --session-dir monitor_state/<session_id>` -- read its source and confirmed it **has no job-submission code path at all**, it only reloads the existing `JobFileStore` from the prior session and keeps polling -- safe with zero risk of accidentally re-submitting a duplicate 64-node job (which would be expensive if done wrong). Ran it in the background (`nohup ... & disown`), verified `squeue` shows exactly one job and the state file's `attempts` count is still 1 (not bumped to 2) -- confirmed no resubmission happened.
+
+**Status at end of session:**
+- Job `1009758` (`qwen3_1.7b_vla_v2`) — RUNNING, 64 nodes, 4h time limit, output at `output_vla/qwen3_1.7b_vla_v2/`.
+- Background monitor process (`monitor_autoexp.py`, disowned from the shell) is running, will auto-trigger postprocess once the job finishes.
+- **The SLURM job is fully independent of the Claude Code session** — closing the session does not affect the running cluster job. The monitor process (nohup+disown) should also survive independently in theory, but there's no 100% confirmation the underlying background shell/sandbox environment persists indefinitely after the session closes -- if the monitor does die, re-running the same resume command is still safe (won't resubmit), just needs to be re-launched.
+- Backlog: Harmony4D windowing/root-centering "for real" (deciding which filters beyond plain center+window, if any) is still paused per the redirect in section 1; eval protocol for the new model is still undesigned (REPORT.md Pre-training Blockers item 3, still open); the 3 new Harmony4D scripts + samples aren't committed/pushed to GitHub yet; the `qwen3_1.7b_vla_v2.yaml` config isn't committed in the `oellm-autoexp` repo yet (different repo, not asked to commit there).
+
+---
+
 **⚠️ Scope update (Jul 20, 2026):** the "watch video, hear speech, generate robot motion" framing
 above describes the *original* framing, not the current full scope. Huu (project lead) clarified
 directly that the project is actually **omni-modal**: bind any modality pair (image, video, sound,

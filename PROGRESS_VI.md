@@ -7,6 +7,59 @@
 
 ---
 
+## Cập nhật phiên làm việc — 21/07/2026 (tiếp lần 4 — Harmony4D convert+resample+sample, pull kết quả tokenize JUWELS, chọn 5 dataset + rebalance mix, viết config Qwen3 v2, submit job training thật)
+
+**Việc chính:** Hoàn tất pipeline convert Harmony4D tới bước windowing/root-centering (tạm dừng lại theo yêu cầu user để chuyển hướng), pull kết quả tokenize từ phiên JUWELS trước, chọn 5 dataset cho lần train tiếp theo, viết config Qwen3 1.7B mới, copy 120GB data + tokenizer từ `/p` sang `/e`, và **đã submit thật job training 64-node** (`1009758`, đang RUNNING tại thời điểm ghi entry).
+
+### 1. Harmony4D — convert COCO→H36M, resample 30fps, sample trực quan
+
+Viết `data_prep/harmony4d/convert_coco_to_h36m.py` (mapping COCO-17→H36M-17, tái dùng công thức từ `phase1_hrnet_gpu.py::coco_to_h36m()`, mở rộng 3D, confidence-threshold→NaN thay vì zero-fill). Submit SLURM job `1009045` (22 worker, 1 zip/worker) — **xong trong 18 giây**, 208/208 sequence (khớp đúng số paper), 416 person-track (208×2 người), 0 lỗi. Verify bằng cách đo lại độ dài xương sau convert trên `skeleton_tree` chuẩn của project — đối xứng trái-phải gần tuyệt đối, độ dài hợp lý giải phẫu.
+
+Viết `data_prep/harmony4d/resample_30fps.py` (linear interpolation theo timestamp thật `frame_idx/20fps`, mirror đúng phương pháp `phase2_5_resample_30fps.py`). Chạy trực tiếp (không cần SLURM, xong trong vài giây): 416/416 track, 0 lỗi. 301 frame@20fps → 451 frame@30fps, tỉ lệ 1.498 ≈ đúng 1.5 kỳ vọng.
+
+**Quyết định cùng user:** agent tokens giữ nguyên schema 1-người (không thiết kế multi-person mới) — nhưng **giữ cả 2 người** thành 2 track độc lập (không bỏ người nào), mỗi track xử lý y hệt 1 video-1-người bình thường, đúng tiền lệ FineVideo. 208 sequence → 416 track khả dụng.
+
+Viết `data_prep/harmony4d/make_pose_samples.py`, render 6 video skeleton (`samples/harmony4d/`) cho 3 track (mma×2 người, hugging×1 người) ở 2 checkpoint: sau resample-30fps (world-frame), và sau root-centering+windowing (stride=8, tái dùng `create_windows()` từ `phase3_kinematics_processor.py`). **Quyết định kỹ thuật quan trọng tự đưa ra:** KHÔNG chạy toàn bộ `KinematicPreprocessor.process()` (hallucination filter/ID-switch/stiff-leg) — các heuristic đó tinh chỉnh riêng cho lỗi MotionBERT đơn-mắt, áp vào ground-truth đa-camera chất lượng cao của Harmony4D có nguy cơ "sửa nhầm" tư thế thật (vd: cú vật nhanh bị hiểu nhầm ID-switch, gối bẻ ngược khi grapple dưới đất bị "sửa" sai). Đã gửi user xem sample, **user tạm dừng task này ở đây** để chuyển hướng sang việc khác.
+
+### 2. Pull code — xác nhận JUWELS đã tokenize xong 4/4 dataset
+
+`git pull` lấy 2 commit mới từ phiên JUWELS trước (`adf87f7`, `59b0042`) — `TOKENIZE_TODO.md` đã được cập nhật xác nhận **cả 4 job tokenize đều COMPLETED thật** (verify qua `.idx` header, không chỉ SLURM state):
+
+| Dataset | Token thật | Số record |
+|---|---|---|
+| finevideo_v6 | 10,926,767,551 | 371,892 |
+| omnivideo_100k_video | 536,149,780 | 5,214 |
+| synth_llava | 103,097,102 | 603,999 |
+| roleplay | 52,469,577 | 67,459 |
+| mv_omni (đã tokenize từ 18/07) | 20,389,561,883 | — |
+| **Tổng 5 dataset** | **32,008,045,893 (~32.01B)** | |
+
+### 3. Chọn 5 dataset train + copy 120GB data sang `/e`
+
+User chọn đúng 5 dataset ở bảng trên (khớp con số "Total, these 4" + MV-Omni mà `TOKENIZE_TODO.md` đã ghi). Copy toàn bộ `.bin/.idx` (120GB: finevideo_v6 41G, mv_omni 76G, omnivideo 2.0G, synth_llava 405M, roleplay 202M) + tokenizer `tokenizer_vla_qwen3` (257,901 vocab thật, max token id 257900) từ `/p` sang `/e/data1/datasets/playground/mmlaion/shared/nguyen38/vla_v2_tokenized/` + `.../tokenizer_vla_qwen3/` — bắt buộc vì container Apptainer chỉ bind `/e`. Verify shard count + size khớp tuyệt đối với bản gốc `/p`.
+
+### 4. Viết config `qwen3_1.7b_vla_v2.yaml` — migration Qwen3 thật đầu tiên
+
+Tìm `oellm-autoexp/config/experiments/harsh/qwen3_1.7b_mixvitae_jupiter.yaml` làm mẫu, viết `config/experiments/nguyen38/qwen3_1.7b_vla_v2.yaml` y hệt cấu trúc (Qwen3 1.7B architecture, `ckpt_convert_qwen3` postprocess) nhưng trỏ tokenizer + data mix riêng của mình. Đây là lần đầu project thật sự chạy Qwen3 (CLAUDE.md ghi "planned" từ lâu, giờ mới thực hiện) — thay cho kiến trúc OpenSci-Ref của model cũ.
+
+**2 quyết định cùng user:**
+- **Epoch:** user chọn đúng 1 epoch ("cứ tùy độ lớn dữ liệu thôi") thay vì giữ quy ước ~3 epoch cũ (hợp lý cho corpus 2.84B, nhưng corpus giờ lớn hơn 11 lần nên 3 epoch sẽ quá dài) → `train_iters=7632` (32.008B/4,194,304 tokens-per-iter).
+- **Mix ratio:** user yêu cầu giảm MV-Omni. Rebalance 60/40 — 2 dataset có `<agent>` action token thật (finevideo_v6 + omnivideo_100k_video) chiếm 60% tổng weight (thay vì 35.82% theo tỉ lệ token thật), 3 dataset không có action token (mv_omni + synth_llava + roleplay) chia nhau 40% (MV-Omni giảm từ 63.71% raw xuống 39.71%). Lý do giải thích cho user: proportional-theo-size = mọi dataset được nhìn thấy đúng N epoch như nhau — "giảm" nghĩa là MV-Omni bị nhìn ít hơn N epoch, finevideo_v6 được nhìn nhiều hơn N epoch, ưu tiên đúng tín hiệu modality-transition đang fail.
+
+### 5. Submit job training thật — job `1009758`, 64 node, RUNNING
+
+Submit qua đúng template shell user cung cấp (đã lưu memory `feedback_training_submit_template`). **Sự cố nhỏ:** `run_autoexp.py` chạy foreground polling liên tục không tự thoát → bị timeout tool sau 2 phút (exit 143) — nhưng verify qua `squeue`/`sacct` xác nhận **job `1009758` đã submit thành công từ trước đó và vẫn RUNNING bình thường**, không bị ảnh hưởng bởi việc kill script polling.
+
+Vì orchestrator bị kill nên mất luôn vòng lặp tự động trigger postprocess (dist_to_torch → convert_hf → eval) sau khi training xong. Tìm đúng công cụ resume: `scripts/monitor_autoexp.py --session-dir monitor_state/<session_id>` — đọc code xác nhận script này **không có code path submit job nào cả**, chỉ load lại `JobFileStore` từ session cũ và poll tiếp — an toàn tuyệt đối để tránh submit nhầm job trùng lặp 64-node (rất tốn kém nếu sai). Chạy nền (`nohup ... & disown`), verify `squeue` chỉ có đúng 1 job, verify `attempts` trong state file vẫn là 1 (không tăng lên 2) → xác nhận không bị submit lại.
+
+**Trạng thái cuối phiên:**
+- Job `1009758` (`qwen3_1.7b_vla_v2`) — RUNNING, 64 node, time limit 4h, output tại `output_vla/qwen3_1.7b_vla_v2/`.
+- Monitor process (`monitor_autoexp.py`, đã disown khỏi shell) đang chạy nền, sẽ tự trigger postprocess khi job xong.
+- **Job SLURM hoàn toàn độc lập với session Claude Code** — user thoát session không ảnh hưởng gì tới job đang chạy trên cluster. Monitor process (nohup+disown) về lý thuyết cũng sống sót độc lập, nhưng chưa có xác nhận 100% về việc môi trường shell/sandbox nền có tồn tại lâu dài sau khi đóng session hay không — nếu monitor chết giữa chừng, việc resume lại bằng đúng lệnh trên vẫn an toàn (không submit lại), chỉ cần chạy lại khi cần.
+- Việc tồn đọng: Harmony4D windowing/root-centering thật (áp dụng filter nào ngoài center+window, nếu có) vẫn treo theo quyết định tạm dừng ở mục 1; eval protocol cho model mới vẫn chưa thiết kế (REPORT.md Pre-training Blockers mục 3 vẫn mở); chưa commit/push 3 script Harmony4D + samples lên GitHub; chưa commit config `qwen3_1.7b_vla_v2.yaml` vào repo `oellm-autoexp` (repo khác, chưa được yêu cầu commit).
+
+---
+
 ## Cập nhật phiên làm việc — 21/07/2026 (JUWELS — verify + submit 4 job tokenize Megatron)
 
 **Việc chính:** Phiên này chạy trên **JUWELS** (không phải JUPITER — compute node JUPITER không mount được `/p`, nơi hạ tầng tokenize `mv-scale/` sống), theo đúng file handoff `TOKENIZE_TODO.md` mà một phiên JUPITER trước để lại ở repo root. Pull code mới nhất, đọc `TOKENIZE_TODO.md` + `data_prep/` để xác định 4 dataset cần tokenize lại: **FineVideo-VLA v6, OmniVideo-100K (video), synth-llava, emotional-roleplay**. Theo yêu cầu của user, verify từng dataset khớp đúng bản đã upload HF **trước khi** submit job — tải nguyên bản HF của 3/4 dataset đã có trên Hub (OmniVideo-100K, synth-llava, roleplay), so sánh content-hash (sha256 trên cặp id+text đã sort theo id) với bản local trên `/p` — **khớp tuyệt đối byte-for-byte cả 3**. FineVideo v6 chưa có bản HF nào (HF hiện chỉ có bản v1 cũ, 19GB) nên không có gì để đối chiếu — chỉ verify số record local (371,892) khớp đúng con số `TOKENIZE_TODO.md` đã ghi.
@@ -2007,3 +2060,60 @@ Quy mô gần bằng 4.92B SNAC token đã tìm thấy ở MixtureVitae-Omni's `
 ### Trạng thái
 
 Đã báo Huu trên Discord (09/07/2026, 3:51pm): *"this dataset is mostly text, only train_data_snac.jsonl.gz and valid_data_snac.jsonl.gz have snac tokens ... u want to add it?"* — **đang chờ trả lời.** Chưa bắt đầu tích hợp/tải full file cho tới khi Huu phản hồi.
+
+---
+
+**⚠️ Ghi chú:** file này (`PROGRESS_VI.md`) đã không được cập nhật song song với `REPORT.md` (tiếng Anh) trong khoảng 13/07 → 21/07/2026 (mục §17-30 của `REPORT.md` — permissive dataset survey, caption/speech pipeline, Megatron tokenize 4 nguồn, Harmony4D pivot...) — `REPORT.md` là log đầy đủ/mới nhất trong giai đoạn đó, không phải file này. Từ đây trở đi mục dưới tiếp tục cập nhật ở `PROGRESS_VI.md`.
+
+## Kiểm tra + Eval sanity model `qwen3_1.7b_vla_v2` (22/07/2026)
+
+### Bối cảnh
+
+Vào phiên với 1 câu hỏi đơn giản: lần train Qwen3 trước (`qwen3_1.7b_vla_v2`, mix 5 nguồn ~32B token thật: FineVideo-v6, MV-Omni, OmniVideo-100K, synth-llava, emotional-roleplay, tokenizer `tokenizer_vla_qwen3`) đã submit ở phiên trước (ghi trong `REPORT.md` §30-31 và memory) — đã xong chưa? Nếu xong thì test thử.
+
+### Training — xác nhận ĐÃ XONG, sạch
+
+Job `1009758` chạy đủ **7,632/7,632 iteration** (64 node × 4 GH200). Loss: 6.47 (iter 50) → 1.83 (4000) → 1.69 (7600), **0 iteration NaN/skip**. Val loss cuối 1.7526 (PPL 5.77), test 1.7722 (PPL 5.88). `7632 × 1024 (batch) × 4096 (seq_len) = 32.01B token` — đúng 1 epoch trên toàn bộ mix, khớp con số ~32.01B đã tính ở `TOKENIZE_TODO.md`.
+
+Bước convert checkpoint (Megatron→HF) của chính job đó **fail** do compute node không có internet (`AutoTokenizer.from_pretrained()` cố gọi huggingface.co thay vì dùng path local). Job thứ 2 (`1010685`) chạy lại riêng bước convert, thành công, ra đủ 16 checkpoint HF (`hf/iter_0000500` … `hf/iter_0007632`). `squeue` xác nhận không còn job nào chạy.
+
+Kiến trúc (từ `config.json`): Qwen3ForCausalLM, 28 layer, hidden_size 2048, intermediate_size 6144, 16 attention head / 8 KV head (GQA), qk_layernorm, rope_theta=1e6, tied embedding, vocab 257,920 (pad từ 257,901 thật). **1.94B tham số.**
+
+### Eval — viết script mới, dựa trên script cũ
+
+Viết `tools/eval/eval_vla_v2_sanity.py` (dựa trên `eval_vla_sanity.py` cũ) — trỏ checkpoint/tokenizer mới, thêm test atomicity cho `snac_`/`caption`/`speech`, 5 prompt test (`full_prompt`, `agent_continuation`, `agent_from_scratch`, `roleplay_speech`, `image_caption`), hỗ trợ cả greedy lẫn sampling (`--sample --temperature --top-p --repetition-penalty`), in đầy đủ input/output/ground-truth (không cắt bớt).
+
+**Token atomicity: 36/37 pass.** 1 lỗi thật: `<snac_140553>` (token cuối dải 12,288 token SNAC) bị tách 11 mảnh — lỗi off-by-one ở biên vocab, cùng loại lỗi với tokenizer model đầu tiên nhưng lần này chỉ ảnh hưởng 1 token biên. **Chưa fix** ở file tokenizer gốc `/e/.../tokenizer_vla_qwen3/` (chỉ patch bản copy tạm ở scratchpad để né lỗi tương thích `transformers 4.57.6`/`extra_special_tokens`, không liên quan tới lỗi snac).
+
+**Kết quả định tính — lỗi gốc của model v1 đã biến mất.** `CLAUDE.md` ghi model đầu: *"Modality transitions: FAIL — model kẹt ở seed2, không tự chuyển cosmos/avclm/agent."* Model này tự chuyển đổi tự do giữa cả 6 loại đã học (seed2, cosmos, snac, speech, caption, agent), cả greedy lẫn sampling. Bằng chứng mạnh nhất: cho **chỉ** 32 token `<seed2_N>` thật từ 1 record `synth_llava2` (`synth_llava2_003266024`, không gợi ý text nào khác), model tự sinh caption đúng chủ thể (cậu bé, áo tốt nghiệp xanh lá, nhìn camera) khớp sát ground truth, tự đóng `</caption><|im_end|>` sạch — cross-modal binding ảnh↔text có thật.
+
+Điểm yếu: **greedy hay lặp token trong block cosmos dài** (vd `<cosmos_42631>` lặp 6-8 lần liên tiếp), ăn hết ngân sách token trước khi tới agent (3/5 prompt bị). Sampling (T=0.8, top_p=0.9, rep_penalty=1.3) sửa được ít nhất 1 trường hợp (`agent_from_scratch`): model hoàn thành **trọn 2 window agent 8-frame** trong 1 lần generate (seed2→cosmos→agent→snac/speech→seed2→cosmos→agent), decode ra toạ độ 3D hợp lệ — đổi lại, sampling thi thoảng bịa chi tiết caption không có trong ảnh gốc (bịa tên "Timothy Kelly").
+
+### Lần đầu decode cosmos→video thật từ chính output model
+
+Lấy 2 chunk 200-token `<cosmos_N>` sạch từ generation `agent_from_scratch` (bản sampling), chạy qua decoder có sẵn `tools/decode/decode_cosmos.py` (trước đây chỉ verify với data training thật 20/07, chưa từng thử với output model tự sinh). **Cả 2 decode ra file mp4 chơi được** — lần đầu xác nhận cosmos-token của model này round-trip ra video thật xem được (giống pose/text đã xác nhận trước đó). `avc_lm`/`seed2`/`snac` vẫn là 3 modal chưa xác nhận được model-output→media thật: `avc_lm` vì model gần như không sinh ra (0 lần trong 5 test — do bị loại bỏ ở bước flatten trước khi vào data train, model gần như chưa từng thấy); `seed2`→ảnh và `snac`→audio vì **repo chưa có decoder chiều ngược nào cả**.
+
+### Artifact đã lưu
+
+`samples/qwen3_1.7b_vla_v2_eval/`: log đầy đủ 2 lần eval (greedy + sample), 2 video mp4 decode được + file token ID gốc.
+
+### Việc còn mở (ghi lúc đầu)
+
+- Training + convert checkpoint: **XONG**, không còn gì chạy nền.
+- Eval mới chỉ định tính/đọc bằng mắt — chưa có MPJPE, BLEU/CIDEr, hay closed-loop task-success (vẫn là việc mở từ §29/§30 REPORT.md).
+- ~~Lỗi atomicity `<snac_140553>`~~ — **rút lại, xem phần dưới: không phải bug thật.**
+- Model card + upload HF cho checkpoint này: đang làm (`tools/upload/upload_vla_v2_model.py`), **chưa push**.
+
+### Cập nhật cùng ngày: rút lại kết luận lỗi `<snac_140553>`, xây decoder audio SNAC, phát hiện cosmos dominate, tăng seq_length cho lần train sau
+
+**Rút lại kết luận "bug atomicity" của `<snac_140553>`.** Tra lại kỹ danh sách `added_tokens` thật của tokenizer (không chỉ đoán 1 ID rồi test): dải SNAC thật gồm **3 băng rời rạc** 4,096 ID mỗi băng — L0 `128266–132361`, L1-chẵn `132362–136457`, L1-lẻ `144650–148745` — có 1 khoảng trống thật `136458–144649` chưa từng được add (đúng theo thiết kế "listen format" chỉ mã hoá 2/3 mức codebook của SNAC). `<snac_140553>` rơi đúng vào khoảng trống này nên nó **đúng ra chưa từng là token** — test atomicity ban đầu của tôi chọn nhầm 1 ID không tồn tại, không phải phát hiện được lỗi tokenizer thật. Toàn bộ 12,288 ID snac thật vẫn atomic 100%.
+
+**Viết `tools/decode/decode_snac.py`** — decoder chiều audio đầu tiên trong repo (trước đó chỉ có `decode_cosmos.py`/`decode_avclm.py`, cả 2 đều video). Tái tạo lại 3 mức codebook phân cấp của SNAC từ bộ ba token listen-format, điền 0 vào mức 2 (mức tinh nhất, 50Hz, chưa từng được mã hoá), rồi gọi `SNAC.from_pretrained("hubertsiuzdak/snac_24khz").decode()` để ra waveform thật. Chạy thử trên 159 token `<snac_N>` (53 base frame, ~4.5 giây) nối từ chính output model (bản sampling ở mục trên) — **ra file WAV thật, không im lặng, không clip** (RMS 0.12, range [-0.46, 0.55]). Đóng được 1 trong 2 gap "chưa có decoder" đã nêu ở mục trên — chỉ còn `seed2`→ảnh là chưa chứng minh được.
+
+**Token `cosmos` đang áp đảo trong chính output model.** Gộp breakdown của cả 10 lần test (5 prompt × greedy + sample): nếu chỉ tính trong nhóm token VLA thật (bỏ text tự nhiên), **`cosmos` chiếm 61-77%** — `agent`/`seed2`/`snac` cộng lại vẫn là thiểu số. Nguyên nhân là cấu trúc, không hẳn do thiên vị lúc train: 1 chunk cosmos tốn cố định 200 token theo convention, trong khi agent chỉ ~2-4 token/mẫu, seed2/snac chỉ 1 token/mẫu — nên cosmos vốn đã "đắt" hơn hẳn về mặt biểu diễn. Hệ quả thực tế: đây rất có thể là nguyên nhân trực tiếp gây ra hiện tượng lặp token + hết ngân sách token trước khi tới agent đã thấy ở mục trên. Đây đúng loại vấn đề `CLAUDE.md` (thời model v1) đã từng ghi kế hoạch xử lý ("giảm modality dropout từ 99%/90% xuống 80-90%/50-70% cho avclm/cosmos") nhưng **chưa áp dụng** cho lần train v2 này — đáng làm cùng lúc với việc tăng seq_length.
+
+Ở tầng **data mix** (khác với tầng generation), team đã tự phát hiện và sửa 1 dạng dominance tương tự từ trước khi train v2: MV-Omni chiếm 63.71% token thô nhưng bị chủ động hạ xuống 39.71% trọng số vì không có token `<agent>` (ghi trong comment `qwen3_1.7b_vla_v2.yaml`) — nên mất cân bằng ở tầng *data* đã được xử lý; phát hiện hôm nay là mất cân bằng **mới, ở tầng generation** (chi phí token/chunk của cosmos), việc rebalance data mix không giải quyết được cái này.
+
+**Tăng seq_length cho lần train sau.** Viết `oellm-autoexp/config/experiments/nguyen38/qwen3_1.7b_vla_v3.yaml` — giống hệt `qwen3_1.7b_vla_v2.yaml` (cùng kiến trúc, tokenizer, data mix/trọng số) chỉ đổi `seq_length: 4096 → 8192`, tính lại `train_iters`/`lr_warmup_iters`/`lr_decay_iters`/`lr_wsd_decay_iters`/`eval_interval` để vẫn giữ đúng ~1 epoch (7,632 → 3,816 iter, giữ nguyên tỷ lệ warmup/decay). Lý do, bằng chứng trực tiếp từ mục trên: 1 chu kỳ đầy đủ seed2→cosmos→agent→snac/speech đã tốn vài trăm tới ~1,500 token, riêng cosmos có thể 200+ token/chunk — ở seq_length=4096 chỉ đủ chỗ cho 1-3 chu kỳ như vậy, còn xa mới bằng 1 hoạt động thật kéo dài vài giây. **Chưa submit** — mới là thay đổi config, còn chờ quyết định có áp dụng luôn điều chỉnh modality dropout ở trên hay không trước khi chạy train thật.
+
+Artifact thêm vào `samples/qwen3_1.7b_vla_v2_eval/`: `snac_decoded_sample_generated.wav`, `snac_raw_ids_generated.txt`.
