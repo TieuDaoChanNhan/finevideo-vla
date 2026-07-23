@@ -132,7 +132,7 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     trust_remote_code=True,
 )
-tokenizer = AutoTokenizer.from_pretrained("EmpathicRobotics/tokenizer-vla-qwen3")
+tokenizer = AutoTokenizer.from_pretrained("EmpathicRobotics/vla-1.7b-qwen3-v2")
 
 prompt = (
     "### Context: Person raises both arms above head.\\n"
@@ -149,16 +149,21 @@ print(tokenizer.decode(output[0]))
 
 ### Decoding generated tokens back to media
 
-All 4 decoders below are in the public repo
+The decoder scripts + their vendored dependencies are bundled directly in
+**this repo** (`tools/`) -- one `snapshot_download` gets everything, no
+separate `git clone` needed. (Also mirrored at
 [github.com/TieuDaoChanNhan/finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla)
-(clone it, then run from its root) -- **verified working 2026-07-23** with no
-cluster/internal access required, each tested end-to-end on real tokens this
-model actually generated.
+if you'd rather browse/clone the code on its own.) **Verified working
+2026-07-23** with no cluster/internal access required, each tested end-to-end
+on real tokens this model actually generated.
 
 ```bash
-git clone https://github.com/TieuDaoChanNhan/finevideo-vla
-cd finevideo-vla
+python -c "
+from huggingface_hub import snapshot_download
+snapshot_download('EmpathicRobotics/vla-1.7b-qwen3-v2', allow_patterns=['tools/*', 'tools/**/*'])
+"
 pip install scipy numpy torch torchvision imageio-ffmpeg soundfile snac huggingface_hub
+cd <snapshot-download-cache-dir-printed-above>
 ```
 
 **Agent tokens -> 3D pose** (pure Python, no extra downloads):
@@ -238,6 +243,16 @@ and are the ones most eval work needs.
 """
 
 
+TOKENIZER_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/tokenizer_vla_qwen3"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 3d-human-pose/ (file is at tools/upload/<this>.py)
+DECODER_FILES = [
+    "tools/decode/decode_cosmos.py",
+    "tools/decode/decode_snac.py",
+    "tools/eval/decode_agent_tokens.py",
+]
+VENDOR_DIR = "tools/decode/vendor"
+
+
 def main():
     api = HfApi()
 
@@ -251,6 +266,28 @@ def main():
             print(f"  Copying {f} ({os.path.getsize(src) / 1e6:.1f} MB)")
             shutil.copy2(src, dst)
 
+        # 2026-07-23: bundle the tokenizer directly into the model repo (not
+        # just linked from a separate one) so `AutoTokenizer.from_pretrained(
+        # "EmpathicRobotics/vla-1.7b-qwen3-v2")` works standalone -- no need
+        # to know/find the separate tokenizer repo id.
+        print("  Bundling tokenizer...")
+        for f in os.listdir(TOKENIZER_DIR):
+            shutil.copy2(os.path.join(TOKENIZER_DIR, f), os.path.join(tmp, f))
+
+        # 2026-07-23: bundle the decoders + vendored cosmos_tokenizer so a
+        # single `snapshot_download()`/`git clone` of this repo is enough to
+        # run inference AND decode the output, without a second `git clone`
+        # of the GitHub repo. Preserves the same relative layout
+        # (tools/decode/, tools/eval/) so the decoders' own relative imports
+        # (decode_cosmos.py's `vendor/` sys.path insert) still resolve.
+        print("  Bundling decoders + vendored cosmos_tokenizer...")
+        for rel_path in DECODER_FILES:
+            src = os.path.join(REPO_ROOT, rel_path)
+            dst = os.path.join(tmp, rel_path)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        shutil.copytree(os.path.join(REPO_ROOT, VENDOR_DIR), os.path.join(tmp, VENDOR_DIR))
+
         with open(os.path.join(tmp, "README.md"), "w") as f:
             f.write(README)
 
@@ -261,6 +298,7 @@ def main():
             repo_type="model",
             create_pr=False,
             commit_message="Upload VLA 1.7B Qwen3 v2 with model card",
+            ignore_patterns=["**/__pycache__/**", "**/*.pyc"],
         )
 
     print(f"\nDone: https://huggingface.co/{REPO_ID}")
