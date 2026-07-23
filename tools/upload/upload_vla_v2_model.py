@@ -153,13 +153,12 @@ print(tokenizer.decode(output[0]))
 ### Encoding real media into tokens (so you can actually prompt the model)
 
 The `## Usage` prompt above uses pre-picked token ids as a demo. To send the
-model a *real* image/video/audio clip -- e.g. "here's a photo, continue the
-scene" -- encode it first with the 3 encoders below (**verified working
-2026-07-23**, each tested end-to-end: real media -> tokens -> decoded back,
-compared against the original). Bundled in this repo the same way as the
-decoders (`tools/encode/`), no separate `git clone` needed. Agent/pose has
-no encoder here on purpose -- it's what the model *generates*, not typically
-something you'd hand-encode as an input.
+model *real* media -- e.g. "here's a photo, continue the scene" or "here's
+a real motion clip, keep going" -- encode it first with the 4 encoders below
+(**verified working 2026-07-23**, each tested end-to-end: real media ->
+tokens -> decoded/compared back against the original). Bundled in this repo
+the same way as the decoders (`tools/encode/`), no separate `git clone`
+needed.
 
 ```bash
 # Image -> <seed2_N> tokens (32 ids, auto-downloads the Q-Former checkpoint
@@ -174,6 +173,11 @@ python tools/encode/encode_cosmos.py --frames f0.png f1.png f2.png f3.png f4.png
 # Audio/video file -> <snac_N> tokens (listen-format, <snac> wrapper --
 # this model never saw the newer <listen>/<speak> convention or speak-format L2)
 python tools/encode/encode_snac.py --input clip.wav
+
+# Real 3D pose (8 frames x 17 joints x xyz, metres, root-centred) -> <agent>
+# tokens -- for "give the model a real motion capture / pose-pipeline output,
+# have it continue" (same behavior already verified: agent completion PASS)
+python tools/encode/encode_agent.py --input pose.npy   # shape (8, 17, 3)
 ```
 
 Splice the printed token block into your prompt (e.g. after `### Context:
@@ -291,6 +295,8 @@ DECODER_FILES = [
     "tools/encode/encode_cosmos.py",
     "tools/encode/encode_snac.py",
     "tools/encode/encode_seed2.py",
+    "tools/encode/encode_agent.py",
+    "pipeline_pose/phase5_adaptive_pchip.py",  # encode_agent.py's build_token_str()
     # encode_snac.py imports encode_listen() from this file (relative
     # sys.path insert into ../../pipeline_pose) -- bundle it too so that
     # import resolves after a snapshot_download, not just in this git repo.
