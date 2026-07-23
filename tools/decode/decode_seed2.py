@@ -40,6 +40,28 @@ import re
 import sys
 
 PROTOTYPE_DIR = "/e/project1/reformo/nguyen38/prototype"
+# 2026-07-23: prototype/ is NOT part of the public github.com/TieuDaoChanNhan/
+# finevideo-vla repo (0 files git-tracked), so external users can't reach
+# _LOCAL_SEED2_DIR below. Found that Seed2Tokenizer's own vendored README
+# (prototype/seed2/README.md) already documents its true public home --
+# `git clone https://huggingface.co/ontocord/seed2` -- confirmed for real via
+# HfApi().model_info("ontocord/seed2"): same 2 checkpoint files
+# (ae.safetensors, model.safetensors) + seed2_tokenizer.py are already public
+# there. No redistribution/licensing decision needed on our end (unlike a
+# vendor-our-own-checkpoint approach) -- just point at the existing repo.
+SEED2_HF_REPO = "ontocord/seed2"
+_LOCAL_SEED2_DIR = os.path.join(PROTOTYPE_DIR, "seed2")
+
+
+def _resolve_seed2_dir() -> str:
+    if os.path.isdir(_LOCAL_SEED2_DIR):
+        return _LOCAL_SEED2_DIR
+    from huggingface_hub import snapshot_download
+    print(f"Local seed2 checkpoint not found -- downloading from {SEED2_HF_REPO} "
+          f"(~2.6GB, cached for future runs)...")
+    return snapshot_download(repo_id=SEED2_HF_REPO)
+
+
 # stabilityai/stable-diffusion-2-1-unclip returns a genuine 404 (page title
 # literally "404 - Hugging Face", not a gated-access page) as of 2026-07-22 --
 # confirmed via HF search API that it no longer appears under the stabilityai
@@ -90,9 +112,14 @@ def _load_seed2_tokenizer():
     class in seed2_tokenizer.py itself -- pipeline.py's wrapper doesn't have
     them. Copying the import verbatim silently returned the wrong class here
     (caught 2026-07-22: AttributeError, no from_pretrained) -- must return
-    _seed2_tokenizer.Seed2Tokenizer directly, not prototype/pipeline.py's."""
-    sys.path.insert(0, PROTOTYPE_DIR)
-    os.chdir(PROTOTYPE_DIR)
+    _seed2_tokenizer.Seed2Tokenizer directly, not prototype/pipeline.py's.
+
+    2026-07-23: no longer hardcodes PROTOTYPE_DIR -- uses whatever
+    _resolve_seed2_dir() finds (local cluster copy, or a fresh download from
+    the public ontocord/seed2 HF repo). Returns that dir alongside the class
+    so callers know where to point Seed2Tokenizer.from_pretrained()."""
+    seed2_dir = _resolve_seed2_dir()
+    os.chdir(seed2_dir)
 
     import transformers.modeling_utils as _modeling_utils
     import transformers.pytorch_utils as _pytorch_utils
@@ -100,7 +127,7 @@ def _load_seed2_tokenizer():
         if not hasattr(_modeling_utils, _name):
             setattr(_modeling_utils, _name, getattr(_pytorch_utils, _name))
 
-    sys.path.insert(0, os.path.join(PROTOTYPE_DIR, "seed2"))
+    sys.path.insert(0, seed2_dir)
     import seed2_tokenizer as _seed2_tokenizer
 
     def _safe_get_output_embeddings(self):
@@ -114,7 +141,7 @@ def _load_seed2_tokenizer():
         _cls.get_output_embeddings = _safe_get_output_embeddings
         _cls.set_output_embeddings = _safe_set_output_embeddings
 
-    return _seed2_tokenizer.Seed2Tokenizer
+    return _seed2_tokenizer.Seed2Tokenizer, seed2_dir
 
 
 def decode_seed2_tokens(token_ids: list, output_path: str, guidance_scale: float = 10.0,
@@ -145,7 +172,7 @@ def decode_seed2_tokens(token_ids: list, output_path: str, guidance_scale: float
     import torch
     from diffusers import StableUnCLIPImg2ImgPipeline
 
-    Seed2Tokenizer = _load_seed2_tokenizer()
+    Seed2Tokenizer, seed2_dir = _load_seed2_tokenizer()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
 
@@ -153,7 +180,7 @@ def decode_seed2_tokens(token_ids: list, output_path: str, guidance_scale: float
     pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(DIFFUSION_NAME, torch_dtype=dtype).to(device)
 
     print("Loading Seed2Tokenizer...")
-    tokenizer = Seed2Tokenizer.from_pretrained(os.path.join(PROTOTYPE_DIR, "seed2"), torch_dtype=dtype).to(device)
+    tokenizer = Seed2Tokenizer.from_pretrained(seed2_dir, torch_dtype=dtype).to(device)
 
     # get_codebook_entry() does self.embedding(indices) with no batch handling of
     # its own -- dim 0 of `indices` becomes the batch dim downstream (repeat(),

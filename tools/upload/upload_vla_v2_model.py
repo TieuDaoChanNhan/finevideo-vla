@@ -191,11 +191,16 @@ python tools/decode/decode_snac.py --tokens 130911,134940,... --format listen --
 # convention this model was never trained on.
 ```
 
-**Seed2 tokens -> image**: requires an additional ~2.6GB vendored checkpoint
-not yet packaged for public use (Q-Former + diffusion img2img reconstruction,
-`tools/decode/decode_seed2.py` in the same repo) -- contact the team if you
-need this one specifically; the other 3 decoders above cover video/pose/audio
-and are the ones most eval work needs.
+**Seed2 tokens -> image** (auto-downloads the ~2.6GB Q-Former checkpoint from
+the tokenizer's own public repo,
+[ontocord/seed2](https://huggingface.co/ontocord/seed2), plus a ~5GB
+diffusion img2img pipeline on first run -- this one is a generative
+*reconstruction*, not a deterministic decode, so expect run-to-run and
+prompt-to-prompt variation in the exact pixels even for the same tokens):
+```bash
+python tools/decode/decode_seed2.py --tokens 6750,680,2472,... --output out.png
+# exactly 32 raw ids per image (Seed2Tokenizer's fixed Q-former query length)
+```
 
 ## Training details
 
@@ -248,6 +253,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 DECODER_FILES = [
     "tools/decode/decode_cosmos.py",
     "tools/decode/decode_snac.py",
+    "tools/decode/decode_seed2.py",
     "tools/eval/decode_agent_tokens.py",
 ]
 VENDOR_DIR = "tools/decode/vendor"
