@@ -150,6 +150,36 @@ output = model.generate(
 print(tokenizer.decode(output[0]))
 ```
 
+### Encoding real media into tokens (so you can actually prompt the model)
+
+The `## Usage` prompt above uses pre-picked token ids as a demo. To send the
+model a *real* image/video/audio clip -- e.g. "here's a photo, continue the
+scene" -- encode it first with the 3 encoders below (**verified working
+2026-07-23**, each tested end-to-end: real media -> tokens -> decoded back,
+compared against the original). Bundled in this repo the same way as the
+decoders (`tools/encode/`), no separate `git clone` needed. Agent/pose has
+no encoder here on purpose -- it's what the model *generates*, not typically
+something you'd hand-encode as an input.
+
+```bash
+# Image -> <seed2_N> tokens (32 ids, auto-downloads the Q-Former checkpoint
+# from ontocord/seed2 if not cached locally)
+python tools/encode/encode_seed2.py --image photo.jpg
+
+# 8 video frames -> <cosmos_N> tokens (200 ids -- this model's OLD
+# window=8/square-crop convention, NOT the newer 2026-07-23 aspect-preserving
+# one; auto-downloads encoder.jit from nvidia/Cosmos-Tokenizer-DV8x16x16)
+python tools/encode/encode_cosmos.py --frames f0.png f1.png f2.png f3.png f4.png f5.png f6.png f7.png
+
+# Audio/video file -> <snac_N> tokens (listen-format, <snac> wrapper --
+# this model never saw the newer <listen>/<speak> convention or speak-format L2)
+python tools/encode/encode_snac.py --input clip.wav
+```
+
+Splice the printed token block into your prompt (e.g. after `### Context:
+...`) the same way the `## Usage` example does, then call `model.generate()`
+as shown there.
+
 ### Decoding generated tokens back to media
 
 The decoder scripts + their vendored dependencies are bundled directly in
@@ -258,6 +288,13 @@ DECODER_FILES = [
     "tools/decode/decode_snac.py",
     "tools/decode/decode_seed2.py",
     "tools/eval/decode_agent_tokens.py",
+    "tools/encode/encode_cosmos.py",
+    "tools/encode/encode_snac.py",
+    "tools/encode/encode_seed2.py",
+    # encode_snac.py imports encode_listen() from this file (relative
+    # sys.path insert into ../../pipeline_pose) -- bundle it too so that
+    # import resolves after a snapshot_download, not just in this git repo.
+    "pipeline_pose/snac_finevideo.py",
 ]
 VENDOR_DIR = "tools/decode/vendor"
 

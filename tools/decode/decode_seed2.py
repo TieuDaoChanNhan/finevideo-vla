@@ -117,9 +117,21 @@ def _load_seed2_tokenizer():
     2026-07-23: no longer hardcodes PROTOTYPE_DIR -- uses whatever
     _resolve_seed2_dir() finds (local cluster copy, or a fresh download from
     the public ontocord/seed2 HF repo). Returns that dir alongside the class
-    so callers know where to point Seed2Tokenizer.from_pretrained()."""
+    so callers know where to point Seed2Tokenizer.from_pretrained().
+
+    chdir target differs by branch: init_tokenizer() inside seed2_tokenizer.py
+    does BertTokenizer.from_pretrained("./seed2/bert-base-uncased") -- a
+    relative lookup that expects cwd to be seed2_dir's PARENT (matching how
+    the local cluster copy is laid out: PROTOTYPE_DIR/seed2/bert-base-uncased).
+    Chdir'ing into seed2_dir itself (one level too deep) breaks that lookup --
+    caught 2026-07-23 testing the new encode_seed2.py against the local
+    branch specifically (OSError: can't load './seed2/bert-base-uncased').
+    The downloaded ontocord/seed2 snapshot has no bert-base-uncased subfolder
+    at all (verified via its real file listing) yet works anyway -- empirically
+    that branch's relative lookup resolves some other way (not fully
+    root-caused), so only the local branch needs the parent-dir chdir fix."""
     seed2_dir = _resolve_seed2_dir()
-    os.chdir(seed2_dir)
+    os.chdir(PROTOTYPE_DIR if seed2_dir == _LOCAL_SEED2_DIR else seed2_dir)
 
     import transformers.modeling_utils as _modeling_utils
     import transformers.pytorch_utils as _pytorch_utils
