@@ -442,7 +442,7 @@ def apply_2d_mask(pose3d, json_2d_path):
 
     return masked_pose3d
 
-def process_file(input_path, output_path, processor, video_id, json_2d_dir, stride=1):
+def process_file(input_path, output_path, processor, video_id, json_2d_dir, stride=1, window_size=8):
     pose3d = np.load(input_path)
     if pose3d.ndim != 3 or pose3d.shape[1:] != (17, 3):
         return False
@@ -459,7 +459,7 @@ def process_file(input_path, output_path, processor, video_id, json_2d_dir, stri
     pose_final = processor.process(pose3d_masked)
 
     # STEP 4: Extract windows safely
-    windows, valid_indices = create_windows(pose_final, window_size=8, stride=stride)
+    windows, valid_indices = create_windows(pose_final, window_size=window_size, stride=stride)
 
     if len(windows) == 0:
         return False
@@ -499,7 +499,14 @@ if __name__ == "__main__":
         "--stride",
         type=int,
         default=1,
-        help="Window stride for create_windows. Use 8 to match Phase 5 and avoid storing redundant overlapping windows.",
+        help="Window stride for create_windows. Match --window-size to avoid storing redundant overlapping windows.",
+    )
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=8,
+        help="Frames per window (default 8 = 0.267s @ 30fps). 2026-07-22: use 24 (0.8s @ 30fps) "
+             "to match the wider cosmos chunk window -- see REPORT.md #38.",
     )
     args = parser.parse_args()
 
@@ -555,6 +562,7 @@ if __name__ == "__main__":
                 video_id,
                 json_2d_dir=json_2d_dir,
                 stride=args.stride,
+                window_size=args.window_size,
             )
 
             if success:

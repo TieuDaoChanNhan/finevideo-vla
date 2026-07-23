@@ -46,6 +46,7 @@ import argparse
 import glob
 import json
 import logging
+import math
 import multiprocessing
 import os
 import subprocess
@@ -58,21 +59,38 @@ import torch
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-VIDEO_DIR    = "/p/data1/mmlaion/shared/nguyen38/data/videos_staging"
-INPUT_GLOB   = ("/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/"
+VIDEO_DIR    = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/videos_staging"
+# Still scanned for activity time_range_sec + has_agent -- those don't depend
+# on window size. chunk_timing (per-window breakdown) is IGNORED (see
+# _scan_one_rank_file docstring) because this file is window=8-based (the
+# pre-pivot merge) and Phase 6 hasn't rerun at window=24 yet; n_chunks is
+# instead recomputed independently from CHUNK_SIZE below, same pattern as
+# data_prep/omnivideo_100k/snac_omnivideo.py.
+INPUT_GLOB   = ("/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/"
                 "final_dataset_adaptive/final_vla_adaptive_rank_*.jsonl")
-OUTPUT_DIR   = ("/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens")
-TASK_CACHE   = ("/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/"
-                "snac_task_list.json")
-HF_CACHE     = "/p/scratch/laionize/nguyen38/hf_cache"
+OUTPUT_DIR   = ("/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/snac_tokens_w24")
+TASK_CACHE   = ("/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/"
+                "snac_task_list_w24.json")
+HF_CACHE     = "/e/project1/reformo/nguyen38/jupiter_cache/huggingface"
 SNAC_MODEL   = "hubertsiuzdak/snac_24khz"
 SAMPLE_RATE  = 24000
+TARGET_FPS   = 30
+CHUNK_SIZE   = 24  # 2026-07-23 window=24 pivot -- must match step_a_tokenize_video.py's CHUNK_SIZE
 
 # ── SNAC listen-format offsets (matches MixtureVitae-Omni) ───────────────────
 
 OFFSET_L0  = 128266            # codes[0] base
 OFFSET_L1A = 128266 + 4096     # codes[1] even frames   → 132362
 OFFSET_L1B = 128266 + 4 * 4096 # codes[1] odd frames   → 144650
+
+# 2026-07-23: speak-format offsets for codes[2] (fine, 50Hz, 4 sub-positions
+# per base frame) -- corrected to match the REAL scheme in Huu/Chien's
+# production snac_gpu.py on Leonardo (pipeline_video/snac_gpu.py), the
+# Orpheus-standard SNAC packing layout. Sub-codes 0/1 sit between L1A and
+# L1B (in what was wrongly assumed to be an unused gap); sub-codes 2/3 sit
+# after L1B. See data_prep/laion_emotional_roleplay/tokenize_snac.py's
+# OFFSET_L2 docstring for the full correction history. Must match exactly.
+OFFSET_L2 = [136458, 140554, 148746, 152842]
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -191,22 +209,64 @@ def encode_listen(audio: np.ndarray, model, device: str) -> list[str]:
     return tokens
 
 
+def encode_speak(audio: np.ndarray, model, device: str) -> list[str]:
+    """
+    Encode a float32 audio array with SNAC_24kHz, return full speak-format
+    tokens (7 tokens per base frame, +133% vs encode_listen()) -- 2026-07-22
+    (REPORT.md #37), decided after a real audio A/B
+    (tools/snac_l2_experiment.py) showed audibly better reconstruction.
+
+    Speak format (2026-07-23, Leo-matched order -- L2 interleaved between
+    L1a and L1b, not appended after):
+        <snac_{codes[0][i]     + OFFSET_L0}>
+        <snac_{codes[1][2i]    + OFFSET_L1A}>
+        <snac_{codes[2][4i]    + OFFSET_L2[0]}>
+        <snac_{codes[2][4i+1]  + OFFSET_L2[1]}>
+        <snac_{codes[1][2i+1]  + OFFSET_L1B}>
+        <snac_{codes[2][4i+2]  + OFFSET_L2[2]}>
+        <snac_{codes[2][4i+3]  + OFFSET_L2[3]}>
+    """
+    tensor = torch.from_numpy(audio).unsqueeze(0).unsqueeze(0).to(device)
+    with torch.inference_mode():
+        codes = model.encode(tensor)
+
+    c0, c1, c2 = codes[0], codes[1], codes[2]
+    n0 = c0.shape[1]
+    tokens: list[str] = []
+    for i in range(n0):
+        i1a, i1b = 2 * i, 2 * i + 1
+        i2 = [4 * i + k for k in range(4)]
+        if i1b >= c1.shape[1] or i2[-1] >= c2.shape[1]:
+            break
+        tokens.append(f"<snac_{c0[0, i].item() + OFFSET_L0}>")
+        tokens.append(f"<snac_{c1[0, i1a].item() + OFFSET_L1A}>")
+        tokens.append(f"<snac_{c2[0, i2[0]].item() + OFFSET_L2[0]}>")
+        tokens.append(f"<snac_{c2[0, i2[1]].item() + OFFSET_L2[1]}>")
+        tokens.append(f"<snac_{c1[0, i1b].item() + OFFSET_L1B}>")
+        tokens.append(f"<snac_{c2[0, i2[2]].item() + OFFSET_L2[2]}>")
+        tokens.append(f"<snac_{c2[0, i2[3]].item() + OFFSET_L2[3]}>")
+    return tokens
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Task list building (pre-processing step)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _scan_one_rank_file(fpath: str) -> dict:
     """
-    Scan one final_dataset_adaptive rank file.
-    Returns {video_id: [activity_dict, ...]} for ALL activities that have chunk_timing.
+    Scan one final_dataset_adaptive rank file for activity time boundaries.
+    Returns {video_id: [activity_dict, ...]} for ALL activities with a valid
+    time_range_sec.
 
-    Each activity dict:
-      activity_id, start_sec, end_sec, has_agent,
-      chunks: [{"chunk_idx", "start_sec", "end_sec"}, ...]
+    Each activity dict: activity_id, start_sec, end_sec, has_agent.
 
-    We store chunk_timing so snac_finevideo can encode the full activity audio once
-    then split the flat SNAC token list evenly across chunks — preserving audio
-    context while aligning to the same 8-frame grid as cosmos/avclm/agent.
+    2026-07-23: no longer reads chunk_timing (this file is the pre-window=24-
+    pivot merge; its chunk_timing reflects the OLD 8-frame grid). n_chunks is
+    instead recomputed in process_video() from (end_sec-start_sec) and the
+    current CHUNK_SIZE=24 -- same independent-recompute pattern
+    data_prep/omnivideo_100k/snac_omnivideo.py uses, so this script no longer
+    needs to wait on Phase 6 merge to re-run at window=24 before it can align
+    correctly.
 
     We tokenize ALL activities (not just agent) because:
     - Non-agent activities have seed2+cosmos → seed2+cosmos+snac trains modality transitions
@@ -231,23 +291,12 @@ def _scan_one_rank_file(fpath: str) -> dict:
                         tr = act.get("time_range_sec")
                         if not tr or len(tr) < 2:
                             continue
-                        chunk_timing = act.get("chunk_timing", [])
-                        if not chunk_timing:
-                            continue  # no chunk info → can't align to 8-frame grid
                         has_agent = "<agent>" in act.get("video_tokens", "")
                         tasks.setdefault(vid, []).append({
                             "activity_id": act.get("activity_id", ""),
                             "start_sec":   float(tr[0]),
                             "end_sec":     float(tr[1]),
                             "has_agent":   has_agent,
-                            "chunks": [
-                                {
-                                    "chunk_idx": ct["chunk_idx"],
-                                    "start_sec": ct["start_sec"],
-                                    "end_sec":   ct["end_sec"],
-                                }
-                                for ct in chunk_timing
-                            ],
                         })
     except Exception as e:
         log.warning(f"Error scanning {fpath}: {e}")
@@ -340,6 +389,7 @@ def process_video(
     video_dir: str,
     output_dir: str,
     skip_existing: bool,
+    encode_fn=encode_listen,
 ) -> dict:
     """
     Tokenize all activities for one video.
@@ -351,9 +401,10 @@ def process_video(
          then split the flat token list across chunks (preserving audio context).
       4. Write all results to {output_dir}/{video_id}_snac.jsonl.
 
-    Output per activity: snac_by_chunk {chunk_idx → [~9-10 tokens]}
-    Phase7 uses this directly to inject SNAC tokens per 8-frame chunk, aligned
-    with the cosmos/avclm/agent tokens that fire at the same chunk boundaries.
+    Output per activity: snac_by_chunk {chunk_idx → [tokens]}
+    Phase6 merge uses this directly to inject SNAC tokens per 24-frame chunk,
+    aligned with the cosmos/avclm/agent tokens that fire at the same chunk
+    boundaries (n_chunks recomputed from CHUNK_SIZE, not read from a file).
 
     Returns stats: {ok, skipped_vid, failed_audio, failed_snac, tokens}
     """
@@ -383,7 +434,7 @@ def process_video(
             stats["failed_audio"] += 1
             continue
         try:
-            flat_tokens = encode_listen(segment, model, device)
+            flat_tokens = encode_fn(segment, model, device)
         except Exception as e:
             log.warning(f"SNAC failed {video_id}/{act['activity_id']}: {e}")
             stats["failed_snac"] += 1
@@ -393,19 +444,13 @@ def process_video(
             continue
 
         # Split flat token list into per-chunk dicts, aligned to the same
-        # 8-frame grid as cosmos/avclm/agent.  n_chunks from chunk_timing.
-        chunks_meta = act.get("chunks", [])
-        n_chunks    = len(chunks_meta)
-        if n_chunks > 0:
-            by_chunk = split_snac_by_chunks(flat_tokens, n_chunks)
-            # key: str(chunk_idx) so JSON is valid
-            snac_by_chunk = {
-                str(cm["chunk_idx"]): by_chunk[k]
-                for k, cm in enumerate(chunks_meta)
-            }
-        else:
-            # fallback: no chunk info — store flat (phase7 will skip)
-            snac_by_chunk = {"flat": flat_tokens}
+        # 24-frame grid as cosmos/avclm/agent. n_chunks recomputed
+        # independently from CHUNK_SIZE (not from a merged file's
+        # chunk_timing -- see _scan_one_rank_file docstring).
+        total_frames = max(1, round((act["end_sec"] - act["start_sec"]) * TARGET_FPS))
+        n_chunks = math.ceil(total_frames / CHUNK_SIZE)
+        by_chunk = split_snac_by_chunks(flat_tokens, n_chunks)
+        snac_by_chunk = {str(k): v for k, v in by_chunk.items()}
 
         rows.append({
             "video_id":      video_id,
@@ -443,6 +488,10 @@ def parse_args():
                    help="CPU workers for --build-tasks scan (default 8)")
     p.add_argument("--no-skip",       action="store_true",
                    help="Re-process videos even if output file exists")
+    p.add_argument("--format", choices=["listen", "speak"], default="listen",
+                   help="listen = L0+L1 only (current production, 3 tok/base-frame); "
+                        "speak = full L0+L1+L2 (2026-07-22, 7 tok/base-frame, +133%% tokens). "
+                        "speak requires L2 tokens added to the tokenizer vocab first.")
     return p.parse_args()
 
 
@@ -497,10 +546,13 @@ def main():
     cumul  = {"ok": 0, "skipped_vid": 0, "failed_audio": 0, "failed_snac": 0, "tokens": 0}
     t_start = time.time()
 
+    encode_fn = encode_speak if args.format == "speak" else encode_listen
+
     for idx, vid in enumerate(my_vids, 1):
         s = process_video(
             vid, all_tasks[vid], model, device,
             args.video_dir, args.output_dir, skip_existing,
+            encode_fn=encode_fn,
         )
         for k in cumul:
             cumul[k] += s[k]

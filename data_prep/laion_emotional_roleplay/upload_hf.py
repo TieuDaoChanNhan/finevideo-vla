@@ -3,13 +3,20 @@
 Upload the SNAC-tokenized laion/emotional-roleplay-finetuning-dataset to HF.
 
 Source: 14 shards at
-  /p/data1/mmlaion/shared/vla/laion_emotional_roleplay/flattened/roleplay_snac_flat_{00000..00013}.jsonl
-  (67,459 rows, 23,390,760 SNAC tokens -- verified 2026-07-20: 0 duplicate ids,
-  0 format errors, 0 out-of-range tokens, see PROGRESS_VI.md for the check.)
+  /e/data1/datasets/playground/mmlaion/shared/nguyen38/laion_emotional_roleplay_flattened_speak/
+  roleplay_snac_speak_flat_{00000..00013}.jsonl
+  (67,459/67,459 rows, 0 errors -- see PROGRESS_VI.md 2026-07-23 entry.)
 
 Each row: {"id": <source row id>, "text": <flattened training record>}
   USER: <text> [Voice: <voice_description>] ASSISTANT:
-  <snac> <snac_N> <snac_N> ... </snac>
+  <speak> <snac_N> <snac_N> ... </snac_N> </speak>
+
+speak-format = 7 tokens per 12.5Hz base frame (all 3 SNAC hierarchical
+codebook levels, Leo/Orpheus offset scheme), replacing the older
+listen-format upload (3 tok/frame, L2 zero-filled) from 2026-07-20.
+`<speak>` marks this audio as the model's own generated turn (role tag, not
+a format/voice-clone distinction -- see PROGRESS_VI.md 2026-07-23 for the
+listen vs speak design decision).
 
 Usage:
     export HF_TOKEN='hf_...'
@@ -25,9 +32,9 @@ import shutil
 
 from huggingface_hub import HfApi, login
 
-SOURCE_DIR = "/p/data1/mmlaion/shared/vla/laion_emotional_roleplay/flattened"
-UPLOAD_DIR = "/p/data1/mmlaion/shared/vla/laion_emotional_roleplay/hf_upload"
-SHARD_PREFIX = "roleplay_snac_flat"
+SOURCE_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/laion_emotional_roleplay_flattened_speak"
+UPLOAD_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/laion_emotional_roleplay_hf_upload_speak"
+SHARD_PREFIX = "roleplay_snac_speak_flat"
 TOTAL_SHARDS = 14
 TEST_RATIO = 0.07  # 1/14 shards held out
 SEED = 42
@@ -44,9 +51,19 @@ prepared for the PAB-Spline / omni-modal VLA project (audio<->text modality
 pair, per Huu's instruction: "concatenate the text and interleave with snac
 and/or moss tokens").
 
+**2026-07-23 update: re-tokenized in speak-format**, replacing the original
+listen-format upload. speak-format encodes all 3 SNAC hierarchical codebook
+levels (7 tokens/12.5Hz base frame, ~87.5 tok/s) using the same token-offset
+scheme (`OFFSET_L2 = [136458, 140554, 148746, 152842]`, interleaved order
+`L0, L1a, L2_0, L2_1, L1b, L2_2, L2_3`) as the production Leo/Orpheus SNAC
+pipeline, vs. the old listen-format's 3 tok/frame with the finest codebook
+level dropped entirely. Every row is now wrapped in `<speak>...</speak>`
+(role tag: this audio is always the model's own generated turn, independent
+of whether the source voice has been voice-cloned).
+
 - **67,459 rows** (67,491 source rows minus 32 with out-of-range `adherence_score`)
-- **23,390,760 SNAC tokens** total, `hubertsiuzdak/snac_24khz`, listen-format
-  encoding (3 tokens per 12.5Hz base frame -> 37.5 tok/s)
+- **54,578,440 SNAC tokens** total, `hubertsiuzdak/snac_24khz`, speak-format
+  encoding (7 tokens per 12.5Hz base frame -> 87.5 tok/s)
 - Source audio: synthetic TTS (MOSS-TTS-Local v1.5 fine-tune), mono 24kHz MP3,
   German-majority multilingual, ~184 hours total
 
@@ -56,7 +73,7 @@ Each row is `{{"id": ..., "text": ...}}` with `text`:
 
 ```
 USER: <text> [Voice: <voice_description>] ASSISTANT:
-<snac> <snac_N> <snac_N> ... </snac>
+<speak> <snac_N> <snac_N> ... </speak>
 ```
 
 `voice_description` is the judge-verified (audio-listened) description of the

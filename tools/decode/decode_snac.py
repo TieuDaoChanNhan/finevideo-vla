@@ -37,16 +37,24 @@ import sys
 OFFSET_L0 = 128266
 OFFSET_L1A = 128266 + 4096
 OFFSET_L1B = 128266 + 4 * 4096
+# Speak-format (full 3-level) offsets, 2026-07-23 -- matches the Leo/Orpheus
+# scheme in pipeline_video/snac_gpu.py and the corrected
+# data_prep/laion_emotional_roleplay/tokenize_snac.py::encode_speak(). Group
+# order per base frame: L0, L1a, L2_0, L2_1, L1b, L2_2, L2_3 (7 tokens).
+OFFSET_L2 = [136458, 140554, 148746, 152842]
 SAMPLE_RATE = 24000
 SNAC_MODEL = "hubertsiuzdak/snac_24khz"
 
 _SNAC_ATOMIC_RE = re.compile(r"<snac_(\d+)>")
-_SNAC_BLOCK_RE = re.compile(r"<snac>(.*?)</snac>", re.DOTALL)
+# 2026-07-23: production wrapper is <listen>/<speak>, not <snac> -- <snac>
+# kept for backward compat with any older data/samples still using it.
+_SNAC_BLOCK_RE = re.compile(r"<(?:snac|listen|speak)>(.*?)</(?:snac|listen|speak)>", re.DOTALL)
 
 
 def extract_snac_tokens(text: str) -> list:
-    """Pull every <snac_N> id inside every <snac>...</snac> block, in order.
-    Falls back to scanning the whole text if no <snac>...</snac> wrapper is present."""
+    """Pull every <snac_N> id inside every <listen>...</listen> or
+    <speak>...</speak> (or legacy <snac>...</snac>) block, in order. Falls
+    back to scanning the whole text if no such wrapper is present."""
     blocks = _SNAC_BLOCK_RE.findall(text)
     source = " ".join(blocks) if blocks else text
     return [int(x) for x in _SNAC_ATOMIC_RE.findall(source)]
@@ -120,12 +128,66 @@ def decode_snac_tokens(token_ids: list, output_path: str) -> None:
     sf.write(output_path, waveform, SAMPLE_RATE)
 
 
+def decode_speak_tokens(token_ids: list, output_path: str) -> None:
+    """token_ids: raw <snac_N> ids (with offsets), length must be a multiple of 7,
+    group order per base frame: L0, L1a, L2_0, L2_1, L1b, L2_2, L2_3 -- matches
+    encode_speak() in data_prep/laion_emotional_roleplay/tokenize_snac.py and
+    pipeline_pose/snac_finevideo.py. Unlike decode_snac_tokens() (listen-only,
+    zero-fills level 2), this reconstructs the REAL level-2 codes."""
+    if len(token_ids) % 7 != 0:
+        raise ValueError(f"Expected a multiple of 7 tokens (speak-format groups), got {len(token_ids)}")
+    if not token_ids:
+        raise ValueError("No snac tokens to decode")
+
+    import torch
+    import soundfile as sf
+    from snac import SNAC
+
+    n0 = len(token_ids) // 7
+    c0 = torch.zeros(1, n0, dtype=torch.long)
+    c1 = torch.zeros(1, 2 * n0, dtype=torch.long)
+    c2 = torch.zeros(1, 4 * n0, dtype=torch.long)
+
+    offsets = [OFFSET_L0, OFFSET_L1A, OFFSET_L2[0], OFFSET_L2[1], OFFSET_L1B, OFFSET_L2[2], OFFSET_L2[3]]
+    names = ["L0", "L1a", "L2_0", "L2_1", "L1b", "L2_2", "L2_3"]
+    for i in range(n0):
+        raws = []
+        for pos in range(7):
+            tok = token_ids[7 * i + pos]
+            raw = tok - offsets[pos]
+            if not (0 <= raw < 4096):
+                raise ValueError(
+                    f"Group {i} position {pos} ({names[pos]}): token <snac_{tok}> decodes to raw "
+                    f"codebook index {raw}, outside valid [0, 4096). Likely a band/position "
+                    f"mismatch (offsets: {dict(zip(names, offsets))})."
+                )
+            raws.append(raw)
+        c0[0, i] = raws[0]
+        c1[0, 2 * i] = raws[1]
+        c2[0, 4 * i] = raws[2]
+        c2[0, 4 * i + 1] = raws[3]
+        c1[0, 2 * i + 1] = raws[4]
+        c2[0, 4 * i + 2] = raws[5]
+        c2[0, 4 * i + 3] = raws[6]
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = SNAC.from_pretrained(SNAC_MODEL).eval().to(device)
+
+    with torch.inference_mode():
+        audio = model.decode([c0.to(device), c1.to(device), c2.to(device)])
+
+    waveform = audio.squeeze().float().cpu().numpy()
+    sf.write(output_path, waveform, SAMPLE_RATE)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tokens", help="Comma-separated list of raw <snac_N> ids (must be multiple of 3)")
+    ap.add_argument("--tokens", help="Comma-separated list of raw <snac_N> ids")
     ap.add_argument("--input-jsonl", help="Flattened JSONL file to pull tokens from")
     ap.add_argument("--record-id", help="video_id/id field to select within --input-jsonl")
     ap.add_argument("--text-file", help="Plain text file containing <snac_N> tokens anywhere in it")
+    ap.add_argument("--format", choices=["listen", "speak"], default="listen",
+                     help="listen = 3 tok/frame (L0+L1, zero-filled L2); speak = 7 tok/frame (real L2)")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
@@ -138,9 +200,14 @@ def main():
     else:
         ap.error("Provide --tokens, --text-file, or (--input-jsonl and --record-id)")
 
-    print(f"Decoding {len(token_ids)} snac tokens ({len(token_ids) // 3} base frames, "
-          f"~{len(token_ids) / 3 / 12.5:.2f}s @ 12.5Hz base rate)...")
-    decode_snac_tokens(token_ids, args.output)
+    group_size = 7 if args.format == "speak" else 3
+    print(f"Decoding {len(token_ids)} snac tokens ({args.format} format, "
+          f"{len(token_ids) // group_size} base frames, "
+          f"~{len(token_ids) / group_size / 12.5:.2f}s @ 12.5Hz base rate)...")
+    if args.format == "speak":
+        decode_speak_tokens(token_ids, args.output)
+    else:
+        decode_snac_tokens(token_ids, args.output)
     print(f"Saved: {args.output}")
 
 

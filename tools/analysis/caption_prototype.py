@@ -105,21 +105,39 @@ def extract_frame(video_path: str, timestamp_sec: float):
     return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
 
-def load_model():
+def load_model(device: str = "cpu"):
+    """2026-07-23: added optional `device` param (default "cpu", unchanged
+    behavior for existing callers like pipeline_pose/caption_finevideo.py,
+    which runs on JUWELS CPU-only nodes by design -- see that decision's
+    note). data_prep/harmony4d/caption_harmony4d.py passes device="cuda" to
+    use JUPITER's GH200 GPUs for its much smaller (208-frame) job."""
     import torch
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 
-    print(f"Loading {MODEL_ID} (CPU, this will take a while)...")
+    # 2026-07-23: float16 crashed every single GPU caption attempt with a
+    # generic "device-side assert triggered" (from item 1, not data-dependent
+    # -- see data_prep/harmony4d/caption_harmony4d.py's history note).
+    # bfloat16 is the standard/stable choice for Qwen2.5-VL and matches what
+    # GH200's Grace Hopper architecture is tuned for.
+    dtype = torch.bfloat16 if device.startswith("cuda") else torch.float32
+    print(f"Loading {MODEL_ID} ({device}, this will take a while)...")
     t0 = time.time()
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        MODEL_ID, torch_dtype=torch.float32, device_map="cpu"
+        MODEL_ID, torch_dtype=dtype, device_map=device
     )
     processor = AutoProcessor.from_pretrained(MODEL_ID)
     print(f"Model loaded in {time.time() - t0:.1f}s")
     return model, processor
 
 
-def caption_frame(model, processor, frame_rgb):
+def caption_frame(model, processor, frame_rgb, prompt="Describe what the person is doing in one short sentence."):
+    """2026-07-23: added optional `prompt` override (default unchanged, same
+    text pipeline_pose/caption_finevideo.py has always used) --
+    data_prep/harmony4d/caption_harmony4d.py passes a two-person-interaction
+    prompt instead, since the default's "the person"/singular framing plus
+    no guidance to ignore the visible capture rig produced weak captions on
+    Harmony4D's multi-camera-studio frames (e.g. "standing in front of a row
+    of cameras on tripods" instead of describing the actual interaction)."""
     from PIL import Image
 
     image = Image.fromarray(frame_rgb)
@@ -128,12 +146,12 @@ def caption_frame(model, processor, frame_rgb):
             "role": "user",
             "content": [
                 {"type": "image", "image": image},
-                {"type": "text", "text": "Describe what the person is doing in one short sentence."},
+                {"type": "text", "text": prompt},
             ],
         }
     ]
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = processor(text=[text], images=[image], return_tensors="pt")
+    inputs = processor(text=[text], images=[image], return_tensors="pt").to(model.device)
 
     t0 = time.time()
     generated = model.generate(**inputs, max_new_tokens=48)

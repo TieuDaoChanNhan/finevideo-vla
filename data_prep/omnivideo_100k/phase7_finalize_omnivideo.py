@@ -20,9 +20,9 @@ import json
 import os
 from collections import defaultdict
 
-DEFAULT_MERGED_DIR = "/p/data1/mmlaion/shared/vla/omnivideo_100k_video_agent_merged"
-DEFAULT_QA_FILE = "/p/data1/mmlaion/shared/vla/omnivideo_100k_flat/omnivideo_100k_qa_flat.jsonl"
-DEFAULT_OUTPUT_DIR = "/p/data1/mmlaion/shared/vla/omnivideo_100k_final"
+DEFAULT_MERGED_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k/video_agent_merged_w24"
+DEFAULT_QA_FILE = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k/qa_flat/omnivideo_100k_qa_flat.jsonl"
+DEFAULT_OUTPUT_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k/final_w24"
 
 
 def load_qa_by_video(qa_file):

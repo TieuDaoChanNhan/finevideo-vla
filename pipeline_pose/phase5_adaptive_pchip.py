@@ -1,23 +1,35 @@
 """
 Phase 5 — Adaptive PCHIP per-joint tokenizer.
 
-For each 8-frame window from Phase 4, each of the 17 joints gets an
-independent PCHIP compression with adaptive control-point count based
-on per-joint curvature:
+For each window from Phase 4 (WINDOW_FRAMES frames -- 8 originally, 24 as of
+2026-07-22, see REPORT.md #38), each of the 17 joints gets an independent
+PCHIP compression with adaptive control-point count based on per-joint
+curvature over the WHOLE window (all WINDOW_FRAMES frames considered, not a
+fixed sub-grid):
 
-  Tier 2 (2 CPs: start + end)        — max curvature < tau_low
-  Tier 4 (4 CPs: start + end + 2)    — tau_low <= curvature < tau_high
-  Tier 8 (8 CPs: all frames)         — curvature >= tau_high
+  Tier 2       (2 CPs: start + end)                  — max curvature < tau_low
+  Tier 4       (4 CPs: start + end + top-2 interior)  — tau_low <= curvature < tau_high
+  Tier MAX_CPS (MAX_CPS CPs: start+end+top-(MAX_CPS-2) interior, chosen by
+                curvature out of ALL WINDOW_FRAMES candidates) — curvature >= tau_high
 
-Token stream per window:
+MAX_CPS is fixed at 8 regardless of WINDOW_FRAMES -- widening the window
+gives the top tier more candidate positions to pick its best 8 from, not more
+tokens/joint. See MAX_CPS's own docstring below for why this matters.
+
+Token stream per window (WINDOW_FRAMES=24 example; t values now range over
+however many of the window's real frame indices got chosen as CPs, e.g.
+t_0 and t_23 for tier 2, or t_0/t_5/t_14/t_23 for tier 4 if frames 5 and 14
+had the highest curvature):
     <fps_30>
     <pelvis> <pelvis_t_0> <pelvis_x_N> <pelvis_y_N> <pelvis_z_N>
-             <pelvis_t_7> <pelvis_x_N> <pelvis_y_N> <pelvis_z_N> </pelvis>
+             <pelvis_t_23> <pelvis_x_N> <pelvis_y_N> <pelvis_z_N> </pelvis>
     <r_hip>  <r_hip_t_0> <r_hip_x_N> ...  </r_hip>
     ...
 
 Quantization: [-2.0 m, +2.0 m] -> [0, 255]  (precision ~15.7 mm)
-Time tokens:  frame index 0-7 within the 8-frame window
+Time tokens:  real frame index within the window, 0 to WINDOW_FRAMES-1 --
+              requires <{joint}_t_N> tokens up to WINDOW_FRAMES-1 in the
+              tokenizer vocab (only 0-7 existed before 2026-07-22).
 
 Input:   outputs/yolo_cleaned_30fps/{video_id}_cleaned.jsonl
 Output:  outputs/agent_tokens_adaptive/{video_id}_tokens.jsonl
@@ -38,6 +50,19 @@ WINDOW_FRAMES = 8
 N_JOINTS = 17
 COORD_RANGE = 2.0
 STRIDE = 8
+# 2026-07-22 (REPORT.md #38): cap on control points per joint, independent of
+# WINDOW_FRAMES. Before this change WINDOW_FRAMES==MAX_CPS==8 always (the top
+# tier was literally "use every frame"), so widening the window to 24 frames
+# would have silently tripled worst-case tokens/joint (24 CPs instead of 8)
+# with no code change needed to trigger it. Keeping MAX_CPS fixed at 8 means
+# the top tier now means "pick the best 8 of WINDOW_FRAMES candidates by
+# curvature" instead of "use all of them" -- same worst-case token cost as
+# before, but the 8 chosen points can be anywhere in the (now wider) window
+# instead of forced onto a fixed 8-slot grid. This is the whole point of
+# "Option 2" (dense pose, no subsampling before curve-fitting) agreed with
+# the user: Phase 3 keeps every real frame, Phase 5 decides freely which
+# frames matter most.
+MAX_CPS = 8
 
 TAU_LOW = 0.005
 TAU_HIGH = 0.05
@@ -72,31 +97,40 @@ def joint_curvature(trajectory: np.ndarray) -> float:
 
 
 def select_cp_indices(trajectory: np.ndarray, tau_low: float, tau_high: float) -> np.ndarray:
-    """Choose which frame indices become control points for one joint."""
-    curv = joint_curvature(trajectory)
+    """Choose which frame indices become control points for one joint.
 
-    if curv >= tau_high:
-        return np.arange(WINDOW_FRAMES)
+    Tier sizes are fixed at 2 / 4 / MAX_CPS regardless of how many frames are
+    in the window (see MAX_CPS's docstring) -- the top tier picks the
+    MAX_CPS-2 highest-curvature *interior* frames out of every candidate in
+    the window, not a fixed grid position. With WINDOW_FRAMES==MAX_CPS==8
+    (the original config) this is exactly equivalent to the old
+    `np.arange(WINDOW_FRAMES)` behavior, since "top 6 of 6 interior
+    candidates" is all of them.
+    """
+    curv = joint_curvature(trajectory)
+    n_frames = trajectory.shape[0]
 
     if curv < tau_low:
-        return np.array([0, WINDOW_FRAMES - 1])
+        return np.array([0, n_frames - 1])
 
-    # Tier 4: start + end + 2 highest-curvature interior frames
+    n_interior = 2 if curv < tau_high else (MAX_CPS - 2)
+    n_interior = min(n_interior, max(n_frames - 2, 0))
+
     vel = np.diff(trajectory, axis=0)
     acc = np.diff(vel, axis=0)
-    acc_norms = np.linalg.norm(acc, axis=1)  # (6,)
+    acc_norms = np.linalg.norm(acc, axis=1)  # (n_frames-2,)
 
     # acc[i] corresponds to frame i+1 (second derivative offset)
-    interior_curv = np.zeros(WINDOW_FRAMES)
+    interior_curv = np.zeros(n_frames)
     for i in range(len(acc_norms)):
         interior_curv[i + 1] = acc_norms[i]
 
-    # Exclude endpoints (already included), pick top 2 interior frames
+    # Exclude endpoints (already included), pick top-n_interior interior frames
     interior_curv[0] = -1.0
     interior_curv[-1] = -1.0
-    top2 = np.argsort(interior_curv)[-2:]
+    top_n = np.argsort(interior_curv)[-n_interior:] if n_interior > 0 else np.array([], dtype=int)
 
-    indices = np.unique(np.sort(np.concatenate(([0], top2, [WINDOW_FRAMES - 1]))))
+    indices = np.unique(np.sort(np.concatenate(([0], top_n, [n_frames - 1]))))
     return indices.astype(int)
 
 
@@ -205,11 +239,18 @@ def parse_args() -> argparse.Namespace:
                     help=f"Curvature threshold for 8-CP tier. Default: {TAU_HIGH}")
     p.add_argument("--file-list", default=None,
                     help="Optional text file listing specific *_cleaned.jsonl paths.")
+    p.add_argument("--window-frames", type=int, default=WINDOW_FRAMES,
+                    help=f"Must match Phase 3/4's --window-size. Default: {WINDOW_FRAMES}. "
+                         f"2026-07-22: use 24 to match the wider cosmos chunk window -- "
+                         f"see REPORT.md #38. MAX_CPS (top-tier control-point count) is "
+                         f"NOT tied to this and stays 8 either way.")
     return p.parse_args()
 
 
 def main() -> None:
+    global WINDOW_FRAMES
     args = parse_args()
+    WINDOW_FRAMES = args.window_frames
     os.makedirs(args.output_dir, exist_ok=True)
 
     if args.file_list:

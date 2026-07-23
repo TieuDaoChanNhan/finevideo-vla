@@ -27,6 +27,12 @@ time.sleep(LOCAL_RANK * 3)
 
 # Dynamically assign the GPU based on local rank (e.g., cuda:0, cuda:1, cuda:2)
 DEVICE = f"cuda:{LOCAL_RANK}" if torch.cuda.is_available() else "cpu"
+
+# 2026-07-23: see prototype/pipeline.py's identical change -- per-rank scratch
+# moved off exa_project1 (over its project-wide inode soft limit, causing
+# real silent data loss mid-run) onto exa_data1 (massive inode headroom).
+SCRATCH_BASE = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/prototype_scratch"
+os.makedirs(SCRATCH_BASE, exist_ok=True)
 if torch.cuda.is_available():
     torch.cuda.set_device(LOCAL_RANK)
 DTYPE = torch.float16 if "cuda" in DEVICE else torch.float32
@@ -191,7 +197,7 @@ class VLADatasetBuilder:
         # 3. COLLISION PREVENTION: Assign unique working directories per rank
         self.video_folder = f"{base_video_folder}_rank_{RANK}"
         self.jsonl_folder = f"{base_jsonl_folder}_rank_{RANK}"
-        self.temp_frames_dir = f"temp_frames_rank_{RANK}"
+        self.temp_frames_dir = os.path.join(SCRATCH_BASE, f"temp_frames_rank_{RANK}")
         
         self.seed2 = Seed2Tokenizer()
         self.cosmos = CosmosVideoTokenizer()
@@ -364,20 +370,36 @@ class VLADatasetBuilder:
         seed2_token_count = 0
         cosmos_token_count = 0
         avclm_token_count = 0
-        
-        CHUNK_SIZE = 8
+
+        # 2026-07-22 (REPORT.md #38, "Option 2"): widened from 8 real frames
+        # (0.267s @ 30fps) to 24 (0.8s) -- 8 frames was too short for the
+        # model to see visible motion within a chunk (Huu's observation).
+        # WINDOW_FRAMES is the real span every chunk covers (must match Phase
+        # 3/4/5's --window-size/--window-frames for cosmos_N/agent_N to stay
+        # aligned to the same real timespan). COSMOS_STRIDE samples every
+        # Nth real frame from that span down to exactly 8 images for the
+        # Cosmos encoder (which only ever wants 8 frames/chunk regardless of
+        # resolution -- see REPORT.md #35's resolution ladder), so token
+        # cost per chunk is unaffected by this change: WINDOW_FRAMES /
+        # COSMOS_STRIDE must equal 8.
+        WINDOW_FRAMES = 24
+        COSMOS_STRIDE = 3
+        assert WINDOW_FRAMES % COSMOS_STRIDE == 0 and WINDOW_FRAMES // COSMOS_STRIDE == 8, \
+            "WINDOW_FRAMES/COSMOS_STRIDE must give exactly 8 samples for the Cosmos encoder"
         current_buffer = []
 
         # Iterate through every single frame to ensure perfect temporal alignment
         for idx, frame in enumerate(frames):
             # ------------------------------------------------------
             # 1. SEED2 (1 FPS): Triggers exactly at frame 0, 30, 60, etc.
+            #    Unaffected by the window-size change -- runs on its own
+            #    independent 1fps cadence, same as before.
             # ------------------------------------------------------
             if idx % self.target_fps == 0:
-                temp_path = f"temp_seed2_rank_{RANK}.jpg"
+                temp_path = os.path.join(SCRATCH_BASE, f"temp_seed2_rank_{RANK}.jpg")
                 frame.resize((self.seed2.target_size, self.seed2.target_size)).save(temp_path)
                 seed2_ids = self.seed2.encode_image(temp_path)
-                
+
                 if seed2_ids:
                     all_formatted_tokens.append(f"<seed2> {' '.join(map(str, seed2_ids))} </seed2>")
                     seed2_token_count += len(seed2_ids)
@@ -388,21 +410,26 @@ class VLADatasetBuilder:
             # ------------------------------------------------------
             current_buffer.append(frame)
 
-            # Once we hit the CHUNK_SIZE (8 frames), we process Cosmos and AVC-LM
-            if len(current_buffer) == CHUNK_SIZE:
-                # Calculate the start time for this specific 8-frame chunk
-                # (idx - 7) gives the starting frame index of this buffer
-                chunk_start_idx = idx - (CHUNK_SIZE - 1)
+            # Once we hit WINDOW_FRAMES (24 real frames = 0.8s), process
+            # Cosmos (stride-sampled down to 8) and AVC-LM (full window).
+            if len(current_buffer) == WINDOW_FRAMES:
+                # Calculate the start time for this specific window
+                chunk_start_idx = idx - (WINDOW_FRAMES - 1)
                 chunk_start_time = start_sec + (chunk_start_idx / self.target_fps)
-                chunk_duration = CHUNK_SIZE / self.target_fps
+                chunk_duration = WINDOW_FRAMES / self.target_fps
 
-                # Encode Cosmos (Spatiotemporal)
-                cosmos_ids = self.cosmos.encode_video_chunk(current_buffer)
+                # Encode Cosmos (Spatiotemporal) -- every COSMOS_STRIDE-th
+                # real frame in the window, exactly 8 samples
+                cosmos_frames = current_buffer[::COSMOS_STRIDE]
+                cosmos_ids = self.cosmos.encode_video_chunk(cosmos_frames)
                 if cosmos_ids:
                     all_formatted_tokens.append(f"<cosmos> {' '.join(map(str, cosmos_ids))} </cosmos>")
                     cosmos_token_count += len(cosmos_ids)
 
-                # Encode AVC-LM (Physical bitstream for this 0.26s segment)
+                # Encode AVC-LM (Physical bitstream for this 0.8s segment --
+                # widened to match, even though avc_lm output is stripped
+                # before training, so chunk_timing stays self-consistent
+                # across modalities within one activity)
                 avc_ids = self.avc_lm.encode_mp4_segment(video_path, chunk_start_time, chunk_duration)
                 if avc_ids:
                     all_formatted_tokens.append(f"<avc_lm> {' '.join(map(str, avc_ids))} </avc_lm>")
@@ -420,12 +447,13 @@ class VLADatasetBuilder:
             chunk_start_time = start_sec + (chunk_start_idx / self.target_fps)
             chunk_duration = remaining_count / self.target_fps
 
-            # Pad the buffer to 8 frames for Cosmos architecture compatibility
+            # Pad the buffer to WINDOW_FRAMES for Cosmos architecture compatibility
             last_frame = current_buffer[-1]
-            padding_needed = CHUNK_SIZE - remaining_count
+            padding_needed = WINDOW_FRAMES - remaining_count
             current_buffer.extend([last_frame] * padding_needed)
 
-            cosmos_ids = self.cosmos.encode_video_chunk(current_buffer)
+            cosmos_frames = current_buffer[::COSMOS_STRIDE]
+            cosmos_ids = self.cosmos.encode_video_chunk(cosmos_frames)
             if cosmos_ids:
                 all_formatted_tokens.append(f"<cosmos> {' '.join(map(str, cosmos_ids))} </cosmos>")
                 cosmos_token_count += len(cosmos_ids)
@@ -596,7 +624,21 @@ class VLADatasetBuilder:
 
 if __name__ == "__main__":
     # Base folder names, will be dynamically appended with _rank_X in __init__
-    builder = VLADatasetBuilder(base_video_folder="./videos", base_jsonl_folder="./metadata", overlap_threshold=0.2)
+    builder = VLADatasetBuilder(
+        base_video_folder=os.path.join(SCRATCH_BASE, "videos"),
+        base_jsonl_folder=os.path.join(SCRATCH_BASE, "metadata"),
+        overlap_threshold=0.2,
+    )
     
     # We pass the base name, the class will output to e.g., training_ready_rank_0.jsonl
-    builder.process_pipeline(output_base_name="training_ready")
+    # 2026-07-23: see prototype/pipeline.py's identical change -- renamed to
+    # avoid the resume-skip logic silently no-op'ing on all already-processed
+    # videos and never applying this session's cosmos/window fixes.
+    # 2026-07-23: see prototype/pipeline.py's identical change -- output
+    # moved off exa_project1 onto exa_data1.
+    output_base_path = os.path.join(
+        "/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA",
+        "training_ready_w24",
+    )
+    os.makedirs(os.path.dirname(output_base_path), exist_ok=True)
+    builder.process_pipeline(output_base_name=output_base_path)

@@ -58,6 +58,55 @@ def caption_speech_tokens() -> list[str]:
     return ["<caption>", "</caption>", "<speech>", "</speech>"]
 
 
+def snac_l2_tokens() -> list[str]:
+    """16,384 new SNAC level-2 ("speak" format) tokens: 4 bands x 4096,
+    2026-07-23 -- offsets corrected to match the REAL scheme used by Huu/
+    Chien's production snac_gpu.py on Leonardo (pipeline_video/snac_gpu.py,
+    byte-identical copy confirmed 2026-07-23), which is itself the Orpheus-
+    standard SNAC packing layout. Two of these bands (136458, 140554) sit in
+    what was previously assumed to be an unused gap between L1a and L1b --
+    it is not a gap, it's where Leo's L2 sub-codes 0 and 1 live. The other
+    two (148746, 152842) coincide numerically with the original (wrong)
+    scheme's first two bands but now correctly represent Leo's L2 sub-codes
+    2 and 3, not sub-codes 0 and 1. Must match
+    data_prep/laion_emotional_roleplay/tokenize_snac.py's OFFSET_L2 exactly.
+    MUST only ever be appended at the very end of all_vla_tokens()'s
+    returned list, never inserted earlier -- see that function's docstring."""
+    toks = []
+    for base in (136458, 140554, 148746, 152842):
+        toks += [f"<snac_{i + base}>" for i in range(4096)]
+    return toks
+
+
+def listen_speak_tokens() -> list[str]:
+    """4 new wrapper tokens, 2026-07-23: <listen>/</listen>/<speak>/</speak>,
+    replacing the generic <snac>/</snac> wrapper going forward. <listen> =
+    ambient/scene audio the model is describing (FineVideo's own audio,
+    always -- pipeline_pose/phase6_merge_adaptive.py's build_snac_insertion());
+    <speak> = the model's own reply (laion/emotional-roleplay, always --
+    data_prep/laion_emotional_roleplay/tokenize_snac.py's flatten_record()).
+    Role decides the tag, not audio format (3 vs 7 tok/frame) or whether the
+    voice has been cloned yet. MUST only ever be appended at the very end of
+    all_vla_tokens()'s returned list, never inserted earlier."""
+    return ["<listen>", "</listen>", "<speak>", "</speak>"]
+
+
+def agent_t_extended_tokens() -> list[str]:
+    """<{joint}_t_8> .. <{joint}_t_23> for all 17 joints, 272 tokens total --
+    2026-07-22 (REPORT.md #38), needed once the agent/pose window widened
+    from 8 to 24 frames ("Option 2": PCHIP control points may now land on
+    any of the 24 real frames, not just a fixed 0-7 grid). MUST only ever be
+    appended at the very end of all_vla_tokens()'s returned list, never
+    inserted into the existing per-joint loop below (which would shift the
+    id of every token generated after it -- x/y/z of later joints, all of
+    snac_tokens() -- silently breaking every already-trained model's
+    embedding table)."""
+    toks = []
+    for name in JOINT_NAMES:
+        toks += [f"<{name}_t_{n}>" for n in range(8, 24)]
+    return toks
+
+
 def all_vla_tokens() -> list[str]:
     """Full VLA token list: 93,938 existing + 12,290 SNAC = 106,228 total."""
     toks = []
@@ -94,6 +143,15 @@ def all_vla_tokens() -> list[str]:
     # ── SNAC tokens ───────────────────────────────────────────────────────────
     toks += snac_tokens()
 
+    # ── 2026-07-22 additions (REPORT.md #37, #38) ──────────────────────────────
+    # APPENDED ONLY, after everything else -- every token above this point
+    # keeps the exact same id it already has in the published
+    # tokenizer_vla_qwen3 / any already-trained checkpoint's embedding table.
+    # Never move these two lines earlier or insert into an existing loop.
+    toks += agent_t_extended_tokens()
+    toks += snac_l2_tokens()
+    toks += listen_speak_tokens()
+
     return toks
 
 
@@ -110,12 +168,18 @@ SPOT_CHECK = [
     "<snac_144650>",   # L1B first
     "<snac_132361>",   # L0 last
     "<snac_148745>",   # L1B last
+    "<snac_136458>",   # L2 sub-code 0 first (Leo scheme, was the old "gap")
+    "<snac_152841>",   # L2 sub-code 3 last
     "<snac>",
     "</snac>",
     "<caption>",
     "</caption>",
     "<speech>",
     "</speech>",
+    "<listen>",
+    "</listen>",
+    "<speak>",
+    "</speak>",
 ]
 
 def verify(tok, label: str):

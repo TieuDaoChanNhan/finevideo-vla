@@ -1,7 +1,12 @@
 """Phase 4 (YOLO person-presence cleaning) for the sports subset of
 OmniVideo-100K, run on JUPITER. Depends on Phase 3
 (phase3_kinematics_omnivideo.py) having written
-$DATA/omnivideo_100k/pose_states_jsonl_30fps/{video_id}_states.jsonl.
+$DATA/omnivideo_100k/pose_states_jsonl_30fps_w24/{video_id}_states.jsonl.
+
+2026-07-23: window=24 pivot to match FineVideo-VLA (was WINDOW_SIZE=8,
+imported from pipeline_pose.phase4_yolo_cleaner's default; input/output
+dirs were pose_states_jsonl_30fps / pose_yolo_cleaned_30fps) -- see
+step_a/step_a_tokenize_video.py's CHUNK_SIZE comment for the full rationale.
 
 Does not modify pipeline_pose/phase4_yolo_cleaner.py -- reuses its
 dataset-agnostic building blocks (WindowRecord/RunMetrics dataclasses,
@@ -47,7 +52,7 @@ reasoning as every other driver in this directory: iterates the known
 1,126-video subset list (not a directory glob) and writes to its own
 directory under the OmniVideo-100K data root, not the shared outputs/ tree.
 
-Output: $DATA/omnivideo_100k/pose_yolo_cleaned_30fps/{video_id}_cleaned.jsonl
+Output: $DATA/omnivideo_100k/pose_yolo_cleaned_30fps_w24/{video_id}_cleaned.jsonl
 """
 from __future__ import annotations
 
@@ -65,17 +70,22 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 from pipeline_pose.phase4_yolo_cleaner import (  # noqa: E402
-    WindowRecord, RunMetrics, PERSON_CLASS_ID, WINDOW_SIZE, EMPTY_FRAME_CUTOFF,
+    WindowRecord, RunMetrics, PERSON_CLASS_ID, EMPTY_FRAME_CUTOFF,
     DEFAULT_THRESHOLD, DEFAULT_MODEL, DEFAULT_BATCH_SIZE, DEFAULT_IMGSZ,
     choose_device, load_model, warmup_model, infer_frame_batch, get_video_frame_count,
 )
 
+# 2026-07-23: window=24 to match FineVideo-VLA's pivot (was 8, imported from
+# pipeline_pose.phase4_yolo_cleaner's default) -- see
+# step_a/step_a_tokenize_video.py's CHUNK_SIZE comment for the full rationale.
+WINDOW_SIZE = 24
+
 DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k"
 DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sports_subset_video_ids_filtered.txt")
 DEFAULT_VIDEOS_DIR = os.path.join(DATA_ROOT, "videos")
-DEFAULT_INPUT_DIR = os.path.join(DATA_ROOT, "pose_states_jsonl_30fps")
+DEFAULT_INPUT_DIR = os.path.join(DATA_ROOT, "pose_states_jsonl_30fps_w24")
 DEFAULT_RESAMPLED_NPY_DIR = os.path.join(DATA_ROOT, "pose_3d_npy_30fps")
-DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "pose_yolo_cleaned_30fps")
+DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "pose_yolo_cleaned_30fps_w24")
 
 RANK = int(os.environ.get("SLURM_PROCID", 0))
 WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))

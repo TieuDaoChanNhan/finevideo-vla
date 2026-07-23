@@ -118,12 +118,24 @@ def parse_window(tokens: list[str]) -> dict:
 
 
 def reconstruct(parsed: dict) -> np.ndarray:
-    """PCHIP-interpolate sparse control points into full 8-frame trajectory.
+    """PCHIP-interpolate sparse control points into a full per-frame trajectory.
 
-    Returns ndarray of shape (8, 17, 3) in metres, root-centred.
+    Window length is inferred from the data itself (max t_index + 1 seen
+    across all joints) rather than a fixed constant -- 2026-07-22 (REPORT.md
+    #38): windows are now 24 frames (t up to 23), but this decoder is also
+    used on older 8-frame data (t up to 7), so it must handle both without
+    being told which convention a given token string uses.
+
+    Returns ndarray of shape (window_frames, 17, 3) in metres, root-centred.
     """
-    t_out = np.arange(WINDOW_FRAMES, dtype=np.float64)
-    traj = np.zeros((WINDOW_FRAMES, N_JOINTS, 3), dtype=np.float32)
+    max_t = WINDOW_FRAMES - 1
+    for jdata in parsed["joints"].values():
+        if len(jdata["t_indices"]):
+            max_t = max(max_t, int(jdata["t_indices"].max()))
+    window_frames = max_t + 1
+
+    t_out = np.arange(window_frames, dtype=np.float64)
+    traj = np.zeros((window_frames, N_JOINTS, 3), dtype=np.float32)
 
     for name, jdata in parsed["joints"].items():
         j = JOINT_INDEX[name]
@@ -166,9 +178,14 @@ def decode(token_str: str) -> list[np.ndarray]:
 
 
 def to_json(trajectories: list[np.ndarray], fps: int = 30) -> dict:
-    """Convert decoded trajectories to a JSON-serialisable dict."""
+    """Convert decoded trajectories to a JSON-serialisable dict.
+
+    Per-window frame count is read from each trajectory's own shape (not a
+    fixed constant) -- see reconstruct()'s docstring, 2026-07-22."""
     windows = []
+    cum_frames = 0
     for i, traj in enumerate(trajectories):
+        n_frames_this = traj.shape[0]
         motion = np.linalg.norm(traj[-1] - traj[0], axis=-1)
         top_movers = sorted(
             [(JOINT_NAMES[j], round(float(motion[j]), 4)) for j in range(N_JOINTS)],
@@ -179,20 +196,22 @@ def to_json(trajectories: list[np.ndarray], fps: int = 30) -> dict:
 
         windows.append({
             "window": i,
-            "time_sec": round(i * WINDOW_FRAMES / fps, 4),
+            "time_sec": round(cum_frames / fps, 4),
             "trajectory": traj.tolist(),
             "value_range_m": [round(float(traj.min()), 4), round(float(traj.max()), 4)],
             "top_movers": top_movers[:5],
             "joints_all_zero": n_missing,
         })
+        cum_frames += n_frames_this
 
-    stacked = np.stack(trajectories)
+    total_frames = sum(traj.shape[0] for traj in trajectories)
     return {
         "n_windows": len(trajectories),
-        "total_frames": len(trajectories) * WINDOW_FRAMES,
-        "duration_sec": round(len(trajectories) * WINDOW_FRAMES / fps, 4),
-        "shape": list(stacked.shape),
-        "value_range_m": [round(float(stacked.min()), 4), round(float(stacked.max()), 4)],
+        "total_frames": total_frames,
+        "duration_sec": round(total_frames / fps, 4),
+        "shape": [len(trajectories)] + list(trajectories[0].shape) if trajectories else [],
+        "value_range_m": [round(float(min(t.min() for t in trajectories)), 4),
+                           round(float(max(t.max() for t in trajectories)), 4)] if trajectories else [0, 0],
         "joint_names": JOINT_NAMES,
         "windows": windows,
     }

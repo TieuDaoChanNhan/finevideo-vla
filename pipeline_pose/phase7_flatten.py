@@ -187,6 +187,14 @@ _RE_SIMPLE = re.compile(r'<(seed2|cosmos|avc_lm)>(.*?)</\1>', re.DOTALL)
 _RE_AGENT  = re.compile(r'<agent>(.*?)</agent>', re.DOTALL)
 # SNAC blocks: contain <snac_N> tokens
 _RE_SNAC   = re.compile(r'<snac>(.*?)</snac>', re.DOTALL)
+# 2026-07-23: FineVideo/OmniVideo-100K's SNAC wrapper is <listen> (ambient audio
+# the model perceives, never a reply); roleplay-style data uses <speak> (a
+# generated reply). Both hold <snac_N> tokens exactly like the older generic
+# <snac> wrapper above -- kept as a separate pattern (not folded into
+# _RE_SNAC) so the output preserves which wrapper tag was actually used,
+# since that distinction is the whole point of the 2026-07-23 convention.
+_RE_LISTEN = re.compile(r'<listen>(.*?)</listen>', re.DOTALL)
+_RE_SPEAK  = re.compile(r'<speak>(.*?)</speak>', re.DOTALL)
 # Caption blocks (Phase 6 v4): free-text Qwen2.5-VL caption, injected before <cosmos>
 _RE_CAPTION = re.compile(r'<caption>(.*?)</caption>', re.DOTALL)
 # Inline speech blocks (Phase 6 v4): free-text ASR segment snapped to a chunk,
@@ -264,6 +272,12 @@ def process_activity_per_chunk(token_str,
     for m in _RE_SNAC.finditer(token_str):
         events.append((m.start(), 'snac', m.group(1)))
 
+    for m in _RE_LISTEN.finditer(token_str):
+        events.append((m.start(), 'listen', m.group(1)))
+
+    for m in _RE_SPEAK.finditer(token_str):
+        events.append((m.start(), 'speak', m.group(1)))
+
     for m in _RE_CAPTION.finditer(token_str):
         events.append((m.start(), 'caption', m.group(1)))
 
@@ -336,6 +350,22 @@ def process_activity_per_chunk(token_str,
                     all_output.extend(inner)
                     all_output.append('</snac>')
 
+        elif etype == 'listen':
+            if random.random() > drop_rate_snac:
+                inner = _RE_TAG.findall(payload)
+                if inner:
+                    all_output.append('<listen>')
+                    all_output.extend(inner)
+                    all_output.append('</listen>')
+
+        elif etype == 'speak':
+            if random.random() > drop_rate_snac:
+                inner = _RE_TAG.findall(payload)
+                if inner:
+                    all_output.append('<speak>')
+                    all_output.extend(inner)
+                    all_output.append('</speak>')
+
         elif etype == 'speech':
             text = payload.strip()
             if text:
@@ -382,7 +412,7 @@ def count_token_types(tokens):
             s2 += 1
         elif tok in ('<cosmos>', '</cosmos>') or tok.startswith('<cosmos_'):
             co += 1
-        elif tok in ('<snac>', '</snac>') or tok.startswith('<snac_'):
+        elif tok in ('<snac>', '</snac>', '<listen>', '</listen>', '<speak>', '</speak>') or tok.startswith('<snac_'):
             sn += 1
         else:
             ag += 1   # <agent>/</agent>, fps_N, joint open/close, joint_t_N, joint_x/y/z_N
@@ -432,8 +462,15 @@ def flatten_one_file(in_path, output_dir, skip_existing,
                 for activity in scene.get("activities", []):
                     raw_tokens = activity.get("video_tokens", "")
 
-                    # Filter: only emit activities with agent OR snac tokens
-                    if "<agent>" not in raw_tokens and "<snac>" not in raw_tokens:
+                    # Filter: only emit activities with agent OR some audio (snac/listen/speak) tokens.
+                    # 2026-07-23: added listen/speak -- FineVideo/OmniVideo-100K now write <listen>,
+                    # not <snac>, for their SNAC audio (see _RE_LISTEN/_RE_SPEAK above). Without this,
+                    # every audio-only activity (no <agent>) was silently dropped whole, and every
+                    # agent-bearing activity kept its agent tokens but lost 100% of its <listen> audio
+                    # -- caught via smoke test on final_dataset_adaptive_w24 before the real run
+                    # (snac=0 in output despite 254 real <listen> blocks in the matching Phase 6 input).
+                    if ("<agent>" not in raw_tokens and "<snac>" not in raw_tokens
+                            and "<listen>" not in raw_tokens and "<speak>" not in raw_tokens):
                         continue
 
                     speech      = activity.get("speech_transcript", "")

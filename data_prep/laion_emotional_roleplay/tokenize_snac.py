@@ -58,17 +58,20 @@ OFFSET_L0 = 128266
 OFFSET_L1A = 128266 + 4096
 OFFSET_L1B = 128266 + 4 * 4096
 
-# L2 ("speak" format, 2026-07-22): the finest 50Hz level, 4 sub-positions per
-# base frame, never allocated in the tokenizer vocab before -- same offset
-# scheme originally computed for the now-deleted add_snac_l2_tokens.py
-# (REPORT.md #32 point 1), placed right after L1B's band ends (148745) so it
-# doesn't collide with anything already in use. Real ids per band: L2_0
-# 148746-152841, L2_1 152842-156937, L2_2 156938-161033, L2_3 161034-165129.
-# These are NOT yet in any tokenizer's vocab -- must be added (mirroring
-# add_snac_l2_tokens.py's approach) before speak-format data is atomic in
-# training. Decided 2026-07-22 after a real A/B (tools/snac_l2_experiment.py)
-# showed audibly better reconstruction, at a real +133% token cost.
-OFFSET_L2 = [148746 + k * 4096 for k in range(4)]
+# L2 ("speak" format): the finest 50Hz level, 4 sub-positions per base frame.
+# 2026-07-23: corrected to match the REAL scheme in Huu/Chien's production
+# snac_gpu.py on Leonardo (pipeline_video/snac_gpu.py, byte-identical copy
+# confirmed 2026-07-23) -- the Orpheus-standard SNAC packing layout. The
+# first two sub-codes (136458, 140554) sit in what was previously assumed to
+# be an unused gap between L1A and L1B -- it is not a gap, Leo's L2 lives
+# there. The 2026-07-22 first attempt at this (148746/152842/156938/161034,
+# all placed after L1B) was wrong: it happened to coincide with Leo's last
+# two sub-code offsets (148746, 152842) by arithmetic accident, but put them
+# in the wrong position in the per-frame sequence and invented two extra
+# bands (156938, 161034) that don't exist in Leo's scheme at all. Never used
+# in any completed training run, so free to correct. Real ids per band:
+# L2_0 136458-140553, L2_1 140554-144649, L2_2 148746-152841, L2_3 152842-156937.
+OFFSET_L2 = [136458, 140554, 148746, 152842]
 
 VALID_ADHERENCE = {1, 2, 3, 4, 5}  # drops ~32/67,491 rows with out-of-range values (8/9/10/80/0)
 
@@ -107,11 +110,12 @@ def encode_listen(audio: np.ndarray, model, device: str) -> list[str]:
 
 def encode_speak(audio: np.ndarray, model, device: str) -> list[str]:
     """SNAC speak-format encode: full 3-level codebook, 7 tokens per base frame
-    (L0, L1a, L1b, L2_0..L2_3 -- 12.5Hz base -> 87.5 tok/s). +133% tokens vs
-    encode_listen() (7/3 ratio), confirmed both in theory and on real audio
-    via tools/snac_l2_experiment.py. Real L2 tokens are NOT yet in any
-    tokenizer vocab -- see OFFSET_L2's docstring above before using this in
-    a real training run."""
+    -- order L0, L1a, L2_0, L2_1, L1b, L2_2, L2_3 (12.5Hz base -> 87.5 tok/s).
+    2026-07-23: token order corrected to interleave L2 between L1a/L1b,
+    matching Huu/Chien's production snac_gpu.py on Leonardo exactly (both
+    offsets and position within the group -- see OFFSET_L2's docstring
+    above). +133% tokens vs encode_listen() (7/3 ratio), confirmed both in
+    theory and on real audio via tools/snac_l2_experiment.py."""
     tensor = torch.from_numpy(audio).unsqueeze(0).unsqueeze(0).to(device)
     with torch.inference_mode():
         codes = model.encode(tensor)
@@ -125,16 +129,26 @@ def encode_speak(audio: np.ndarray, model, device: str) -> list[str]:
             break
         tokens.append(f"<snac_{c0[0, i].item() + OFFSET_L0}>")
         tokens.append(f"<snac_{c1[0, i1a].item() + OFFSET_L1A}>")
+        tokens.append(f"<snac_{c2[0, i2[0]].item() + OFFSET_L2[0]}>")
+        tokens.append(f"<snac_{c2[0, i2[1]].item() + OFFSET_L2[1]}>")
         tokens.append(f"<snac_{c1[0, i1b].item() + OFFSET_L1B}>")
-        for k, idx in enumerate(i2):
-            tokens.append(f"<snac_{c2[0, idx].item() + OFFSET_L2[k]}>")
+        tokens.append(f"<snac_{c2[0, i2[2]].item() + OFFSET_L2[2]}>")
+        tokens.append(f"<snac_{c2[0, i2[3]].item() + OFFSET_L2[3]}>")
     return tokens
 
 
 def flatten_record(text: str, voice_description: str, tokens: list[str]) -> str:
+    """2026-07-23: always wrapped <speak>...</speak>, never <snac>. This
+    dataset is entirely ASSISTANT replies (a character voice-acting a line),
+    never ambient/scene audio -- role decides the tag, not whether the
+    source voice has been cloned to a single identity yet (that's a later,
+    separate upgrade to the audio Chien's voice-clone pipeline feeds in;
+    the tag/format stays <speak> either way). Contrast with FineVideo's own
+    audio, always <listen> -- see pipeline_pose/phase6_merge_adaptive.py's
+    build_snac_insertion()."""
     return (
         f"USER: {text.strip()} [Voice: {voice_description.strip()}] ASSISTANT:\n"
-        f"<snac> " + " ".join(tokens) + " </snac>"
+        f"<speak> " + " ".join(tokens) + " </speak>"
     )
 
 

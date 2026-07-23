@@ -170,6 +170,14 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_IMGSZ,
         help=f"Inference image size. Default: {DEFAULT_IMGSZ}",
     )
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=WINDOW_SIZE,
+        help=f"Must match the --window-size used in Phase 3 (window_id spacing in the input "
+             f"JSONL). Default: {WINDOW_SIZE}. 2026-07-22: use 24 to match the wider cosmos "
+             f"chunk window -- see REPORT.md #38.",
+    )
     return parser.parse_args()
 
 
@@ -691,9 +699,11 @@ def remove_file_if_exists(path: Path) -> None:
 
 
 def main() -> int:
+    global WINDOW_SIZE
     try:
         args = parse_args()
         validate_args(args)
+        WINDOW_SIZE = args.window_size
 
         task_id, task_count = get_slurm_array_info()
 

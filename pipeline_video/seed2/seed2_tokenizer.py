@@ -134,8 +134,12 @@ from transformers.modeling_outputs import (
     SequenceClassifierOutput,
     TokenClassifierOutput,
 )
-from transformers.modeling_utils import (
-    PreTrainedModel,
+from transformers.modeling_utils import PreTrainedModel
+# 2026-07-23: see prototype/seed2/seed2_tokenizer.py's identical fix -- these
+# 3 names moved to transformers.pytorch_utils; the old import silently broke
+# Seed2Tokenizer loading (caught bare-except -> empty seed2 tokens for every
+# video, no visible error) on the current env's transformers 4.57.6.
+from transformers.pytorch_utils import (
     apply_chunking_to_forward,
     find_pruneable_heads_and_indices,
     prune_linear_layer,
@@ -1800,9 +1804,17 @@ class BertLMHeadModel(BertPreTrainedModel):
         self.init_weights()
 
     def get_output_embeddings(self):
+        # 2026-07-23: see prototype/seed2/seed2_tokenizer.py's identical fix
+        # -- guards against self.cls being None, which crashed
+        # transformers' from_pretrained()->tie_weights() with "'NoneType'
+        # object has no attribute 'predictions'" on this env's version.
+        if self.cls is None:
+            return None
         return self.cls.predictions.decoder
 
     def set_output_embeddings(self, new_embeddings):
+        if self.cls is None:
+            return
         self.cls.predictions.decoder = new_embeddings
 
     def forward(
@@ -1956,9 +1968,17 @@ class BertForMaskedLM(BertPreTrainedModel):
         self.init_weights()
 
     def get_output_embeddings(self):
+        # 2026-07-23: see prototype/seed2/seed2_tokenizer.py's identical fix
+        # -- guards against self.cls being None, which crashed
+        # transformers' from_pretrained()->tie_weights() with "'NoneType'
+        # object has no attribute 'predictions'" on this env's version.
+        if self.cls is None:
+            return None
         return self.cls.predictions.decoder
 
     def set_output_embeddings(self, new_embeddings):
+        if self.cls is None:
+            return
         self.cls.predictions.decoder = new_embeddings
 
     def forward(

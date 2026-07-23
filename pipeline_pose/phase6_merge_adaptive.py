@@ -10,7 +10,13 @@ Also adds a chunk_timing array and timing_meta to each activity so that
 all 5 modalities (seed2, cosmos, avc_lm, agent, snac) have explicit timestamps.
 
 Resulting token order per 8-frame chunk:
-    <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<snac>...</snac>]
+    <cosmos>...</cosmos> <avc_lm>...</avc_lm> [<agent>...</agent>] [<listen>...</listen>]
+
+2026-07-23: SNAC wrapper changed from generic <snac> to <listen> -- FineVideo's
+own audio is always ambient/scene sound the model describes, never a reply, so
+it's always tagged <listen> (contrast with the roleplay dataset, which is
+always a reply and always tagged <speak> -- see
+data_prep/laion_emotional_roleplay/tokenize_snac.py).
 
 SNAC alignment:
     SNAC listen format = 37.5 tokens/sec. Each 8-frame chunk at 30fps = 0.267s.
@@ -130,9 +136,17 @@ def load_snac_dict(path: str) -> Dict[str, Dict]:
 
 
 def build_snac_insertion(snac_by_chunk: Dict, chunk_idx: int) -> str:
-    """Return '<snac> <snac_N> ... </snac>' for chunk_idx, or '' if empty."""
+    """Return '<listen> <snac_N> ... </listen>' for chunk_idx, or '' if empty.
+
+    2026-07-23 decision: FineVideo's own audio is ambient/scene sound the
+    model is describing as part of an assistant turn, not a reply -- always
+    <listen> format (snac_finevideo.py's production default is
+    encode_listen(), 3 tok/frame). Contrast with the roleplay dataset
+    (data_prep/laion_emotional_roleplay/tokenize_snac.py), which is always a
+    reply and always tagged <speak> regardless of encode format used.
+    """
     tokens = snac_by_chunk.get(str(chunk_idx), [])
-    return ("<snac> " + " ".join(tokens) + " </snac>") if tokens else ""
+    return ("<listen> " + " ".join(tokens) + " </listen>") if tokens else ""
 
 
 # ── Caption token loading ───────────────────────────────────────────────────
@@ -377,7 +391,7 @@ def process_activity(
     # --agent-tokens-dir/--snac-tokens-dir) protects against double
     # injection even if the CLI is invoked incorrectly.
     already_has_agent = "<agent>" in video_tokens
-    already_has_snac  = "<snac>"  in video_tokens
+    already_has_snac  = "<listen>" in video_tokens  # 2026-07-23: FineVideo's snac wrapper is now <listen>, not <snac>
     already_has_speech_inline = "<speech>" in video_tokens
     already_has_caption       = "<caption>" in video_tokens
 
@@ -524,11 +538,17 @@ def parse_args() -> argparse.Namespace:
                     help="Prefix for output files.")
     p.add_argument("--skip-existing", action="store_true",
                     help="Skip outputs that already exist.")
+    p.add_argument("--chunk-size", type=int, default=CHUNK_SIZE,
+                    help=f"Must match Phase 3/4/5's --window-size/--window-frames and "
+                         f"pipeline.py's WINDOW_FRAMES. Default: {CHUNK_SIZE}. 2026-07-22: "
+                         f"use 24 to match the wider cosmos chunk window -- see REPORT.md #38.")
     return p.parse_args()
 
 
 def main() -> None:
+    global CHUNK_SIZE
     args = parse_args()
+    CHUNK_SIZE = args.chunk_size
     input_paths = sorted(glob.glob(args.input_glob))
 
     if not input_paths:

@@ -2466,4 +2466,317 @@ Verify chức năng: `--format speak --limit 2` trên row thật chạy sạch (
 - SNAC L2: đã có đường encode production (`--format speak`), verify chức năng trên data thật. **Chưa dùng được trong training** — cần thêm token L2 vào vocab tokenizer trước (offset đã tính/ghi sẵn), và `decode_snac.py` vẫn chỉ zero-fill L2 lúc decode (cần update tương ứng để verify round-trip output speak-format thật, chưa làm trong mục này).
 - Window/stride: củng cố lại là đòn bẩy MIỄN PHÍ duy nhất (§36) — đề xuất giữ nguyên ~0.7-1.2s/chunk (stride 3-5 ở 30fps), vẫn chờ quyết định đồng bộ pose-window.
 - Chưa chốt: có thật sự thêm token vocab L2 và chạy `--format speak` cho toàn bộ 67,491 row roleplay không; có/làm sao gộp fix `reset_position_ids`/`reset_attention_mask` vào config train tiếp theo cùng với đề xuất seq_length=16,384 đã chắc chắn.
+
+---
+
+## Chốt Option 2 (pose dense) + Plan Phase A/B — bắt đầu code (22/07/2026, tiếp)
+
+### Bối cảnh
+
+Sau khi giải thích chi tiết Option 2 (pose dùng đủ 24 frame thật để fit PCHIP, không subsample như cosmos), user chốt Option 2 và duyệt luôn Checkpoint 1 (full-scale 40K video) về mặt nguyên tắc — kèm 3 yêu cầu cụ thể: (1) cố gắng tìm partition không GPU cho phase không cần GPU, hoặc xin ít GPU hơn; (2) thêm L2 cho SNAC ngay ("quá cần thiết"); (3) bắt đầu code luôn, update .md liên tục, nhưng **phải chạy quy mô nhỏ để user check trước khi full-scale**.
+
+### 1. Phát hiện quan trọng trước khi code: token `t` bị giới hạn cứng 0-7 trong vocab
+
+Check `tools/tokenizer/expand_vocab.py`: `<{joint}_t_{n}>` chỉ generate cho `n in range(8)`. Option 2 (control point có thể rơi vào bất kỳ vị trí nào trong 24 frame) cần token `t_8`→`t_23` cho cả 17 khớp = **272 token mới**. Gộp chung với việc thêm SNAC L2 (16,384 token) thành 1 lần mở rộng vocab duy nhất.
+
+**Rủi ro nghiêm trọng phát hiện lúc code:** `tools/tokenizer/build_tokenizers.py`'s `all_vla_tokens()` sinh danh sách token theo thứ tự cố định, rồi `tok.add_tokens()` gán ID tăng dần theo thứ tự đó. Nếu tôi sửa TRỰC TIẾP vào loop hiện có (`range(8)` → `range(24)` tại chỗ), mọi token sinh ra SAU điểm sửa (x/y/z của các khớp sau, toàn bộ khối SNAC) sẽ bị dịch ID — phá vỡ embedding table của `qwen3_1.7b_vla_v2` đã train (ID nào đó vốn nghĩa là `<r_hip_x_50>` sẽ vô tình trỏ sang token khác). **Sửa đúng cách: APPEND token mới vào tận cuối danh sách** (`agent_t_extended_tokens()` + `snac_l2_tokens()`, thêm sau `snac_tokens()`), không đụng vào bất kỳ đoạn code sinh token cũ nào — đảm bảo mọi ID cũ giữ nguyên.
+
+### 2. Cluster partition — xác nhận không có partition CPU-only trên JUPITER
+
+`sinfo` chỉ ra đúng 2 partition: `booster` và `largebooster`, **cả 2 đều có GH200 GPU gắn theo node** — không có lựa chọn CPU-only nào trên JUPITER. Với các Phase không cần GPU (3/4/5/6/7), vẫn phải xin node từ 1 trong 2 partition này, nhưng có thể xin ít node hơn / không cần dùng tới GPU trên node đó (tận dụng 288 CPU core/node cho công việc CPU-bound).
+
+### 3. Code changes đã hoàn thành (Phase A)
+
+- **`pipeline_pose/phase3_kinematics_processor.py`** — thêm `--window-size` (default 8, backward compatible), truyền qua `process_file()` → `create_windows()`. Chạy với `--window-size 24 --stride 24` cho pipeline mới.
+- **`pipeline_pose/phase4_yolo_cleaner.py`** — thêm `--window-size` CLI, gán lại global `WINDOW_SIZE` trong `main()` (2 chỗ dùng: tính `end_frame`, range frame cần thiết).
+- **`pipeline_pose/phase5_adaptive_pchip.py`** — thay đổi quan trọng nhất:
+  - Thêm hằng `MAX_CPS = 8` **tách biệt** khỏi `WINDOW_FRAMES` — trước đây tier cao nhất là `np.arange(WINDOW_FRAMES)` (dùng TOÀN BỘ frame), nếu không tách sẽ khiến window 24-frame tự động làm tier cao nhất phình từ 8 CP lên 24 CP/khớp (gấp 3 token/khớp ở trường hợp xấu nhất).
+  - Viết lại `select_cp_indices()`: tier cao nhất giờ chọn **top-6 frame có curvature cao nhất trong TOÀN BỘ candidate của window** (không phải cố định vị trí) + start/end = vẫn đúng 8 CP như cũ. Với `WINDOW_FRAMES=8` (cấu hình cũ), hành vi y hệt trước (top-6 trong 6 candidate nội = tất cả). Với `WINDOW_FRAMES=24`, giờ có thể chọn bất kỳ 6 trong 22 vị trí nội — đúng tinh thần Option 2 (không mất chi tiết chuyển động nhanh, dù không nằm trên lưới cố định).
+  - Thêm `--window-frames` CLI (default 8).
+- **`tools/eval/decode_agent_tokens.py`** — sửa `reconstruct()`/`to_json()` để **tự suy ra window size từ chính data** (max giá trị `t` xuất hiện + 1), không hardcode `WINDOW_FRAMES=8` nữa — verify chạy đúng cả 2 kiểu token (8-frame cũ và 24-frame mới) trong cùng 1 lần test.
+- **`tools/tokenizer/build_tokenizers.py`** — thêm `snac_l2_tokens()` (16,384 token, offset khớp `tokenize_snac.py`) và `agent_t_extended_tokens()` (272 token `t_8`-`t_23` × 17 khớp), APPEND vào cuối `all_vla_tokens()` (không chèn giữa, xem mục 1).
+- **`prototype/pipeline.py` + mirror `pipeline_video/pipeline.py`** — `tokenize_activity_frames()`: đổi từ `CHUNK_SIZE=8` liên tiếp sang `WINDOW_FRAMES=24` + `COSMOS_STRIDE=3` (lấy mẫu mỗi 3 frame → đúng 8 ảnh cho Cosmos, có `assert` đảm bảo luôn ra đúng 8). Seed2 (1fps) không đổi. AVC-LM mở rộng theo cùng window (dù output bị strip trước training) để `chunk_timing` nhất quán. Padding chunk cuối vẫn theo convention cũ (lặp frame cuối), chỉ áp ở quy mô 24.
+  - **Verify chức năng thật**: 50 frame thật từ `good.mp4` → đúng 3 cosmos block (2 window đủ 24-frame + 1 window pad), **896 token/block** (khớp đúng dự kiến ở resolution 256 aspect-preserving). Lỗi load Seed2Tokenizer khi test (`apply_chunking_to_forward` import error) là lỗi môi trường có sẵn, không liên quan tới thay đổi này — seed2 không bị đụng tới trong logic mới.
+- **`pipeline_pose/snac_finevideo.py`** (SNAC audio của chính video FineVideo) — thêm `encode_speak()` (7 token/base-frame, dùng `OFFSET_L2` khớp `tokenize_snac.py`), tham số hoá `process_video(..., encode_fn=encode_listen)`, thêm `--format {listen,speak}` CLI. `split_snac_by_chunks()` không cần sửa gì — chỉ cần `n_chunks` đúng (tự động thích ứng theo window mới ở Phase 6).
+
+### Đang chạy (background)
+
+Test build tokenizer mới (`tools/tokenizer/build_tokenizers.py --mode qwen3`) ra thư mục scratch (không đè bản production) để verify: (a) toàn bộ ID token cũ giữ nguyên so với `tokenizer_vla_qwen3` thật đang publish, (b) 272 token agent-t mới + 16,384 token SNAC L2 mới đều atomic. Chạy khá lâu (>6 phút, add >100K token qua HF API) — chưa xong tại thời điểm ghi log này.
+
+### Trạng thái / việc tiếp theo
+
+- [x] Giải thích Option 2 chi tiết cho user
+- [x] Phát hiện + tránh được lỗi dịch ID vocab nghiêm trọng
+- [x] Check cluster partition (không có CPU-only)
+- [x] Code Phase 3/4/5, decode_agent_tokens.py, build_tokenizers.py, cosmos stride, SNAC L2 cho FineVideo
+- [x] Verify chức năng cosmos stride trên video thật
+- [ ] Verify tokenizer build mới (đang chạy nền) — cần xác nhận ID cũ không đổi + token mới atomic trước khi coi là an toàn
+- [x] Chạy thử quy mô nhỏ Phase 3→5 trên 5 video thật (xem mục dưới) — **có phát hiện quan trọng cần user biết trước khi quyết full-scale**
+- [ ] Chưa chạm tới: Phase 6 merge (`split_snac_by_chunks` cần verify với n_chunks mới), Phase 7 flatten, submit job full-scale 40K video
+- [x] Ghi chú thêm: `pipeline_pose/phase6_merge_adaptive.py` thêm `--chunk-size` CLI (default 8, gán lại global `CHUNK_SIZE` trong `main()`) — Phase 7 (`phase7_flatten.py`) không cần sửa gì (không hardcode window size, chỉ xử lý theo thứ tự chunk Phase 6 đã tạo).
+
+### Kết quả test quy mô nhỏ (5 video thật, Phase 3→5 với window=24)
+
+Dùng lại output Phase 1-2 có sẵn (2d_json + 3d_npy_30fps) cho 5 video (`001bwvuSYyA`, `007hXBZoPLI`, `007IG-3b50o`, `00aQYEmhHn8`, `00ATuMVcKlY`), chạy Phase 3 (`--window-size 24 --stride 24`) → Phase 4 (`--window-size 24`) → Phase 5 (`--window-frames 24 --stride 24`) trên môi trường `env_motion_final`.
+
+**Phase 3**: chạy sạch, verify shape đúng `(24, 17, 3)`, `window_id` cách nhau đúng 24 (0, 24, 48...).
+
+**Phase 4 — phát hiện quan trọng: tỷ lệ giữ window giảm mạnh.** Trên 5 video test: 001bwvuSYyA giữ 693/? (nhiều), 007hXBZoPLI giữ 126, 007IG-3b50o giữ 9, 00aQYEmhHn8 giữ **0/403 (100% bị cắt)**, 00ATuMVcKlY giữ 79/376 (21%). So với con số lịch sử ~54% giữ lại ở window 8-frame (§29 REPORT.md, occlusion-filter cost 45.9%) — window 24-frame **đòi hỏi người phải xuất hiện liên tục lâu hơn 3x**, nên tỷ lệ bị cắt tăng đáng kể. Đây là mẫu quá nhỏ (5 video) để kết luận số liệu chính xác trên toàn corpus, nhưng hướng thay đổi (giữ ít hơn) gần như chắc chắn đúng — cần đo lại trên mẫu lớn hơn trước khi full-scale.
+
+**Phase 5 — thêm 1 lớp lọc NaN, cũng giảm thêm.** Ngay cả trong số window Phase 4 giữ lại, nhiều window vẫn có NaN ở 1 vài khớp/frame (007hXBZoPLI: NaN 100% — 126/126; 001bwvuSYyA: NaN 82% — 569/693) → Phase 5 lọc bỏ tiếp, cuối cùng chỉ còn 124 (001bwvuSYyA), 2 (007IG-3b50o), 54 (00ATuMVcKlY) window có token thật; 007hXBZoPLI và 00aQYEmhHn8 rỗng hoàn toàn. Không phải bug — khớp với hiện tượng đã ghi nhận trước đây ("arm joint NaN ở gần như mọi frame YouTube"), chỉ là window dài hơn làm xác suất dính NaN đâu đó trong window cũng tăng theo.
+
+**Tin tốt — verify đúng thiết kế Option 2 + chuyển động thật lớn hơn hẳn:** Check token thật của `001bwvuSYyA` (124 window):
+- Token `t` xuất hiện đều khắp `0`→`23` trên toàn file (không bị giới hạn vào lưới cố định) — đúng thiết kế "chọn control point theo độ cong thật trong toàn bộ 24 candidate".
+- `cp_counts` ví dụ 1 window: pelvis tier 2 (ít chuyển động), 16/17 khớp còn lại tier 8 (nhiều chuyển động) — hợp lý.
+- Decode thật 3 window liên tiếp: **r_ankle di chuyển 1.257m trong 1 window** (window 0), l_elbow 0.93m — chuyển động LỚN, khác hẳn hiện tượng "pelvis tĩnh hoàn toàn [0,0,0]" đã ghi nhận với window 8-frame cũ (§32).
+- Render thật ra video (`tools/visualize/render_agent_pose.py`, 5 window liên tiếp = 4 giây) → `samples/window24_smalltest/agent_pose_24frame_test.mp4` (+ `agent_sample.txt` chứa token gốc) — đã gửi user xem trực tiếp.
+
+**Kết luận tạm thời:** Option 2 (dense CP) hoạt động đúng thiết kế và cho thấy tín hiệu chuyển động thật rõ ràng hơn nhiều — nhưng đổi lại **có thể mất thêm dữ liệu** (tỷ lệ window sống sót qua Phase 4+5 giảm) so với window 8-frame cũ. Cần đo trên mẫu lớn hơn (vài trăm video) để biết con số thật trước khi quyết định full-scale 40K — đây là input quan trọng cho quyết định "data có đủ không" đã bàn trước đó.
+
+### Phản hồi user + quyết định chốt lại
+
+User băn khoăn tỷ lệ giữ thấp có nghĩa là cần làm lại cả pose pipeline (HRNet/MotionBERT) không — nhắc lại cho user: đây **không phải vấn đề mới**, mà đúng loại vấn đề Huu đã quyết định KHÔNG đầu tư sửa detector nữa (Discord 21/07, gọi là "rabbit hole", team đang chạy đua thời gian), thay vào đó dùng Harmony4D (đang download ~87%) để bù occlusion/multi-person. Đề xuất: **giữ nguyên window=24** (không hạ xuống 16 — không giải quyết gốc vấn đề, chỉ đỡ nhẹ, trong khi Harmony4D mới là hướng xử lý thật). User đồng ý chốt window=24.
+
+User yêu cầu chạy thêm mẫu lớn hơn (100 video) để có số liệu tin cậy hơn trước full-scale — đang thực hiện (xem mục dưới).
+
+### Test mẫu lớn hơn: 100 video thật, Phase 3→5 (window=24)
+
+Chọn 100 video_id có đủ output Phase 1-2 (2d_json + 3d_npy_30fps) + video gốc trong `videos_staging`. Phase 3 chạy sạch 100/100. Phase 4 (YOLO cleaner) chạy nền (job dài hơn, ~100 video x vài giây YOLO inference/video) — kết quả sẽ cập nhật khi xong.
+
+### ⚠️ CHECKPOINT ĐỂ RESUME PHIÊN SAU (22/07/2026, cuối ngày) — user sắp tắt session
+
+**Cập nhật quan trọng: Harmony4D đã tải XONG hoàn toàn** (không phải "~87%" như ghi ở entry §29 trước đó) — verify trực tiếp: `/e/data1/datasets/playground/mmlaion/shared/nguyen38/harmony4d` = 328GB, log `logs/harmony4d_download.log` xác nhận "snapshot_download completed successfully... 22 zip files, 351.6 GB". Có 2 lần connection drop giữa chừng (`02_grappling.zip`, `05_sword2.zip`) nhưng cơ chế resume tự xử lý, không cần can thiệp.
+
+**Phát hiện bất ngờ, CHƯA verify, cần điều tra ở phiên sau:** ngoài `harmony4d/` (raw), còn tồn tại 2 thư mục `harmony4d_h36m_30fps/` và `harmony4d_h36m_native20fps/` với nội dung trông như ĐàXONG (có đủ tên sequence: `01_hugging`, `02_grappling`, `03_grappling2`, `04_sword_part1`, `04_sword_part2`...). Đây có thể là kết quả của việc convert SMPL/COCO-17 → H36M-style 17-joint (việc đã note là "chưa làm" ở các entry trước) — **nhưng chưa được xác nhận trong phiên này, không rõ ai/khi nào tạo, không rõ đã hoàn chỉnh hay đúng chưa.** Phiên sau cần kiểm tra kỹ trước khi tin dùng.
+
+**2 job đang chạy nền lúc ghi log này (cần biết để resume nếu session tắt):**
+
+| Job | Cách check lại | Trạng thái lúc tắt session |
+|---|---|---|
+| Build tokenizer test (272 token agent-t + 16,384 token SNAC L2) | `tmux attach -t tokenizer_build` (hoặc `tmux capture-pane -t tokenizer_build -p`) | Chạy ~26 phút, chưa xong, không lỗi. Output dự kiến: `/tmp/claude-30562/.../scratchpad/tokenizer_vla_qwen3_v2_test/` |
+| Phase 4 YOLO cleaner, 100 video test | `ps aux \| grep phase4_yolo` (PID `2514558`, đã `nohup`+`disown`) | Mới xong ~2/100 video lúc ghi log, còn lâu (~1-1.5 giờ ước tính) |
+
+**⚠️ Rủi ro resumability:** cả 2 job đang ghi output vào `/tmp/claude-30562/-e-project1-reformo-nguyen38-3d-human-pose/de78b3ef-89f3-4da8-917a-5e2378ce7ce2/scratchpad/` — đây là thư mục scratch **gắn với session hiện tại**, có thể không tồn tại/không truy cập được ở phiên Claude Code mới (dù bản thân process/tmux là OS-level, độc lập với Claude Code, nên nhiều khả năng vẫn sống — nhưng CHƯA CHẮC CHẮN). Nếu phiên sau không thấy các đường dẫn trên nữa: 2 job này cần chạy lại từ đầu (không tốn kém gì nhiều, chỉ mất thời gian chờ tương tự).
+
+**Việc đã lưu vào repo thật (an toàn, không phụ thuộc /tmp):**
+- `samples/window24_smalltest/agent_pose_24frame_test.mp4` + `agent_sample.txt` — kết quả test 5-video đã render, đã copy vào repo.
+- Toàn bộ code changes (Phase 3/4/5/6, decode_agent_tokens.py, build_tokenizers.py, cosmos pipeline.py×2, snac_finevideo.py, tokenize_snac.py) — **đã sửa trong working tree, CHƯA COMMIT** (user dặn "chưa cần commit vội, cứ update thôi" — chỉ update .md, code changes vẫn nằm working tree, `git status`/`git diff` sẽ show đầy đủ).
+
+**Việc tiếp theo khi resume (theo thứ tự):**
+1. Check 2 job trên còn sống không, nếu mất thì chạy lại (lệnh y hệt đã dùng, xem code trước đó trong hội thoại/hoặc tự suy ra từ script args đã ghi).
+2. Verify tokenizer test: so ID token cũ với tokenizer production thật, verify 272+16384 token mới atomic.
+3. Verify Phase 4 100-video: tính tỷ lệ giữ window trung bình, so với 5-video test và số liệu lịch sử window=8 (~54%).
+4. Chạy Phase 5 trên 100-video output.
+5. Chạy Phase 6 (merge, `--chunk-size 24`) + Phase 7 (flatten) trên bộ 5-video nhỏ để có 1 file training-ready hoàn chỉnh mẫu — gửi user xem token stream thật.
+6. Điều tra `harmony4d_h36m_*` 2 thư mục lạ — xác nhận có phải conversion thật đã xong hay không, an toàn dùng được chưa.
+7. Sau khi mọi thứ verify ổn: xin duyệt Checkpoint 1 (full-scale 40K video, GPU-nặng).
 - Sự cố mất file giữa phiên chưa rõ nguyên nhân gốc.
+
+---
+
+## Phiên tiếp (23/07/2026) — sửa scheme SNAC L2 khớp Leo, thêm listen/speak token, verify pose 100-video, Harmony4D full pipeline + caption, bắt đầu full-scale FineVideo
+
+### 0. Ghi chú vận hành quan trọng, áp dụng từ phiên này trở đi
+- **Mọi job nền phải chạy qua tmux/sbatch với log ra file thật trong `logs/`** (không phải `/tmp` scratch) — 2 job phiên trước (tokenizer test, Phase 4 100-video) đã mất trắng vì lý do này (xem `feedback_background_job_logging.md` trong memory).
+- **KHÔNG bao giờ trộn 2 môi trường** (`env_stable_vla` vs `setup_motionbert.sh`) trong cùng 1 shell/script — đã tự mắc lỗi này 1 lần (job SLURM `1022275` fail ngay vì trộn) trước khi sửa.
+- Compute node JUPITER **không có internet** — model HF phải tải sẵn từ login node vào cache (`HF_HOME=/e/project1/reformo/nguyen38/jupiter_cache/huggingface`) trước khi submit job compute cần tải model mới.
+- Không có partition tên "devel"/"devel_booster" trên JUPITER — chỉ `booster`/`largebooster` (đã check kỹ qua `sinfo`/`scontrol`/`sacctmgr show qos`).
+
+### 1. Sửa scheme SNAC L2 khớp đúng Leo/Orpheus (thay vì scheme tự nghĩ trước đó)
+Phát hiện qua đọc `pipeline_video/snac_gpu.py` (script thật của Chien/Huu dùng trên Leonardo cho bộ "valid" 720K video): offset L2 thật là `[136458, 140554, 148746, 152842]` (2 band đầu nằm ở chỗ trước đây tưởng là "gap trống" giữa L1a/L1b), thứ tự token trong nhóm 7-token/frame là `L0, L1a, L2_0, L2_1, L1b, L2_2, L2_3` (xen kẽ), KHÁC với scheme tự nghĩ trước đó (`[148746, 152842, 156938, 161034]`, dồn hết L2 sau L1b). Đã sửa khớp đúng ở cả 3 nơi: `tools/tokenizer/build_tokenizers.py` (`snac_l2_tokens()`), `data_prep/laion_emotional_roleplay/tokenize_snac.py` (`OFFSET_L2` + thứ tự trong `encode_speak()`), `pipeline_pose/snac_finevideo.py` (tương tự). Vì chưa từng train với scheme cũ nên sửa hoàn toàn miễn phí. Thêm `decode_speak_tokens()` vào `tools/decode/decode_snac.py` (`--format speak`, decode thật L2 chứ không zero-fill). Verify round-trip token-string thật (không phải raw code) trên 1 record tiếng Anh thật (`cv_Fairy-2__b1_13_Astonishment_Surprise_1`, 798 token) — chạy sạch, gửi user nghe → **user duyệt, chốt scheme này**. Output: `samples/snac_l2_leo_scheme_fix/` (script tái dùng: `tools/snac_speak_roundtrip_test.py`).
+
+### 2. Thêm token `<listen>`/`<speak>` — thiết kế theo VAI TRÒ, không theo format hay trạng thái voice-clone
+Quyết định của user (23/07): `<listen>` = audio nền/môi trường model tự mô tả (luôn dùng cho FineVideo, không đổi gì — vẫn `encode_listen()` 3 tok/frame); `<speak>` = MỌI audio là "trả lời" của model (luôn dùng cho roleplay dataset), **kể cả khi giọng chưa được voice-clone** ("cứ là trả lời lại thì là speak thôi") — voice-clone của Chien là nâng cấp AUDIO NGUỒN sau này, không đổi tag/token. Đã sửa: `pipeline_pose/phase6_merge_adaptive.py::build_snac_insertion()` wrap `<listen>` (FineVideo); `data_prep/laion_emotional_roleplay/tokenize_snac.py::flatten_record()` wrap `<speak>` (roleplay, không phân biệt giọng thô hay đã clone); `tools/decode/decode_snac.py` regex nhận cả `<snac>` (cũ, tương thích ngược) lẫn `<listen>`/`<speak>`. Thêm `listen_speak_tokens()` (4 token) vào `build_tokenizers.py`, append cuối cùng.
+
+**Phát hiện quan trọng khi trả lời "tại sao có gap data nghe"**: đọc lại `phase6_merge_adaptive.py` xác nhận audio FineVideo nằm ở phía ASSISTANT (model tự sinh), không phải phía USER — nên dù có "nghe" theo nghĩa video có âm thanh, vẫn CHƯA có ví dụ nào model nhận audio làm input hội thoại thật (gap cho vòng lặp real-time nghe/nói của Huu vẫn còn treo, chưa data nào dạy được).
+
+### 3. Tokenizer rebuild — vẫn đang chạy rất lâu (>1h25min tại thời điểm ghi), chưa rõ nguyên nhân
+Build lại `tokenizer_vla_qwen3` với tổng 16,660 token mới (272 t-token window24 + 16,384 SNAC L2 scheme Leo + 4 listen/speak), append cuối `all_vla_tokens()`. Chạy qua tmux (`tokenizer_build`), log thật `logs/tokenizer_build_test.log` (đã sửa lỗi buffer — dùng `python -u` + `nice -n 15`). **Vẫn đang chạy tại thời điểm ghi log này (>1h25min, vẫn 99.8% CPU, không phải treo)** — lâu hơn hẳn ước tính trước (~20-30 phút). Nếu phiên sau thấy vẫn chưa xong hoặc tmux mất, cần điều tra vì sao `add_tokens()` chậm bất thường (nghi vấn: nhiều token hơn, hoặc do `nice` làm chậm khi máy bận). Output dự kiến: `logs/tokenizer_vla_qwen3_v2_test/`.
+
+### 4. Verify pose 100-video (window=24) — số liệu thật, xong
+Sửa lỗi mix môi trường (SLURM job `1022275` fail), resubmit đúng (`1022278`, chỉ dùng `setup_motionbert.sh`). Chọn lại 100 video mới (list cũ đã mất) → Phase 3 (`slurm/submit_w24_100test.sh`) + Phase 4 chạy sạch 97/97, **keep ratio tổng 44.27%** (15,846/35,794 window) — so với ~54% ở window=8 cũ, chấp nhận được. Phase 5 (`slurm/submit_w24_100test_phase5.sh`): 37/97 video có token (60 rỗng, khớp NaN pattern đã biết). Render 3 video đa dạng (`tools/visualize/render_agent_pose.py`) → `samples/window24_100test_render/` — **user đã xem, duyệt.**
+
+### 5. Harmony4D — full pipeline riêng (normalize-only, không filter monocular) + caption, đã chốt
+Viết `data_prep/harmony4d/phase3_normalize.py` — chỉ dùng `KinematicPreprocessor.split_root_motion()` + `.normalize_bone_lengths()` (giữ scale nhất quán) + `create_windows()`, **bỏ hết** hallucination/ID-switch/temporal-smooth/kinematic-anomaly/stiff-leg filter (tuned riêng cho lỗi monocular, không áp dụng ground truth đa camera Harmony4D) — quyết định trực tiếp của user. Bỏ luôn Phase 4 (YOLO sẽ hiểu nhầm 2 người ôm/vật nhau là occlusion). Kết quả: **416/416 track (100%) qua sạch cả normalize lẫn Phase 5 tokenize, 0 rỗng** (so với 44.27% FineVideo) — output: `outputs/harmony4d_cleaned/`, `outputs/harmony4d_agent_tokens/`.
+
+Render 4 category (hugging/mma/sword/ballroom) qua đúng đường tokenize→decode→render, cộng cả video gốc thật trích từ zip (mp4 có sẵn hoặc ghép từ frame JPEG rời, xem `data_prep/harmony4d/caption_frame_manifest.json` cho cách map category/seq → zip/member) → `samples/harmony4d_phase5_render/`. User xem, thấy hơi "giật cục" ở fps debug 5fps — verify lại bằng render 30fps thật (`*_pose_realtime30fps.mp4`) để xác nhận đây là artifact của tốc độ hiển thị debug, không phải mất chi tiết token. **User chốt: dùng Harmony4D bù agent token, xong.**
+
+Viết `data_prep/harmony4d/flatten_harmony4d.py` — 1 record/track, format `USER: <instruction> ASSISTANT: <agent>...</agent>` (không có video/cosmos, giống cấu trúc đơn giản của roleplay) → `outputs/harmony4d_flat.jsonl`, **416 record, ~2.8M agent token** (ước lượng whitespace-split). Instruction ban đầu chỉ là text cứng theo category (Harmony4D không có caption sẵn, README chỉ có license).
+
+**User yêu cầu làm giàu caption bằng đúng phương pháp FineVideo-VLA (Qwen2.5-VL-3B-Instruct).** Viết `data_prep/harmony4d/caption_harmony4d.py` + `slurm/submit_caption_harmony4d.sh` — khác bản FineVideo gốc (chạy JUWELS CPU-only, env `/p`): bản này chạy JUPITER + `env_stable_vla`, dùng GPU (chỉ 208 sequence, không phải 912,998 anchor point như FineVideo — GPU xong trong vài phút). Sửa `tools/analysis/caption_prototype.py::load_model()` thêm param `device` (mặc định `"cpu"`, không đổi hành vi caller cũ) để hỗ trợ GPU. **Lần chạy đầu (job `1022589`) fail vì compute node không có internet, model chưa cache** — đã tải `Qwen/Qwen2.5-VL-3B-Instruct` từ login node vào `HF_HOME=/e/project1/reformo/nguyen38/jupiter_cache/huggingface`, sửa sbatch export `HF_HOME`+`HF_HUB_OFFLINE=1`, resubmit (`1022623`) — đang chạy, chưa có kết quả tại thời điểm ghi log.
+
+**Việc còn lại khi caption xong**: update `flatten_harmony4d.py` dùng caption thật thay vì text category cứng, chạy lại flatten.
+
+### 6. Bắt đầu FULL-SCALE FineVideo (window=24) — Phase 3→4→5 đã submit, Phase 6 CHƯA vì phát hiện phụ thuộc lớn cần user quyết
+User yêu cầu "chạy full scale thôi" cho FineVideo. Đã submit chain SLURM có dependency (không cần Phase 1/2 — HRNet/MotionBERT không đổi gì theo window size):
+- `slurm/submit_kinematics_w24.sh` → job `1022594` (Phase 3, toàn bộ ~40,804 video, output `outputs/states_jsonl_w24/`)
+- `slurm/submit_yolo_w24.sh` → job `1022595` (Phase 4, phụ thuộc `1022594`, output `outputs/yolo_cleaned_w24/`)
+- `slurm/submit_phase5_w24.sh` → job `1022596` (Phase 5, phụ thuộc `1022595`, output `outputs/agent_tokens_adaptive_w24/`)
+
+**CHƯA submit Phase 6 (merge)** — phát hiện quan trọng khi đọc lại `slurm/submit_merge_adaptive_v5.sh`: Phase 6 cần input `training_ready_rank_*.jsonl` (output Step A — cosmos/seed2/avc_lm). Nhưng Step A đã được sửa code từ phiên trước (§35-38 REPORT.md: bỏ square-crop cosmos, resize 256 giữ tỉ lệ, window=24+cosmos-stride=3) nhưng **CHƯA từng chạy lại full-scale trên 40K video thật** — đây chính là "cam kết compute lớn, khó đảo ngược" đã bị hoãn nhiều lần trong các phiên trước (40 node × 4 GPU, cosmos token tăng ~2.35x). Nếu chạy Phase 6 merge ngay bằng `training_ready_rank_*.jsonl` CŨ (window=8-chunk, cosmos low-res/vuông), sẽ bị lệch `chunk_timing` với agent token window=24 mới. **Cần hỏi lại user: có muốn full-scale Step A re-tokenize luôn cùng lúc không (rất tốn, ~40 node×4GPU), hay tạm merge với `training_ready` cũ chấp nhận lệch, hay chờ quyết riêng?** — chưa tự quyết, đây là quyết định lớn đã được gate rất kỹ trong lịch sử dự án.
+
+### Trạng thái cuối phiên — checklist resume
+- [ ] Tokenizer build (>1h25min, vẫn chạy, tmux `tokenizer_build`) — check `logs/tokenizer_build_test.log`
+- [ ] Job `1022594`/`1022595`/`1022596` (Phase 3→4→5 window=24, full 40K FineVideo) — check `squeue -u nguyen38`, log `logs/kin_w24_full_*.log` / `logs/yolo_w24_full_*.log` / `logs/p5_w24_full_*.log`
+- [ ] Job `1022623` (Harmony4D caption, GPU, JUPITER) — check `logs/caption_harmony4d_1022623.log`, output `outputs/harmony4d_captions.jsonl`
+- [ ] **Quyết định cần hỏi lại user**: Phase 6 merge FineVideo — có full-scale re-tokenize Step A (cosmos/seed2) luôn không?
+- [ ] Sau khi caption Harmony4D xong: update + chạy lại `flatten_harmony4d.py` dùng caption thật
+- [ ] Chưa làm: re-tokenize `emotional-roleplay` (dùng `--format speak` mới) và `omnivideo_100k` (pipeline cosmos/window đã đổi) — user tự nhắc lại 23/07, cần lên kế hoạch riêng
+- [ ] Oversample Harmony4D trong mix — đã giải thích khái niệm cho user, chưa chốt số cụ thể
+
+---
+
+## Phiên tiếp (23/07/2026, cùng ngày) — caption Harmony4D xong (208/208), oversample 20x, PHÁT HIỆN + SỬA bug Seed2 nghiêm trọng trước khi bắn full-scale, Step A full-scale (40 node × 4 GPU) đã submit
+
+### 1. Caption Harmony4D — xong, 208/208, sau 4 lần thử lỗi liên tiếp
+Thứ tự lỗi gặp phải + cách sửa (giữ lại làm bài học, mỗi lỗi 1 nguyên nhân khác nhau hoàn toàn):
+1. Compute node không internet → tải `Qwen/Qwen2.5-VL-3B-Instruct` từ login node vào `HF_HOME=/e/project1/reformo/nguyen38/jupiter_cache/huggingface` trước.
+2. Thiếu binary `unzip` trên compute node → đổi sang `zipfile` built-in Python thay vì shell ra `unzip`.
+3. `CUDA error: device-side assert triggered` ngay item đầu (GPU, fp16) → **user yêu cầu đừng bỏ GPU** ("gpu mới nhanh hơn được cho captioning") — thử lại đúng hướng: đổi `float16`→`bfloat16` trong `tools/analysis/caption_prototype.py::load_model()` (thêm param `device`, mặc định `"cpu"` không đổi hành vi caller cũ như `caption_finevideo.py`) — **fix đúng, chạy sạch**.
+4. Segfault "BLAS: Bad memory unallocation" ở lần thử CPU tạm thời (trước khi quay lại GPU) — do thiếu giới hạn `OMP_NUM_THREADS`/`MKL_NUM_THREADS`/`OPENBLAS_NUM_THREADS` (đã thêm vào `caption_harmony4d.py`, không còn liên quan sau khi quay lại GPU nhưng giữ lại phòng khi cần CPU sau này).
+
+**User yêu cầu quy trình đúng**: test trên login node (có GPU GH200) trước khi submit full-scale — đã làm, phát hiện chất lượng caption ban đầu kém (nói về tripod/camera thay vì hành động 2 người) → sửa prompt riêng cho Harmony4D (`caption_harmony4d.py::PROMPT`, yêu cầu rõ "ignore tripods/cameras, describe what the two people are doing together") → chất lượng khá hơn rõ rệt (đúng "martial arts"/"boxing" nhiều case) nhưng vẫn có case chung chung "motion-capture session" → **quyết định: kết hợp category text (luôn đúng) + caption VLM (thêm chi tiết)**, không thay hẳn. Submit full-scale (`1022718`, JUPITER+GPU+bf16), **208/208 thành công, 0 fail**.
+
+### 2. Oversample Harmony4D 20x — đã làm, đã lưu vào memory
+`data_prep/harmony4d/flatten_harmony4d.py` viết lại: load caption thật (`outputs/harmony4d_captions.jsonl`), ghép `"{category text} {vlm caption}"` làm instruction, và **lặp mỗi record 20 lần** (`OVERSAMPLE_FACTOR = 20`, id suffix `_os{N}` để không trùng). Lý do: 2.8M token so với 32B là vô hình nếu để tự nhiên, trong khi đây là nguồn agent-token chất lượng cao nhất (ground truth đa camera, không qua ước lượng monocular). Kết quả: 416 track → **8,320 record, ~56M token hiệu dụng/epoch**. Số 20x là khởi điểm hợp lý, chưa tinh chỉnh kỹ — cần xem lại khi biết tổng token budget mix cuối cùng. Đã lưu quyết định vào memory (`project_harmony4d_oversampling.md`).
+
+### 3. PHÁT HIỆN NGHIÊM TRỌNG trước khi bắn Step A full-scale: Seed2Tokenizer load lỗi âm thầm — mọi video sẽ có seed2 rỗng nếu không phát hiện
+User yêu cầu "full scale Step A" (đã đồng ý 2 lần, nói "không tốn compute bằng pose pipeline đâu" — thực tế lớn hơn nhiều: 40 node × 4 GPU × 9h = 1,440 GPU-giờ, đã note lại cho user biết). Trước khi bắn, **theo đúng yêu cầu của user "chạy thử login node trước"** (áp dụng luôn nguyên tắc này cho cả Step A, không chỉ caption), chạy smoke test `pipeline.py` trực tiếp trên login node (có GPU) — phát hiện:
+
+- **Lỗi 1**: `output_base_name="training_ready"` không đổi → cơ chế resume-skip của `process_pipeline()` sẽ scan thấy TOÀN BỘ 40K video_id đã có trong file cũ → **skip hết, không áp dụng fix nào của phiên này**. Sửa: đổi thành `"training_ready_w24"` (cả `prototype/pipeline.py` lẫn mirror `pipeline_video/pipeline.py`) → file mới, không gì để resume, full reprocess thật.
+- **Lỗi 2 (nghiêm trọng nhất)**: `Seed2Tokenizer` load lỗi `cannot import name 'apply_chunking_to_forward' from 'transformers.modeling_utils'` — hàm này đã dời sang `transformers.pytorch_utils` ở bản transformers hiện tại (4.57.6). **Lỗi bị nuốt bởi `except Exception: print(...)` rồi tiếp tục chạy** — `self.tokenizer` ở lại `None`, và `encode_image()` có sẵn `except Exception: return []` riêng → **mọi video sẽ có seed2 token RỖNG hoàn toàn, không có bất kỳ error nào hiển thị ở tầng ngoài**. Nếu không bắt được ở smoke test, 40 node × 9h sẽ chạy xong "thành công" nhưng dữ liệu seed2 hỏng toàn bộ. Sửa import (`transformers.pytorch_utils`) ở cả 2 bản (`prototype/seed2/seed2_tokenizer.py` + mirror `pipeline_video/seed2/seed2_tokenizer.py`).
+- **Lỗi 3**: Sau khi sửa lỗi 2, lộ ra lỗi sâu hơn: `'NoneType' object has no attribute 'predictions'` trong `tie_weights()` — do transformers mới tự động gọi `get_output_embeddings()` đệ quy trên MỌI submodule `PreTrainedModel`, và 1 submodule bên trong (`BertLMHeadModel`) có `self.cls` là `None` ở nhánh này (chưa xác định chính xác tại sao trong 2800 dòng code vendor, không đào sâu do áp lực thời gian — sửa an toàn thay vì đào tận gốc). Sửa: thêm guard `if self.cls is None: return None` cho cả `get_output_embeddings()`/`set_output_embeddings()`, ở cả 2 class (`BertLMHeadModel`, dùng làm Q-former nội bộ) trong cả 2 bản file.
+- **Verify từng bước bằng script chẩn đoán riêng** (không phải đoán): xác nhận `encode()` thật trả về đúng tensor `(1, 32)` — 32 token/ảnh đúng quy ước dự án. Chạy lại full smoke test qua chính `pipeline.py` → video thật đầu tiên (`d6b4OmUFt7I`) ra **Seed2 Density: 32.46 tokens/second** (khác 0, đúng) + cosmos/avc_lm cũng có dữ liệu thật (`<seed2> 3758 2157...  </seed2>` — dạng raw int, chưa phải atomic tag, đúng format trung gian trước Phase 6/7).
+
+**Bài học quan trọng để nhớ**: pattern `except Exception: <print và im lặng tiếp tục>` xuất hiện nhiều nơi trong `prototype/pipeline.py` (không chỉ Seed2) — bất kỳ modality nào load lỗi kiểu này sẽ ra data rỗng mà KHÔNG có lỗi hiển thị rõ ràng ở cấp cao. Luôn cần smoke test thật (không chỉ "chạy không crash") và kiểm tra NỘI DUNG token thật (không chỉ tồn tại file) trước khi cam kết compute lớn.
+
+### 4. Step A full-scale — đã submit, đang chạy khỏe
+`prototype/submit_official_w24.sbatch` (40 node × 4 GPU = 160 GPU, 9h, account `reformo`, partition `booster`, `--chdir` tường minh vào `prototype/` để mọi path tương đối — `./seed2`, `avc_lm_v2`, `pretrained_ckpts` — resolve đúng như bản chạy gốc). Job **`1022730`**, output `training_ready_w24_rank_*.jsonl` trong `prototype/`. Đã xác nhận nhiều rank (56, 59, 65, 70, 78, 87, 119, 120, 122, 124, 127, 143, 157, 159...) đều tokenize thành công video đầu tiên của shard, không lỗi.
+
+### Trạng thái cuối phiên — checklist resume (thay thế checklist cũ)
+- [ ] **Tokenizer build vẫn đang chạy — gần 2 tiếng (>1h56min tại thời điểm ghi), vẫn 99.8% CPU, KHÔNG hang nhưng bất thường chậm.** tmux `tokenizer_build`, log `logs/tokenizer_build_test.log`. Nếu phiên sau thấy vẫn chưa xong, cân nhắc kill + điều tra (có thể do số lượng token 16,660 + `nice` làm chậm, chưa xác nhận nguyên nhân chính xác).
+- [ ] **Job `1022730` — Step A full-scale (40 node × 4 GPU, 9h)** — check `squeue -u nguyen38`, log `prototype/logs/w24_1022730_out.log` / `_err.log`. Đang chạy khỏe tại thời điểm ghi log.
+- [ ] Job `1022594`/`1022595`/`1022596` (Phase 3→4→5 window=24, full 40K FineVideo pose) — cần check lại trạng thái, khả năng đã xong hoặc đang chạy Phase 4/5.
+- [x] Harmony4D caption + oversample: XONG hoàn toàn — `outputs/harmony4d_captions.jsonl` (208 dòng), `outputs/harmony4d_flat.jsonl` (8,320 record, oversample 20x).
+- [ ] **Sau khi Step A `1022730` xong**: chạy Phase 6 merge (`submit_merge_adaptive_v5.sh`-style, trỏ input `training_ready_w24_rank_*.jsonl` + `agent_tokens_adaptive_w24/` + `snac_tokens/` cũ không đổi) rồi Phase 7 flatten — **nhớ bật dropout cosmos đúng cách lần này** (xem mục dưới).
+- [ ] Chưa làm: re-tokenize `emotional-roleplay` (`--format speak`) và `omnivideo_100k` (cosmos fix) — user tự nhắc lại 2 lần, cần lên kế hoạch riêng sau khi FineVideo xong.
+- [ ] **Quyết định dropout cosmos cho Phase 7 lần train tới**: hạ tầng dropout đã có sẵn (`phase7_flatten.py --drop_cosmos`, mặc định 0.5) nhưng model v2 thực tế chạy KHÔNG dropout gì (user tự xác nhận qua chat Discord) — đề xuất lần này set thật `--drop_cosmos` cao hơn mặc định (~0.65, vì cosmos giờ đắt hơn ~2.35x sau fix resolution) khi chạy Phase 7 thật, đừng quên như 2 lần train trước.
+
+---
+
+## Phiên tiếp (23/07/2026, cùng ngày, tiếp) — Roleplay speak XONG; KHỦNG HOẢNG QUOTA INODE project1 phát hiện + sửa (mất data thật, đã restart); OmniVideo-100K Step A submit; di chuyển `output_vla` (1.2TB) sang data1
+
+### 1. Roleplay `--format speak` full-scale — XONG hoàn toàn
+Copy source parquet từ `/p` sang `/e/data1/.../laion_emotional_roleplay_data/` (2.4GB, vì `/p` không mount trên compute node). Submit `slurm/submit_roleplay_speak.sh` sau khi smoke test login node trước (đúng quy trình). **Kết quả: 67,459/67,459 row thành công, 0 lỗi, 54,578,440 token SNAC speak-format** → `/e/data1/.../laion_emotional_roleplay_flattened_speak/roleplay_snac_speak_flat_*.jsonl`.
+
+### 2. ⚠️ KHỦNG HOẢNG: quota inode project `reformo` vượt ngưỡng — Step A đã mất data thật trước khi phát hiện
+Trong lúc chuẩn bị chạy OmniVideo-100K Step A, `Edit` tool tự fail với lỗi `EDQUOT`. Điều tra bằng `jutil project dataquota -p reformo`:
+```
+exa_project1: inode-usage 4,165,192 / soft-limit 4,000,000 / hard-limit 4,400,000  (VƯỢT soft limit)
+```
+Đây là quota **chung cả project reformo** (không riêng account này), byte-size dư dả (9.3TB/21TB) — chỉ riêng **số lượng file (inode)** là vấn đề. Nguyên nhân: `prototype/pipeline.py` (Step A) ghi rất nhiều temp file nhỏ (per-rank `videos_rank_N/`, `metadata_rank_N/`, `temp_frames_rank_N/`, `temp_seed2_rank_N.jpg`) xuống `/e/project1/reformo/nguyen38/` (filesystem `exa_project1`) thay vì `/e/data1/...` (filesystem `exa_data1`, dư inode gấp nhiều lần: 84.6M/110M soft limit).
+
+**Hậu quả đã xảy ra thật**: job Step A full-scale đang chạy (`1022730`, submit trước đó) đã có **473+ lỗi "Disk quota exceeded" bị nuốt bởi except-Exception im lặng** → các video đó có seed2/cosmos/avc_lm RỖNG mà không hiện lỗi gì ở tầng ngoài. Đã **kill job `1022730`** ngay khi phát hiện.
+
+**Sửa tận gốc** (không phải chỉ dọn tạm): thêm `SCRATCH_BASE`/`SCRATCH_DIR` = đường dẫn tuyệt đối trên `/e/data1/...`, thay mọi path tương đối (`./videos`, `temp_seed2_rank_N.jpg`...) trong cả 3 nơi:
+- `prototype/pipeline.py` (bản production thật)
+- `pipeline_video/pipeline.py` (mirror git)
+- `data_prep/omnivideo_100k/step_a/step_a_tokenize_video.py`
+
+Output cuối (`training_ready_w24_rank_*.jsonl`) cũng dời sang `/e/data1/.../FineVideo-VLA/` (trước đó bị resolve tương đối, vô tình nằm ở project1). Dọn 511 thư mục scratch mồ côi dưới `prototype/` để giải phóng inode ngay lập tức (verify: sau dọn, `Edit` tool hoạt động lại bình thường — lưu ý: `jutil` cache số liệu, KHÔNG cập nhật real-time, đừng tin số liệu ngay sau khi dọn, phải test bằng thao tác ghi file thật).
+
+Verify lại bằng smoke test login node (đúng quy trình): output + scratch đều ra đúng `data1`, không còn lỗi quota, seed2 vẫn có data thật (32.46 token/s). **Resubmit Step A FineVideo → job `1022987`** (thay `1022730` đã kill). Áp dụng fix tương tự cho OmniVideo-100K, smoke test sạch (seed2=3776/5152, không lỗi) → **submit `1023101`** (`data_prep/omnivideo_100k/step_a/submit_step_a_full_v2.sbatch`, output mới `step_a_output_v2/`, không đụng 32 file pilot cũ đã stale).
+
+**Đã lưu vào memory** (`feedback_scratch_data1_not_project1.md`): quy tắc chung từ giờ — MỌI file, kể cả scratch tạm, đều phải ra `/e/data1/datasets/playground/mmlaion/shared/nguyen38/`, không bao giờ `/e/project1/...`.
+
+### 3. Khảo sát thêm project1 — tìm thấy 2 thủ phạm inode lớn khác, CHƯA xử lý vì đang bị job phụ thuộc
+Đếm file theo thư mục con của `/e/project1/reformo/nguyen38/`:
+- `3d-human-pose/miniforge3/` — **134,833 file** (97% inode của cả repo!) — 1 bản conda cài nguyên trong repo, đang được `setup_motionbert.sh` dùng cho job pose đang chạy.
+- `env_stable_vla/` — 54,410 file (venv Python) — đang được job Step A dùng.
+- `pythonformer-workshop/` — 290,496 file — KHÔNG rõ có còn cần không, đã hỏi user, **chưa có câu trả lời**.
+- `output_vla` — chỉ 826 file nhưng **1.2TB dung lượng** (model checkpoint) — không phải vấn đề inode nhưng user yêu cầu chuyển sang data1 luôn cho nhất quán.
+
+**Chưa di chuyển `miniforge3/`/`env_stable_vla/`** — đợi các job đang chạy (Phase 4/5 pose, Step A) xong trước, tránh làm sập job đang chạy giữa chừng.
+
+### 4. Đang DI CHUYỂN THẬT (không phải copy) `output_vla` (1.2TB) sang data1 — chạy trong tmux, sống độc lập với session
+User yêu cầu rõ: phải là move thật (xoá bản gốc sau khi verify), và phải chạy tmux+log để sống được qua lúc tắt session. Viết `slurm/move_output_vla.sh` — rsync → so khớp file-count + tổng byte-size giữa nguồn/đích → **chỉ xoá bản gốc ở project1 nếu khớp tuyệt đối**, nếu lệch thì dừng lại không xoá gì (`exit 1`), an toàn. Chạy trong tmux session `move_output_vla`, log thật `logs/move_output_vla.log` (đã kill bản nohup chạy trước đó — cùng 1 việc nhưng không sống được qua session, không log ra file đúng chuẩn). Chứa 2 checkpoint set (`qwen3_1.7b_vla_v2`, `vla_adaptive`) — đã xác nhận không có job/process nào đang mở file trong đó trước khi bắt đầu. **Chưa xong** — resume check: `tmux attach -t move_output_vla` hoặc đọc `logs/move_output_vla.log`, tìm dòng `DONE. output_vla fully moved` để biết đã xong + xoá gốc an toàn hay chưa. **Sau khi xong**: cập nhật lại `OUTPUT_DIR` trong `CLAUDE.md`/lệnh submit training (hiện đang document là `/e/project1/reformo/nguyen38/output_vla`, cần đổi thành `/e/data1/datasets/playground/mmlaion/shared/nguyen38/output_vla`) — CHƯA làm bước cập nhật doc này.
+
+### Trạng thái cuối phiên — checklist resume (cập nhật, thay checklist cũ)
+Tất cả job dưới đây đã check log, **0 lỗi tại thời điểm ghi**:
+- [ ] **Tokenizer build** — vẫn chạy, **~3 tiếng rồi** (bắt đầu ghi nhận bất thường từ ~1h), tmux `tokenizer_build`, log `logs/tokenizer_build_test.log`. Chưa quyết định có kill điều tra không.
+- [ ] **Job `1022987`** — Step A FineVideo full-scale (40 node×4GPU, ĐÃ FIX quota, restart từ đầu) — log `prototype/logs/w24_1022987_out.log`.
+- [ ] **Job `1023101`** — Step A OmniVideo-100K full-scale (8 node×4GPU, ĐÃ FIX quota + cosmos) — log `logs/1023101_omni100k_stepA_v2_out.log`, output `omnivideo_100k/step_a_output_v2/`.
+- [ ] **Job `1022595`** — Phase 4 pose FineVideo full-scale (YOLO) — chạy hơn 1.5 tiếng, log `logs/yolo_w24_full_1022595.log`.
+- [ ] **Job `1022596`** — Phase 5 pose — đang chờ `1022595`.
+- [ ] **Move `output_vla`** — tmux `move_output_vla`, log `logs/move_output_vla.log`, tự verify + tự xoá bản gốc khi khớp — chưa xong, cần update `CLAUDE.md`'s `OUTPUT_DIR` sau khi hoàn tất.
+- [x] Roleplay speak-format: XONG — `laion_emotional_roleplay_flattened_speak/`.
+- [x] Harmony4D (normalize + caption + oversample 20x): XONG — `outputs/harmony4d_flat.jsonl`.
+- [x] **`pythonformer-workshop/`**: user xác nhận **giữ lại**, không đụng khi dọn inode nữa.
+- [ ] Sau khi Step A FineVideo (`1022987`) xong: chạy Phase 6 merge + Phase 7 flatten (nhớ set `--drop_cosmos ~0.65`, xem mục cũ phía trên).
+- [ ] Sau khi các job pose/Step A hiện tại xong: di chuyển `miniforge3/` + `env_stable_vla/` sang data1 (không làm khi đang có job phụ thuộc chạy).
+- [x] `omnivideo_100k` Step A → có bước flatten/merge riêng rồi (`phase6_merge_omnivideo.py`/`phase7_finalize_omnivideo.py`, viết từ trước) — xem phiên dưới, giờ đã update sang window=24 + wire SNAC.
+
+---
+
+## Phiên tiếp (23/07/2026, cùng ngày, tiếp nữa) — omnivideo-100k migrate sang window=24 + SNAC, phát hiện + sửa 2 bug cosmos/SNAC nghiêm trọng khác, tuning OOM SNAC worker, dọn `data1/`, bàn tổ chức lại
+
+### 0. Việc kiểm tra job + tổng hợp nhanh
+Cả 3 job pending cuối phiên trước đều **COMPLETED sạch**: Phase 4 YOLO FineVideo (`1022595`), Phase 5 agent tokens (`1022596`, 17,820 file), Step A OmniVideo-100K v2 (`1023101`, 32/32 rank). Move `output_vla` sang data1: verify lại kỹ — báo "MISMATCH" trước đó là **báo động giả** (đối chiếu byte-for-byte từng file: `qwen3_1.7b_vla_v2` 371/371 khớp tuyệt đối, `vla_adaptive` 108/108 khớp tuyệt đối; lệch chỉ do 1 thư mục `vla_25b_test` có sẵn từ trước ở đích, không liên quan lần move này). Tokenizer test (16,660 token mới) verify PASS — so trực tiếp với `tokenizer_vla_qwen3` production thật: 106,258/106,258 ID cũ không đổi, token mới atomic. Roleplay speak-format: 67,459/67,459 xong, đã sửa `upload_hf.py` sang scheme speak mới + user tự upload đè lên repo cũ (`EmpathicRobotics/emotional-roleplay-finetuning-dataset-flattened`).
+
+### 1. Yêu cầu "omnivideo-100k cũng phải theo format mới FineVideo-VLA" — phát hiện CHƯA làm, dù tưởng đã làm
+User hỏi lại kỹ, phát hiện: job `1023101` (Step A OmniVideo-100K "v2") chỉ fix bug cosmos resolution/quota/seed2-import — **không hề đổi `CHUNK_SIZE` từ 8 sang 24**. Đây là lỗi báo cáo của tôi (nói "đã re-tokenize xong" mà không kiểm tra window size thật). Sửa `step_a_tokenize_video.py`: `CHUNK_SIZE=8→24`, thêm `COSMOS_STRIDE=3` (stride frame trước khi encode cosmos, giữ nguyên 8 frame/chunk cho cosmos encoder). Migrate luôn pose Phase 3/4 (`phase3_kinematics_omnivideo.py`, `phase4_yolo_cleaner_omnivideo.py`) sang `WINDOW_SIZE=24`, Phase 5 dùng chung script `pipeline_pose/phase5_adaptive_pchip.py --window-frames 24 --stride 24`. Viết mới `data_prep/omnivideo_100k/snac_omnivideo.py` (SNAC listen-format, tự tính `n_chunks` từ duration+CHUNK_SIZE, không phụ thuộc file merge nào). Wire cả `<agent>` lẫn `<listen>` (SNAC) vào `phase6_merge_omnivideo.py` (trước đó chỉ có agent). User yêu cầu xoá sạch data window=8 cũ của omnivideo (đã làm — xem mục 5).
+
+### 2. Bug nghiêm trọng #1: cosmos bị ép vuông âm thầm ở omnivideo, phá fix aspect-preserving đã làm cho FineVideo
+Đang chạy Step A w24 đầu tiên (`1024421`) thì user hỏi lại "tỉ lệ khung hình không chốt có sao không" — kiểm tra phát hiện `step_a_tokenize_video.py::extract_chunk_frames()` có `scale=512:512` (ép cứng vuông) TRƯỚC khi đưa frame vào cosmos, làm mất tác dụng fix aspect-preserving (REPORT.md §37) mà FineVideo đã có. Video thật 854×480 (16:9) nhưng cosmos ra đúng 512 token/chunk (con số của bản vuông cũ), phải là 896 mới đúng. **Đã kill `1024421` ngay**, sửa `scale=512:512:force_original_aspect_ratio=decrease` (giữ tỉ lệ), verify lại cho ra đúng 896 token/chunk (896×148=132,608 ✓ khớp tuyệt đối). Resubmit `1024774`.
+
+### 3. Bug nghiêm trọng #2: SNAC FineVideo cũng đang tính sai lưới chunk (dùng file merge window=8 cũ)
+Rà lại kỹ SNAC FineVideo (task list + smoke test đã làm trước đó trong phiên): phát hiện `_scan_one_rank_file()` lấy `chunk_timing` từ `final_dataset_adaptive` — file merge **window=8 CŨ** (Phase 6 window=24 thật chưa chạy). Sửa `pipeline_pose/snac_finevideo.py`: bỏ hẳn phụ thuộc `chunk_timing`, tự tính `n_chunks` từ `(end_sec-start_sec)*30/24` giống hệt cách làm cho omnivideo — giờ SNAC FineVideo không cần chờ Phase 6 nữa. Verify: n_chunks giảm đúng ~3x (12/72/50/120 cũ → 4/24/17/40 mới). Phát hiện thêm: job SNAC full-scale trước đó (`1024256`) **đã FAILED sau 6 phút** (báo cáo sai của tôi là "đang chạy") — nguyên nhân: thư mục output cũ (`snac_tokens`, từ 30/6, sai scheme) khiến toàn bộ video bị skip-existing, và file worker log rỗng hoàn toàn. Đã xoá sạch data window=8-era cũ (~6.5GB) trước khi build lại task list mới (`snac_task_list_w24.json`, 40,804 video).
+
+### 4. Bug #3: CUDA OOM khi submit lại SNAC FineVideo full-scale — tuning worker count
+Submit lại (`1024872`) với 128 worker/4GPU (copy nguyên tỷ lệ từ YOLO) → **127/128 worker OOM** (SNAC tốn RAM theo độ dài audio, activity FineVideo có thể dài hơn hẳn video omnivideo). Giảm xuống 32 (8/GPU, khớp tỷ lệ omnivideo SNAC đã chạy sạch trước đó) → **vẫn OOM** (worker giữ 10-16GB/worker). Giảm tiếp xuống 16 (4/GPU) → ổn định, chỉ 1/16 worker OOM thoáng qua 1 lần rồi tự phục hồi, không lặp lại. Data ghi kiểu "tất hoặc không" (chỉ `write()` sau khi xử lý xong hết activity của 1 video) nên output các lần OOM trước **không hỏng, resume đúng** qua `skip_existing=True` — không cần xoá gì, chỉ dọn log worker rác của các lần chạy cũ (112 file).
+
+### 5. Dọn `data1/` + phát hiện lớn: ~4TB dữ liệu nghi ngờ không liên quan VLA
+User yêu cầu xoá data window=8 cũ của omnivideo (đã làm: `step_a_output`, `step_a_output_v2`, `pose_states_jsonl_30fps`, `pose_yolo_cleaned_30fps`, `pose_agent_tokens_adaptive` (không có hậu tố `_w24`), `pose_2d_json_pilot` trên data1; toàn bộ `/p/data1/mmlaion/shared/vla/omnivideo_100k*` — giải phóng ~87GB data1 + ~50GB /p). Khảo sát toàn bộ `/e/data1/.../nguyen38/` theo yêu cầu, phát hiện:
+- Xoá luôn `video_staging/` (thiếu chữ "s", **rỗng hoàn toàn**, trùng tên `videos_staging/`) — an toàn 100%.
+- **Nghi vấn lớn, CHƯA xoá lúc phát hiện**: `outputs.tar` (~2.56TB, 14/5) + `videos_staging.tar` (~630GB, 14/5) — user xác nhận đây chỉ là bản nén của 2 thư mục sống (`outputs/`, `videos_staging/`) đang dùng, **đồng ý xoá**. `nemotron_base/` (384GB), `tokenized_output_project/` (328GB, chứa `abl_science_10B`/`abl_summaries_15B`/`abl_wikipedia_10B` — tên kiểu ablation LLM tổng quát, không phải VLA), `output_v3/` (145GB, checkpoint "100B") — user xác nhận **là của dự án khác**, không đụng nội dung.
+- Đã lưu registry đầy đủ path hiện tại/cũ vào memory (`reference_data1_path_registry.md`).
+
+### 6. Đề xuất tổ chức lại — ĐÃ BÀN, CHƯA THỰC HIỆN GÌ (user dặn rõ "chưa thao tác gì vội")
+User chốt hướng: gom về đúng **2 thư mục cấp cao nhất** trong `/e/data1/.../nguyen38/`:
+- `alexandria/` — chứa `nemotron_base/`, `tokenized_output_project/`, `output_v3/` (dự án khác, giữ nguyên nội dung, chỉ move).
+- `omni-action/` — chứa MỌI THỨ còn lại (toàn bộ dataset/output VLA: `videos_staging`, `FineVideo-VLA`, `harmony4d*`, `omnivideo_100k`, `laion_emotional_roleplay_*`, `tokenizer_vla_qwen3*`, `output_vla`, `outputs`, `vla_*_tokenized`).
+
+**Lý do làm việc này**: user muốn tránh lặp lại đúng loại lỗi vừa gặp hôm nay (dùng nhầm path/scheme cũ) bằng cách tổ chức rõ ràng hơn.
+
+**Rào cản đã nêu, chưa giải quyết — cần bàn tiếp phiên sau:**
+1. 3 job đang chạy sống (`1022987`, `1024774`, `1025137`) đang ghi trực tiếp vào `FineVideo-VLA/` và `omnivideo_100k/` — **không thể move ngay**, phải đợi xong (job dài nhất còn ~4-4.5h tại thời điểm ghi).
+2. Move xong bắt buộc phải sửa lại TOÀN BỘ path hardcode trong ~15+ file script đã sửa hôm nay (không sed mù, cần verify từng file).
+3. `3d-human-pose/` (chứa 2 conda env, không phải dataset) — chưa quyết xếp vào đâu, hay để riêng.
+4. Ý tưởng tách version thành tầng thư mục con bên trong mỗi dataset (`v1_window8.../`, `v2_window24_snacleo/...`) — user chưa chốt có làm hay chỉ đổi tên nhất quán đơn giản.
+- filesystem check: mọi thứ trong `/e/data1/.../nguyen38/` nằm chung 1 mount (`exa_data1`, GPFS) — `mv` giữa các thư mục con dù cỡ TB cũng chỉ là đổi tên, nhanh gần tức thì, không tốn compute/thời gian đáng kể khi thực hiện thật.
+
+### Việc mới: script upload Harmony4D lên HF, tự viết + smoke test xong
+Viết `data_prep/harmony4d/upload_hf.py` (mirror cấu trúc roleplay's `upload_hf.py`) — nguồn `outputs/harmony4d_flat.jsonl` (8,320 row), tách train/test theo **track gốc** (không rò rỉ oversample copy giữa 2 tập), 8 shard train + 2 shard test. Test `--skip-upload` PASS (7,820 train/391 track, 500 test/25 track). Repo dự kiến: `EmpathicRobotics/harmony4d-flattened`. User sẽ tự chạy với HF_TOKEN riêng — **chưa upload thật**.
+
+### Trạng thái cuối phiên — checklist resume
+- [ ] **`1022987`** Step A FineVideo retok (40 node) — đang chạy, verify cosmos density đúng ~896 tok/chunk (aspect-preserving), dự kiến còn vài giờ nữa.
+- [ ] **`1024774`** Step A OmniVideo-100K w24 (đã fix bug vuông) — đang chạy, verify nhiều video cosmos/896 đều ra số nguyên, đúng.
+- [ ] **`1025137`** SNAC FineVideo full-scale (16 worker, đã fix OOM) — đang chạy ổn định.
+- [x] Pose Phase 3/4/5 OmniVideo-100K w24 — XONG cả 3.
+- [x] SNAC OmniVideo-100K w24 — XONG (32/32 worker, 599K+ token).
+- [ ] Harmony4D upload HF — script xong, user tự chạy khi rảnh.
+- [ ] Sau khi Step A cả 2 bên xong: Phase 6 merge (FineVideo + OmniVideo, OmniVideo giờ đã wire cả agent+listen) → Phase 7 flatten/finalize.
+- [ ] Quyết định tổ chức lại `data1/` thành `omni-action/`+`alexandria/` — đã bàn kỹ, còn 2 câu hỏi mở (mục 6) + đợi job hiện tại xong mới move được.
+- [ ] `outputs.tar`/`videos_staging.tar` (~3.2TB) — user đã đồng ý xoá, **chưa xoá** (ưu tiên thấp hơn việc job đang chạy).
+- [ ] seq_length train v3: khuyến nghị chắc chắn là **16,384** (không phải 8192 như draft cũ trong `qwen3_1.7b_vla_v3.yaml`) — cần cập nhật file config thật khi quyết train lại.
+- [ ] Cosmos dropout: chưa từng áp dụng thật ở 2 lần train trước — ưu tiên hàng đầu cho lần train tới, theo user xác nhận.
+
+### Cập nhật tiến độ job (14:13) — SNAC FineVideo XONG
+- [x] **`1025137` SNAC FineVideo**: COMPLETED — 40,779 file (gần đủ 40,798, số nhỏ fail_audio/không có tiếng là bình thường).
+- [ ] `1024774` Step A OmniVideo-100K w24: ~80% (rank chậm nhất 134/163), ETA ~15-20 phút nữa.
+- [ ] `1022987` Step A FineVideo retok: ~64% (rank chậm nhất 175/274), ETA ~2.8-3 giờ nữa (~17:00).
+
+### Thảo luận chiến lược (14:00-14:12) — bối cảnh quan trọng cho các phiên sau
+User chia sẻ: dự án này thực chất giúp **châu Âu/JSC (Jülich) chạy đua công nghệ multimodal** — mảng này châu Âu/JSC làm rất ít, nên giá trị không nhất thiết phải là "thắng benchmark chất lượng ảnh/video" mà là **xây được năng lực pipeline any-to-any thật trên hạ tầng châu Âu** (JUPITER). Đã lưu đầy đủ khung suy nghĩ này + đánh giá dự án + checklist trước train v3 + đánh giá khả năng publish (ICLR/ICML: chưa đủ, thiếu eval protocol + ablation có kiểm soát, nhưng phát hiện "cosmos áp đảo token budget gây lặp token" có tiềm năng thành 1 workshop paper nếu làm thí nghiệm kiểm soát) vào memory `project_qwen3_v2_training_run.md` (đã update toàn bộ, không còn ghi "chưa submit" nữa — v2 đã train+eval xong từ lâu, chỉ là memory cũ chưa cập nhật).
+
+**Điểm quan trọng riêng, dễ quên**: "mức nào thì ổn" cho seed2/cosmos KHÔNG nên đo bằng độ đẹp khi decode ra ảnh/video — đó là kênh nhận thức/điều kiện hoá cho LLM, bar đúng là **model có dùng đúng thông tin đó khi sinh action/ngôn ngữ tiếp theo không** (đã có bằng chứng PASS: test cross-modal binding, 32 token seed2 → model tự sinh đúng caption). Cosmos đã có trần chất lượng thật (REPORT.md §37, tăng resolution chỉ gain "modest") — đừng đầu tư thêm vào hướng "cosmos đẹp hơn", đòn bẩy thật nằm ở tầng khác (dropout, seq_length, eval harness).

@@ -1,11 +1,17 @@
-"""Step A (video -> seed2/cosmos/avc_lm token) cho OmniVideo-100K, chạy trên JUPITER.
+"""Step A (video -> seed2/cosmos/avc_lm tokens) for OmniVideo-100K, run on JUPITER.
 
-Xem data_prep/omnivideo_100k/JUPITER_STEP_A_TASK.md cho bối cảnh đầy đủ.
+See data_prep/omnivideo_100k/JUPITER_STEP_A_TASK.md for full background.
 
-Không sửa pipeline_video/pipeline.py — chỉ import 3 class tokenizer cấp thấp
-(Seed2Tokenizer/CosmosVideoTokenizer/AVCLMTokenizer) từ bản gốc có đủ checkpoint
-thật ở /e/project1/reformo/nguyen38/prototype/pipeline.py. Toàn bộ logic mới
-(list video, chunk 8-frame, chèn caption/speech, ghi output) nằm ở file này.
+Does not modify pipeline_video/pipeline.py -- only imports the 3 low-level
+tokenizer classes (Seed2Tokenizer/CosmosVideoTokenizer/AVCLMTokenizer) from
+the original, which has the real checkpoints, at
+/e/project1/reformo/nguyen38/prototype/pipeline.py. All the new logic (video
+listing, chunking, caption/speech injection, output writing) lives in this
+file.
+
+2026-07-23: window=24 pivot to match FineVideo-VLA (CHUNK_SIZE 8->24,
+COSMOS_STRIDE=3 added -- see the CHUNK_SIZE comment below) -- was previously
+CHUNK_SIZE=8, no striding.
 """
 import argparse
 import glob
@@ -19,6 +25,12 @@ DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k
 DEFAULT_VIDEOS_DIR = os.path.join(DATA_ROOT, "videos")
 DEFAULT_CAPTIONS_JSONL = os.path.join(DATA_ROOT, "omnivideo_100k_segment_captions.jsonl")
 DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "step_a_output")
+# 2026-07-23: see prototype/pipeline.py's identical fix -- per-rank scratch
+# (temp frames, temp seed2 jpg) moved off exa_project1, which is over its
+# project-wide inode soft limit (jutil project dataquota -p reformo), onto
+# exa_data1 (this dataset's own area, massive inode headroom by comparison).
+SCRATCH_DIR = os.path.join(DATA_ROOT, "step_a_scratch")
+os.makedirs(SCRATCH_DIR, exist_ok=True)
 
 # pipeline.py imports `cosmos_tokenizer` as a local (non-pip) package resolved
 # via sys.path[0] == its own directory, and the 3 tokenizer classes load
@@ -76,7 +88,16 @@ from pipeline import (  # noqa: E402
 
 FFMPEG_BIN = os.environ.get("FFMPEG_PATH")
 TARGET_FPS = 30
-CHUNK_SIZE = 8
+# 2026-07-23: widened from 8 to 24 real frames (0.267s -> 0.8s @ 30fps) to
+# match FineVideo-VLA's window=24 pivot (pipeline_video/pipeline.py,
+# REPORT.md #38 "Option 2" -- 8 frames was too short for visible motion
+# within a chunk). COSMOS_STRIDE samples every Nth real frame from the
+# chunk down to exactly 8 images for the Cosmos encoder (unaffected token
+# cost per chunk): CHUNK_SIZE / COSMOS_STRIDE must equal 8.
+CHUNK_SIZE = 24
+COSMOS_STRIDE = 3
+assert CHUNK_SIZE % COSMOS_STRIDE == 0 and CHUNK_SIZE // COSMOS_STRIDE == 8, \
+    "CHUNK_SIZE/COSMOS_STRIDE must give exactly 8 samples for the Cosmos encoder"
 
 
 def load_captions(path):
@@ -101,7 +122,7 @@ def load_captions(path):
 # documented 256px (shorter side) minimum, and non-aspect-preserving. Fixed
 # 2026-07-22 to resize-shorter-side+center-crop at 256 (see REPORT.md #35);
 # this file needed no change since it calls encode_video_chunk() with no
-# target_size override. One ffmpeg call per 8-frame chunk
+# target_size override. One ffmpeg call per CHUNK_SIZE-frame chunk
 # (bounded to ~8 small PNGs on disk at a time) rather than dumping an entire
 # video's frames upfront — full-video upfront extraction at native resolution
 # (up to 5400 frames/video, unscaled) blew the per-user disk quota once 32
@@ -121,7 +142,19 @@ def extract_chunk_frames(video_path, start_sec, num_frames, temp_dir):
     command = [
         FFMPEG_BIN, "-y", "-ss", str(start_sec), "-i", video_path,
         "-t", str(num_frames / TARGET_FPS), "-r", str(TARGET_FPS),
-        "-vf", f"scale={EXTRACT_SIZE}:{EXTRACT_SIZE}",
+        # 2026-07-23: aspect-preserving bound (was scale=EXTRACT_SIZE:EXTRACT_SIZE,
+        # a hard square squash) -- that silently defeated the cosmos
+        # aspect-preserving fix (prototype/pipeline.py's encode_video_chunk(),
+        # REPORT.md #37) because it forced every frame to w0==h0 *before*
+        # cosmos's own aspect-aware resize ever saw the real shape, so
+        # omnivideo's cosmos output was still square (512 tok/chunk) instead
+        # of matching FineVideo's non-square (~896 tok/chunk for 16:9).
+        # force_original_aspect_ratio=decrease bounds both dimensions to
+        # EXTRACT_SIZE (same disk-usage goal as before) without distorting
+        # aspect; seed2's branch does its own explicit square resize
+        # afterward (frame.resize((seed2.target_size,)*2)) so this doesn't
+        # affect seed2.
+        "-vf", f"scale={EXTRACT_SIZE}:{EXTRACT_SIZE}:force_original_aspect_ratio=decrease",
         "-f", "image2", os.path.join(temp_dir, "frame_%02d.png"),
     ]
     subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -141,8 +174,9 @@ def build_segment_anchors(segments, n_chunks):
     segment start) and wrap its caption/speech in tags there.
 
     Deliberately NOT inserted at every overlapping chunk: a segment averages
-    ~11s (~41 chunks at 8-frame/30fps) but captions run 300-500 words — inserting
-    at every chunk would repeat the same paragraph ~41x. Mirrors the anchor-point
+    ~11s (~14 chunks at 24-frame/30fps) but captions run 300-500 words —
+    inserting at every chunk would repeat the same paragraph ~14x. Mirrors
+    the anchor-point
     approach already used for FineVideo captions/speech (see PROGRESS_VI.md).
     """
     anchors = {}
@@ -164,8 +198,10 @@ def tokenize_video(video_path, duration_sec, seed2, cosmos, avc_lm, anchors, tem
     """Mirrors VLADatasetBuilder.tokenize_activity_frames() in pipeline.py, plus
     caption/speech injection: [<caption>?] <cosmos> <avc_lm> [<speech>?] per chunk.
 
-    Streams frames one 8-frame chunk at a time (extract_chunk_frames) instead of
-    loading the whole video upfront — see EXTRACT_SIZE comment for why.
+    Streams frames one CHUNK_SIZE-frame chunk at a time (extract_chunk_frames)
+    instead of loading the whole video upfront — see EXTRACT_SIZE comment for
+    why. Cosmos only ever sees exactly 8 frames per chunk (padded[::COSMOS_STRIDE]),
+    independent of CHUNK_SIZE.
     """
     parts = []
     counts = {"seed2": 0, "cosmos": 0, "avclm": 0, "caption": 0, "speech": 0}
@@ -184,7 +220,7 @@ def tokenize_video(video_path, duration_sec, seed2, cosmos, avc_lm, anchors, tem
         for local_idx, frame in enumerate(chunk_frames):
             global_idx = chunk_start_frame + local_idx
             if global_idx % TARGET_FPS == 0:
-                temp_path = f"temp_seed2_rank_{RANK}.jpg"
+                temp_path = os.path.join(SCRATCH_DIR, f"temp_seed2_rank_{RANK}.jpg")
                 frame.resize((seed2.target_size, seed2.target_size)).save(temp_path)
                 seed2_ids = seed2.encode_image(temp_path)
                 if seed2_ids:
@@ -199,7 +235,7 @@ def tokenize_video(video_path, duration_sec, seed2, cosmos, avc_lm, anchors, tem
             counts["caption"] += 1
 
         padded = chunk_frames + [chunk_frames[-1]] * (CHUNK_SIZE - len(chunk_frames))
-        cosmos_ids = cosmos.encode_video_chunk(padded)
+        cosmos_ids = cosmos.encode_video_chunk(padded[::COSMOS_STRIDE])
         if cosmos_ids:
             parts.append(f"<cosmos> {' '.join(map(str, cosmos_ids))} </cosmos>")
             counts["cosmos"] += len(cosmos_ids)
@@ -248,7 +284,7 @@ def main():
     seed2 = Seed2Tokenizer()
     cosmos = CosmosVideoTokenizer()
     avc_lm = AVCLMTokenizer()
-    temp_frames_dir = f"omni_temp_frames_rank_{RANK}"
+    temp_frames_dir = os.path.join(SCRATCH_DIR, f"omni_temp_frames_rank_{RANK}")
     os.makedirs(temp_frames_dir, exist_ok=True)
 
     for i, fname in enumerate(my_files):

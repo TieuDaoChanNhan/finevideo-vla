@@ -1,4 +1,4 @@
-"""Phase 3 (kinematics processing -> 8-frame state windows) for the sports
+"""Phase 3 (kinematics processing -> 24-frame state windows) for the sports
 subset of OmniVideo-100K, run on JUPITER. Depends on Phase 2.5
 (phase2_5_resample_omnivideo.py) having written
 $DATA/omnivideo_100k/pose_3d_npy_30fps/{video_id}.npy.
@@ -25,8 +25,12 @@ input is already resampled to a uniform 30fps grid by Phase 2.5, matching
 slurm/submit_kinematics.sh's own invocation for FineVideo (which also omits
 --fps-json for the same reason).
 
-Output: $DATA/omnivideo_100k/pose_states_jsonl_30fps/{video_id}_states.jsonl
-  shape (windows, 8, 17, 3), stride=8 (matches Phase 5 downstream, avoids
+2026-07-23: window=24 pivot to match FineVideo-VLA (was window_size=8,
+stride=8; output dir was pose_states_jsonl_30fps) -- see
+step_a/step_a_tokenize_video.py's CHUNK_SIZE comment for the full rationale.
+
+Output: $DATA/omnivideo_100k/pose_states_jsonl_30fps_w24/{video_id}_states.jsonl
+  shape (windows, 24, 17, 3), stride=24 (matches Phase 5 downstream, avoids
   storing redundant overlapping windows).
 """
 import os
@@ -39,8 +43,11 @@ DATA_ROOT = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/omnivideo_100k
 DEFAULT_VIDEO_IDS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sports_subset_video_ids_filtered.txt")
 DEFAULT_INPUT_DIR = os.path.join(DATA_ROOT, "pose_3d_npy_30fps")
 DEFAULT_JSON_2D_DIR = os.path.join(DATA_ROOT, "pose_2d_json")
-DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "pose_states_jsonl_30fps")
-STRIDE = 8
+DEFAULT_OUTPUT_DIR = os.path.join(DATA_ROOT, "pose_states_jsonl_30fps_w24")
+# 2026-07-23: window=24 to match FineVideo-VLA's pivot (was 8) -- see
+# step_a/step_a_tokenize_video.py's CHUNK_SIZE comment for the full rationale.
+WINDOW_SIZE = 24
+STRIDE = 24
 
 RANK = int(os.environ.get("SLURM_PROCID", 0))
 WORLD_SIZE = int(os.environ.get("SLURM_NTASKS", 1))
@@ -82,7 +89,7 @@ def main():
         try:
             success = process_file(
                 npy_path, temp_jsonl, processor, video_id,
-                json_2d_dir=args.json_2d_dir, stride=STRIDE,
+                json_2d_dir=args.json_2d_dir, stride=STRIDE, window_size=WINDOW_SIZE,
             )
             if success:
                 os.replace(temp_jsonl, final_jsonl)  # same dir -> atomic, safe for resume

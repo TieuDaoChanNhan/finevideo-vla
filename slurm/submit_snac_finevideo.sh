@@ -1,141 +1,58 @@
 #!/bin/bash
-# submit_snac_finevideo.sh — SNAC tokenization for FineVideo-VLA activities
-#
-# TWO SUBMISSION MODES:
-#
-#   GPU mode  (fast, ~12h):  submit from juwels-booster.fz-juelich.de
-#     bash slurm/submit_snac_finevideo.sh
-#     Partition: booster, Account: laionize
-#     Env: /p/project1/laionize/nguyen38/my_env_clean (Python 3.11, torch 2.8, snac)
-#
-#   CPU mode  (slow, ~24h):  submit from jwlogin*.juwels (current node)
-#     bash slurm/submit_snac_finevideo.sh --cpu
-#     Partition: batch, Account: laionize
-#     Env: /p/data1/mmlaion/nguyen38/env_tools (Python 3.12, snac)
-#     Note: GPU unavailable → SNAC runs on CPU (~5-10x realtime, ~20-24h total)
-#
-# STEP 1 — Build task list (run once on login node, ~5-15 min):
-#   bash slurm/submit_snac_finevideo.sh --build-tasks
-#
-# Output: /p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens/
-#   {video_id}_snac.jsonl — one file per video, one line per activity
-
-set -e
-
-REPO=/p/data1/mmlaion/nguyen38/3d-human-pose
-ENV_TOOLS=/p/data1/mmlaion/nguyen38/env_tools         # x86 Stages/2025 (login + batch nodes)
-ENV_BOOSTER=/p/project1/laionize/nguyen38/my_env_clean # ppc64le Stages/2024 (booster nodes)
-TASK_CACHE=/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_task_list.json
-OUTPUT_DIR=/p/data1/mmlaion/shared/nguyen38/data/FineVideo-VLA/snac_tokens
-VIDEO_DIR=/p/data1/mmlaion/shared/nguyen38/data/videos_staging
-HF_CACHE=/p/scratch/laionize/nguyen38/hf_cache
-LOG_DIR=$REPO/logs/snac_finevideo
-
-mkdir -p "$LOG_DIR"
-
-# ── Step 1: build task list on login node ────────────────────────────────────
-if [ "$1" = "--build-tasks" ]; then
-    echo "=== Building SNAC task list (scanning final_dataset_adaptive) ==="
-    echo "This reads ~657 GB of JSONL — expect 5-15 min..."
-    module --force purge
-    module load Stages/2025 GCC/13.3.0 Python/3.12.3
-    source "$ENV_TOOLS/bin/activate"
-    cd "$REPO"
-    python pipeline_pose/snac_finevideo.py \
-        --build-tasks \
-        --scan-workers 8
-    echo "Task list written to: $TASK_CACHE"
-    echo "Now run:  bash slurm/submit_snac_finevideo.sh        (GPU, from juwels-booster)"
-    echo "      or: bash slurm/submit_snac_finevideo.sh --cpu  (CPU, from jwlogin)"
-    exit 0
-fi
-
-# ── Check task list exists ────────────────────────────────────────────────────
-if [ ! -f "$TASK_CACHE" ]; then
-    echo "ERROR: task list not found at $TASK_CACHE"
-    echo "Run first:  bash slurm/submit_snac_finevideo.sh --build-tasks"
-    exit 1
-fi
-
-# ── Step 2a: GPU mode (booster) ───────────────────────────────────────────────
-if [ "$1" != "--cpu" ]; then
-    NUM_TASKS=16   # 4 nodes × 4 GPUs
-
-    echo "=== Submitting SNAC GPU array job (booster) ==="
-    echo "  NOTE: Submit this from juwels-booster.fz-juelich.de if it fails here."
-    echo "  Tasks: 0-$((NUM_TASKS-1)) | Logs: $LOG_DIR/"
-
-    sbatch <<EOF
-#!/bin/bash
-#SBATCH --job-name=snac_fv_gpu
-#SBATCH --account=laionize
+#SBATCH --job-name=snac_fv_full
+#SBATCH --account=reformo
 #SBATCH --partition=booster
-#SBATCH --array=0-$((NUM_TASKS-1))
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
-#SBATCH --time=12:00:00
-#SBATCH --output=$LOG_DIR/snac_%A_%a.out
-#SBATCH --error=$LOG_DIR/snac_%A_%a.err
+#SBATCH --nodes=1
+#SBATCH --gpus=4
+#SBATCH --cpus-per-task=256
+#SBATCH --time=06:00:00
+#SBATCH --output=logs/snac_finevideo_full_%j.log
 
-# ── Env setup (JUWELS Booster: ppc64le, Stages/2024) ─────────────────────────
-module purge
-module load Stages/2024
-module load GCCcore/.12.3.0
-module load Python/3.11.3
-source $ENV_BOOSTER/bin/activate
+# 2026-07-23: full-scale SNAC (listen-format) tokenization of FineVideo-VLA
+# activity audio, adapted from submit_yolo_w24.sh's worker-pool pattern.
+# Old version of this script targeted JUWELS (laionize account, /p paths,
+# ppc64le env) -- rewritten for JUPITER (reformo/booster, /e/data1 paths,
+# env_stable_vla), matching pipeline_pose/snac_finevideo.py's fixed
+# defaults. Prereq: task list already built
+#   (/e/data1/datasets/playground/mmlaion/shared/nguyen38/FineVideo-VLA/snac_task_list.json,
+#    40,798 videos / 372,385 activities, built 2026-07-23 12:13) --
+#   rerun `python pipeline_pose/snac_finevideo.py --build-tasks` first if
+#   final_dataset_adaptive changes.
+# Smoke-tested on 1 video (P0Ol42Fz3ic, 4/4 activities ok) before this submit
+# -- see samples/finevideo-vla/snac_listen_smoketest/.
 
-export HF_HOME=$HF_CACHE
-export HF_HUB_OFFLINE=1   # no internet on compute nodes; use local cache only
-mkdir -p "\$HF_HOME"
-
-cd $REPO
-export SLURM_ARRAY_TASK_COUNT=$NUM_TASKS
-
-python pipeline_pose/snac_finevideo.py \
-    --task-cache  $TASK_CACHE \
-    --output-dir  $OUTPUT_DIR \
-    --video-dir   $VIDEO_DIR \
-    --hf-cache    \$HF_HOME
-EOF
-
-    exit 0
-fi
-
-# ── Step 2b: CPU mode (batch, x86, laionize account) ─────────────────────────
-NUM_TASKS=32   # 32 CPU workers, ~20-24h each
-
-echo "=== Submitting SNAC CPU array job (batch partition) ==="
-echo "  Tasks: 0-$((NUM_TASKS-1)) | Logs: $LOG_DIR/"
-echo "  WARNING: CPU mode is ~10x slower than GPU. Expect ~20-24h per worker."
-
-sbatch <<EOF
-#!/bin/bash
-#SBATCH --job-name=snac_fv_cpu
-#SBATCH --account=laionize
-#SBATCH --partition=batch
-#SBATCH --array=0-$((NUM_TASKS-1))
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --time=24:00:00
-#SBATCH --output=$LOG_DIR/snac_cpu_%A_%a.out
-#SBATCH --error=$LOG_DIR/snac_cpu_%A_%a.err
-
-# ── Env setup (JUWELS Cluster: x86, Stages/2025) ─────────────────────────────
 module --force purge
-module load Stages/2025 GCC/13.3.0 Python/3.12.3
-source $ENV_TOOLS/bin/activate
+module load Stages/2025 GCC/13.3.0 Python/3.12.3 CUDA/12 PyTorch/2.5.1 torchvision/0.20.1
+source /e/project1/reformo/nguyen38/env_stable_vla/bin/activate
 
-export HF_HOME=$HF_CACHE
-export HF_HUB_OFFLINE=1   # no internet on compute nodes; use local cache only
-mkdir -p "\$HF_HOME"
+export HF_HOME=/e/project1/reformo/nguyen38/jupiter_cache/huggingface
+export HF_HUB_OFFLINE=1
 
-cd $REPO
-export SLURM_ARRAY_TASK_COUNT=$NUM_TASKS
+mkdir -p logs/snac_finevideo_workers
 
-python pipeline_pose/snac_finevideo.py \
-    --task-cache  $TASK_CACHE \
-    --output-dir  $OUTPUT_DIR \
-    --video-dir   $VIDEO_DIR \
-    --hf-cache    \$HF_HOME
-EOF
+export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-log
+nvidia-cuda-mps-control -d
+echo "NVIDIA MPS activated for all 4 GPUs"
+
+# 2026-07-23: 128 workers (32/GPU, copied from submit_yolo_w24.sh) OOM-crashed
+# almost every worker. Dropped to 32 (8/GPU, matching
+# submit_snac_omnivideo_w24.sh's ratio) -- STILL OOM'd (observed workers
+# holding 10-16 GiB each; FineVideo activities can run much longer than
+# omnivideo's whole-video audio, so SNAC's per-request memory peak is
+# higher here even at the same worker count). Dropped further to 16 (4/GPU).
+NUM_WORKERS=16
+echo "Launching $NUM_WORKERS workers distributed across 4 GH200 GPUs (SNAC listen-format)..."
+
+for i in $(seq 0 $((NUM_WORKERS - 1))); do
+    GPU_ID=$(( i % 4 ))
+    CUDA_VISIBLE_DEVICES=$GPU_ID \
+    SLURM_ARRAY_TASK_ID=$i \
+    SLURM_ARRAY_TASK_COUNT=$NUM_WORKERS \
+    python -u pipeline_pose/snac_finevideo.py \
+        --format listen > logs/snac_finevideo_workers/worker_${i}.log 2>&1 &
+done
+
+wait
+echo quit | nvidia-cuda-mps-control
+echo "SNAC FineVideo-VLA (listen-format) full-scale done."
