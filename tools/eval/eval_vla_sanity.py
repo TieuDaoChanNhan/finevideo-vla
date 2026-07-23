@@ -24,7 +24,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from decode_agent_tokens import decode, to_json, JOINT_NAMES, JOINT_INDEX
 
-MODEL_PATH = "/e/project1/reformo/nguyen38/output_vla/vla_adaptive/hf/iter_0002032"
+# 2026-07-23: output_vla moved project1 -> data1 (freed inodes for the
+# project1 quota crisis) -- verified byte-for-byte match before the project1
+# copy was deleted, see PROGRESS_VI.md same-day entry.
+MODEL_PATH = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/output_vla/vla_adaptive/hf/iter_0002032"
 TOKENIZER_PATH = "/e/project1/reformo/nguyen38/3d-human-pose/vocab/tokenizer_vla_adaptive"
 
 

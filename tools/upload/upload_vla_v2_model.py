@@ -14,7 +14,10 @@ import shutil
 from huggingface_hub import HfApi
 
 REPO_ID = "EmpathicRobotics/vla-1.7b-qwen3-v2"
-MODEL_DIR = "/e/project1/reformo/nguyen38/output_vla/qwen3_1.7b_vla_v2/hf/iter_0007632"
+# 2026-07-23: output_vla moved project1 -> data1 (freed inodes for the
+# project1 quota crisis) -- verified byte-for-byte match before the project1
+# copy was deleted, see PROGRESS_VI.md same-day entry.
+MODEL_DIR = "/e/data1/datasets/playground/mmlaion/shared/nguyen38/output_vla/qwen3_1.7b_vla_v2/hf/iter_0007632"
 
 README = """\
 ---
