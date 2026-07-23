@@ -37,12 +37,29 @@ import re
 import subprocess
 import sys
 
+# 2026-07-23: PROTOTYPE_DIR only exists on the internal cluster (not part of
+# the public github.com/TieuDaoChanNhan/finevideo-vla repo -- 0 files under
+# prototype/ are git-tracked). External users have no way to reach a
+# hardcoded local path, so the checkpoint is now fetched from NVIDIA's public
+# HF repo on first use instead (cached under the standard HF_HOME, same as
+# any other from_pretrained() call) -- falls back to the local cluster copy
+# first if it happens to be present, to avoid a redundant download here.
 PROTOTYPE_DIR = "/e/project1/reformo/nguyen38/prototype"
-CHECKPOINT_DEC = os.path.join(
+_LOCAL_CHECKPOINT_DEC = os.path.join(
     PROTOTYPE_DIR, "pretrained_ckpts/Cosmos-Tokenizer-DV8x16x16/decoder.jit"
 )
+COSMOS_HF_REPO = "nvidia/Cosmos-Tokenizer-DV8x16x16"
 CHUNK_GRID = (2, 10, 10)  # (T', H', W') per 8-frame/160x160 input chunk, this checkpoint
 CHUNK_TOKENS = CHUNK_GRID[0] * CHUNK_GRID[1] * CHUNK_GRID[2]  # 200
+
+
+def _resolve_checkpoint_dec() -> str:
+    if os.path.exists(_LOCAL_CHECKPOINT_DEC):
+        return _LOCAL_CHECKPOINT_DEC
+    from huggingface_hub import hf_hub_download
+    print(f"Local checkpoint not found -- downloading decoder.jit from {COSMOS_HF_REPO} "
+          f"(~350MB, cached for future runs)...")
+    return hf_hub_download(repo_id=COSMOS_HF_REPO, filename="decoder.jit")
 
 _COSMOS_ATOMIC_RE = re.compile(r"<cosmos_(\d+)>")
 _COSMOS_RAW_BLOCK_RE = re.compile(r"<cosmos>(.*?)</cosmos>", re.DOTALL)
@@ -120,17 +137,20 @@ def decode_cosmos_chunk(token_ids: list, output_path: str, fps: int = 6) -> None
     """token_ids: exactly CHUNK_TOKENS (200) raw cosmos codebook indices."""
     if len(token_ids) != CHUNK_TOKENS:
         raise ValueError(f"Expected exactly {CHUNK_TOKENS} tokens, got {len(token_ids)}")
-    output_path = os.path.abspath(output_path)  # must resolve before os.chdir() below
+    output_path = os.path.abspath(output_path)  # resolve before any cwd assumptions below
 
-    sys.path.insert(0, PROTOTYPE_DIR)
-    os.chdir(PROTOTYPE_DIR)
+    # 2026-07-23: cosmos_tokenizer itself is also vendored (tools/decode/vendor/),
+    # not pip-installable -- see vendor/cosmos_tokenizer/NOTICE.md. No os.chdir()
+    # needed anymore (that was only for PROTOTYPE_DIR's relative lookups).
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
     import imageio_ffmpeg
     import torch
     import torchvision.transforms as T
     from cosmos_tokenizer.video_lib import CausalVideoTokenizer
 
+    checkpoint_dec = _resolve_checkpoint_dec()
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    dec = CausalVideoTokenizer(checkpoint_dec=CHECKPOINT_DEC).to(device)
+    dec = CausalVideoTokenizer(checkpoint_dec=checkpoint_dec).to(device)
 
     indices = torch.tensor(token_ids, dtype=torch.int64, device=device).view(1, *CHUNK_GRID)
     with torch.no_grad():

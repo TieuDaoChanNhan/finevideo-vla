@@ -147,23 +147,50 @@ output = model.generate(
 print(tokenizer.decode(output[0]))
 ```
 
-### Decoding agent tokens to 3D poses
+### Decoding generated tokens back to media
 
-```python
-# pip install scipy
-from decode_agent_tokens import decode  # from the 3d-human-pose repo, tools/eval/
+All 4 decoders below are in the public repo
+[github.com/TieuDaoChanNhan/finevideo-vla](https://github.com/TieuDaoChanNhan/finevideo-vla)
+(clone it, then run from its root) -- **verified working 2026-07-23** with no
+cluster/internal access required, each tested end-to-end on real tokens this
+model actually generated.
 
-generated_text = tokenizer.decode(output[0])
-trajectories = decode(generated_text)  # list of (8, 17, 3) ndarrays
+```bash
+git clone https://github.com/TieuDaoChanNhan/finevideo-vla
+cd finevideo-vla
+pip install scipy numpy torch torchvision imageio-ffmpeg soundfile snac huggingface_hub
 ```
 
-### Decoding cosmos tokens to video
-
-```python
-# from the 3d-human-pose repo, tools/decode/decode_cosmos.py
-# python tools/decode/decode_cosmos.py --tokens 58345,57843,... --output out.mp4
-# (requires exactly 200 raw cosmos ids per 8-frame chunk)
+**Agent tokens -> 3D pose** (pure Python, no extra downloads):
+```bash
+python tools/eval/decode_agent_tokens.py --input generated_tokens.txt --output poses.json
 ```
+
+**Cosmos tokens -> video** (auto-downloads the ~350MB decoder checkpoint from
+[nvidia/Cosmos-Tokenizer-DV8x16x16](https://huggingface.co/nvidia/Cosmos-Tokenizer-DV8x16x16)
+on first run):
+```bash
+python tools/decode/decode_cosmos.py --tokens 58345,57843,... --output out.mp4
+# this model's cosmos chunks are exactly 200 raw ids each (8 frames, 160x160,
+# square-cropped -- the DV8x16x16 checkpoint's own token grid for that input
+# size). A later dataset pivot (2026-07-23, aspect-preserving/896 tokens)
+# does NOT apply to this model -- it was trained entirely on the 200-token/
+# square-crop convention.
+```
+
+**SNAC tokens -> audio** (auto-downloads `hubertsiuzdak/snac_24khz` from HF):
+```bash
+python tools/decode/decode_snac.py --tokens 130911,134940,... --format listen --output out.wav
+# this model only ever saw "listen" format (3 tokens/base-frame, <snac>
+# wrapper) -- do NOT use --format speak, that's a newer (2026-07-23)
+# convention this model was never trained on.
+```
+
+**Seed2 tokens -> image**: requires an additional ~2.6GB vendored checkpoint
+not yet packaged for public use (Q-Former + diffusion img2img reconstruction,
+`tools/decode/decode_seed2.py` in the same repo) -- contact the team if you
+need this one specifically; the other 3 decoders above cover video/pose/audio
+and are the ones most eval work needs.
 
 ## Training details
 
